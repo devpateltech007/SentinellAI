@@ -1,0 +1,85 @@
+# HIPAA Security Rule — Selected Sections for MVP
+# Source: 45 CFR Part 160 and Part 164, Subparts A and C
+# This file contains key excerpts used by the Compliance Brain RAG pipeline.
+
+## § 164.312(a)(1) — Access Control
+Standard: Implement technical policies and procedures for electronic information systems
+that maintain electronic protected health information to allow access only to those persons
+or software programs that have been granted access rights as specified in § 164.508(a)(2).
+
+Implementation Specifications:
+(i) Unique User Identification (Required) — Assign a unique name and/or number for
+identifying and tracking user identity.
+(ii) Emergency Access Procedure (Required) — Establish (and implement as needed)
+procedures for obtaining necessary electronic protected health information during an emergency.
+(iii) Automatic Logoff (Addressable) — Implement electronic procedures that terminate an
+electronic session after a predetermined time of inactivity.
+(iv) Encryption and Decryption (Addressable) — Implement a mechanism to encrypt and
+decrypt electronic protected health information.
+
+## § 164.312(b) — Audit Controls
+Standard: Implement hardware, software, and/or procedural mechanisms that record and examine
+activity in information systems that contain or use electronic protected health information.
+
+## § 164.312(c)(1) — Integrity
+Standard: Implement policies and procedures to protect electronic protected health information
+from improper alteration or destruction.
+
+Implementation Specifications:
+(i) Mechanism to Authenticate Electronic Protected Health Information (Addressable) —
+Implement electronic mechanisms to corroborate that electronic protected health information
+has not been altered or destroyed in an unauthorized manner.
+
+## § 164.312(d) — Person or Entity Authentication
+Standard: Implement procedures to verify that a person or entity seeking access to electronic
+protected health information is the one claimed.
+
+## § 164.312(e)(1) — Transmission Security
+Standard: Implement technical security measures to guard against unauthorized access to
+electronic protected health information that is being transmitted over an electronic
+communications network.
+
+Implementation Specifications:
+(i) Integrity Controls (Addressable) — Implement security measures to ensure that
+electronically transmitted electronic protected health information is not improperly
+modified without detection until disposed of.
+(ii) Encryption (Addressable) — Implement a mechanism to encrypt electronic protected
+health information whenever deemed appropriate.
+
+## § 164.308(a)(1)(i) — Security Management Process
+Standard: Implement policies and procedures to prevent, detect, contain, and correct
+security violations.
+
+Implementation Specifications:
+(i) Risk Analysis (Required) — Conduct an accurate and thorough assessment of the
+potential risks and vulnerabilities to the confidentiality, integrity, and availability
+of electronic protected health information held by the covered entity or business associate.
+(ii) Risk Management (Required) — Implement security measures sufficient to reduce risks
+and vulnerabilities to a reasonable and appropriate level.
+(iii) Sanction Policy (Required) — Apply appropriate sanctions against workforce members
+who fail to comply with the security policies and procedures.
+(iv) Information System Activity Review (Required) — Implement procedures to regularly
+review records of information system activity, such as audit logs, access reports,
+and security incident tracking reports.
+
+## § 164.308(a)(3)(i) — Workforce Security
+Standard: Implement policies and procedures to ensure that all members of its workforce
+have appropriate access to electronic protected health information, and to prevent those
+workforce members who do not have access from obtaining access.
+
+## § 164.308(a)(4)(i) — Information Access Management
+Standard: Implement policies and procedures for authorizing access to electronic protected
+health information that are consistent with the applicable requirements of subpart E.
+
+Implementation Specifications:
+(ii) Access Authorization (Addressable) — Implement policies and procedures for granting
+access to electronic protected health information, for example, through access to a
+workstation, transaction, program, process, or other mechanism.
+(iii) Access Establishment and Modification (Addressable) — Implement policies and
+procedures that, based upon the covered entity's or the business associate's access
+authorization policies, establish, document, review, and modify a user's right of
+access to a workstation, transaction, program, or process.
+
+## § 164.308(a)(5)(i) — Security Awareness and Training
+Standard: Implement a security awareness and training program for all members of its
+workforce (including management).

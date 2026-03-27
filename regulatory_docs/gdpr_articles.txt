@@ -1,0 +1,69 @@
+# GDPR — Selected Articles for MVP
+# Source: Regulation (EU) 2016/679 of the European Parliament and of the Council
+# This file contains key excerpts used by the Compliance Brain RAG pipeline.
+
+## Article 5 — Principles relating to processing of personal data
+1. Personal data shall be:
+(a) processed lawfully, fairly and in a transparent manner in relation to the data subject
+('lawfulness, fairness and transparency');
+(b) collected for specified, explicit and legitimate purposes and not further processed in a
+manner that is incompatible with those purposes ('purpose limitation');
+(c) adequate, relevant and limited to what is necessary in relation to the purposes for which
+they are processed ('data minimisation');
+(d) accurate and, where necessary, kept up to date ('accuracy');
+(e) kept in a form which permits identification of data subjects for no longer than is necessary
+('storage limitation');
+(f) processed in a manner that ensures appropriate security of the personal data, including
+protection against unauthorised or unlawful processing and against accidental loss, destruction
+or damage, using appropriate technical or organisational measures ('integrity and confidentiality').
+
+## Article 25 — Data protection by design and by default
+1. The controller shall implement appropriate technical and organisational measures, such as
+pseudonymisation, which are designed to implement data-protection principles, such as data
+minimisation, in an effective manner and to integrate the necessary safeguards into the processing.
+2. The controller shall implement appropriate technical and organisational measures for ensuring
+that, by default, only personal data which are necessary for each specific purpose of the
+processing are processed.
+
+## Article 30 — Records of processing activities
+1. Each controller shall maintain a record of processing activities under its responsibility.
+That record shall contain the following information:
+(a) the name and contact details of the controller;
+(b) the purposes of the processing;
+(c) a description of the categories of data subjects and of the categories of personal data;
+(d) the categories of recipients to whom the personal data have been or will be disclosed;
+(e) transfers of personal data to a third country or an international organisation;
+(f) the envisaged time limits for erasure of the different categories of data;
+(g) a general description of the technical and organisational security measures.
+
+## Article 32 — Security of processing
+1. The controller and the processor shall implement appropriate technical and organisational
+measures to ensure a level of security appropriate to the risk, including inter alia as appropriate:
+(a) the pseudonymisation and encryption of personal data;
+(b) the ability to ensure the ongoing confidentiality, integrity, availability and resilience
+of processing systems and services;
+(c) the ability to restore the availability and access to personal data in a timely manner
+in the event of a physical or technical incident;
+(d) a process for regularly testing, assessing and evaluating the effectiveness of technical
+and organisational measures for ensuring the security of the processing.
+
+## Article 33 — Notification of a personal data breach to the supervisory authority
+1. In the case of a personal data breach, the controller shall without undue delay and, where
+feasible, not later than 72 hours after having become aware of it, notify the personal data
+breach to the supervisory authority, unless the personal data breach is unlikely to result in
+a risk to the rights and freedoms of natural persons.
+
+## Article 35 — Data protection impact assessment
+1. Where a type of processing in particular using new technologies, and taking into account
+the nature, scope, context and purposes of the processing, is likely to result in a high risk
+to the rights and freedoms of natural persons, the controller shall, prior to the processing,
+carry out an assessment of the impact of the envisaged processing operations on the protection
+of personal data.
+
+## Article 37 — Designation of the data protection officer
+1. The controller and the processor shall designate a data protection officer in any case where:
+(a) the processing is carried out by a public authority or body;
+(b) the core activities of the controller or the processor consist of processing operations
+which require regular and systematic monitoring of data subjects on a large scale;
+(c) the core activities of the controller or the processor consist of processing on a large
+scale of special categories of data or personal data relating to criminal convictions and offences.
