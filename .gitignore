@@ -45,3 +45,5 @@ docker-compose.override.yml
 # Artifacts
 *.pdf
 regulatory_docs/*.pdf
+
+*.docx

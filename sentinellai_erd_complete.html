@@ -1,0 +1,416 @@
+<style>
+html, body { width: 100%; margin: 0; padding: 0; }
+.erd-container { width: 100%; padding: 16px; background: transparent; }
+.erd-canvas-wrapper { width: 100%; overflow-x: auto; border-radius: var(--border-radius-lg); border: 0.5px solid var(--color-border-tertiary); }
+canvas { display: block; background: var(--color-background-primary); }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; font-size: 12px; padding: 0 4px; }
+.legend-item { display: flex; align-items: center; gap: 8px; }
+.legend-color { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+.entity-group { margin-top: 12px; padding: 12px; background: var(--color-background-secondary); border-radius: var(--border-radius-md); border: 0.5px solid var(--color-border-tertiary); font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; }
+.entity-group strong { color: var(--color-text-primary); }
+.key-symbol { font-family: monospace; font-size: 11px; font-weight: 600; margin-right: 4px; }
+.append-only { background: rgba(239, 68, 68, 0.08); border-left: 3px solid #EF4444; }
+</style>
+
+<div class="erd-container">
+  <div class="erd-canvas-wrapper">
+    <canvas id="erdCanvas" role="img" aria-label="SentinellAI Entity Relationship Diagram showing 9 tables with relationships and cardinality">ERD Diagram</canvas>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-color" style="background: #0EA5E9;"></div><span>User & Org</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #22C55E;"></div><span>Compliance</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #F97316;"></div><span>Evidence</span></div>
+    <div class="legend-item"><div class="legend-color" style="background: #EF4444;"></div><span>Audit History</span></div>
+    <div class="legend-item"><span style="font-size: 11px; font-weight: 600;">PK</span><span>Primary Key</span></div>
+    <div class="legend-item"><span style="font-size: 11px; font-weight: 600;">FK</span><span>Foreign Key</span></div>
+    <div class="legend-item"><span style="font-weight: 600;">1:N</span><span>One to Many</span></div>
+    <div class="legend-item"><span style="font-weight: 600;">N:N</span><span>Many to Many</span></div>
+  </div>
+
+  <div class="entity-group">
+    <strong>📋 User & Organization (Blue)</strong><br>
+    <span class="key-symbol">Role</span> defines permissions; <span class="key-symbol">User</span> inherits role. <span class="key-symbol">Project</span> is created by a user and may include multiple frameworks via a join table.
+  </div>
+
+  <div class="entity-group">
+    <strong>✓ Compliance & Frameworks (Green)</strong><br>
+    <span class="key-symbol">Framework</span> (SOC2, ISO, HIPAA) defines <span class="key-symbol">Control</span>s. Each <span class="key-symbol">Control</span> specifies <span class="key-symbol">Requirement</span>s and collects <span class="key-symbol">Evidence_Item</span>s.
+  </div>
+
+  <div class="entity-group">
+    <strong>📦 Evidence & Artifacts (Orange)</strong><br>
+    <strong>Append-only table.</strong> <span class="key-symbol">Evidence_Item</span> links to control and requirement. Content hashed (SHA-256) for deduplication. Source connector field traces origin (AWS, GitHub, IaC, Slack, etc.).
+  </div>
+
+  <div class="entity-group append-only">
+    <strong>📜 Audit History (Red)</strong><br>
+    <strong>Append-only, immutable table.</strong> <span class="key-symbol">Status_History</span> records every status change with timestamp, rationale, and evidence IDs. No updates or deletes—audit trail only.
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('erdCanvas');
+const ctx = canvas.getContext('2d');
+
+// Canvas sizing
+const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+canvas.width = 1400;
+canvas.height = 900;
+
+const colors = {
+  userOrg: '#0EA5E9',
+  compliance: '#22C55E',
+  evidence: '#F97316',
+  history: '#EF4444',
+  border: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.15)',
+  text: isDark ? 'rgba(255, 255, 255, 0.87)' : 'rgba(0, 0, 0, 0.87)',
+  textSecondary: isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(0, 0, 0, 0.6)',
+  gridLine: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+};
+
+// Entity definitions with positions
+const entities = [
+  // User & Org (Blue) - left side
+  {
+    name: 'Role',
+    color: colors.userOrg,
+    x: 40,
+    y: 80,
+    fields: [
+      { name: 'id', type: 'uuid', key: 'PK' },
+      { name: 'name', type: 'string', key: 'UNIQUE' },
+      { name: 'permissions_set', type: 'json' },
+      { name: 'created_at', type: 'datetime' },
+    ],
+  },
+  {
+    name: 'User',
+    color: colors.userOrg,
+    x: 40,
+    y: 280,
+    fields: [
+      { name: 'id', type: 'uuid', key: 'PK' },
+      { name: 'username', type: 'string', key: 'UNIQUE' },
+      { name: 'email', type: 'string', key: 'UNIQUE' },
+      { name: 'password_hash', type: 'string' },
+      { name: 'role_id', type: 'uuid', key: 'FK' },
+      { name: 'created_at', type: 'datetime' },
+      { name: 'updated_at', type: 'datetime' },
+    ],
+  },
+  {
+    name: 'Project',
+    color: colors.userOrg,
+    x: 40,
+    y: 530,
+    fields: [
+      { name: 'id', type: 'uuid', key: 'PK' },
+      { name: 'organization_id', type: 'string' },
+      { name: 'name', type: 'string' },
+      { name: 'created_by', type: 'uuid', key: 'FK' },
+      { name: 'created_at', type: 'datetime' },
+    ],
+  },
+
+  // Compliance (Green) - center
+  {
+    name: 'Framework',
+    color: colors.compliance,
+    x: 450,
+    y: 50,
+    fields: [
+      { name: 'id', type: 'uuid', key: 'PK' },
+      { name: 'name', type: 'string' },
+      { name: 'source_document_ref', type: 'string' },
+      { name: 'version_id', type: 'integer' },
+      { name: 'ingestion_timestamp', type: 'datetime' },
+      { name: 'created_at', type: 'datetime' },
+    ],
+  },
+  {
+    name: 'ProjectFramework',
+    color: colors.compliance,
+    x: 280,
+    y: 280,
+    fields: [
+      { name: 'project_id', type: 'uuid', key: 'FK, PK' },
+      { name: 'framework_id', type: 'uuid', key: 'FK, PK' },
+      { name: 'added_at', type: 'datetime' },
+    ],
+    isJoin: true,
+  },
+  {
+    name: 'Control',
+    color: colors.compliance,
+    x: 450,
+    y: 280,
+    fields: [
+      { name: 'id', type: 'uuid', key: 'PK' },
+      { name: 'framework_id', type: 'uuid', key: 'FK' },
+      { name: 'title', type: 'string' },
+      { name: 'description', type: 'text' },
+      { name: 'current_status', type: 'enum' },
+      { name: 'citation', type: 'text' },
+      { name: 'created_at', type: 'datetime' },
+      { name: 'updated_at', type: 'datetime' },
+    ],
+  },
+  {
+    name: 'Requirement',
+    color: colors.compliance,
+    x: 450,
+    y: 530,
+    fields: [
+      { name: 'id', type: 'uuid', key: 'PK' },
+      { name: 'control_id', type: 'uuid', key: 'FK' },
+      { name: 'testable_statement', type: 'text' },
+      { name: 'evidence_type', type: 'string' },
+      { name: 'condition_logic', type: 'text' },
+      { name: 'created_at', type: 'datetime' },
+    ],
+  },
+
+  // Evidence (Orange) - right side
+  {
+    name: 'Evidence_Item',
+    color: colors.evidence,
+    x: 850,
+    y: 280,
+    isAppendOnly: true,
+    fields: [
+      { name: 'id', type: 'uuid', key: 'PK' },
+      { name: 'control_id', type: 'uuid', key: 'FK' },
+      { name: 'requirement_id', type: 'uuid', key: 'FK' },
+      { name: 'artifact_type', type: 'string' },
+      { name: 'source_connector', type: 'string' },
+      { name: 'collection_timestamp', type: 'datetime' },
+      { name: 'content_hash', type: 'string' },
+      { name: 'raw_content_ref', type: 'string' },
+      { name: 'redacted_content', type: 'boolean' },
+      { name: 'created_at', type: 'datetime' },
+    ],
+  },
+
+  // Status History (Red) - far right
+  {
+    name: 'Status_History',
+    color: colors.history,
+    x: 1100,
+    y: 530,
+    isAppendOnly: true,
+    fields: [
+      { name: 'id', type: 'uuid', key: 'PK' },
+      { name: 'control_id', type: 'uuid', key: 'FK' },
+      { name: 'prior_status', type: 'enum' },
+      { name: 'new_status', type: 'enum' },
+      { name: 'evaluation_timestamp', type: 'datetime' },
+      { name: 'evidence_item_ids', type: 'json' },
+      { name: 'evaluation_rationale', type: 'text' },
+      { name: 'created_at', type: 'datetime' },
+    ],
+  },
+
+  // Connector Config (Orange)
+  {
+    name: 'Connector_Config',
+    color: colors.evidence,
+    x: 850,
+    y: 650,
+    fields: [
+      { name: 'id', type: 'uuid', key: 'PK' },
+      { name: 'project_id', type: 'uuid', key: 'FK' },
+      { name: 'connector_type', type: 'string' },
+      { name: 'name', type: 'string' },
+      { name: 'credentials_encrypted', type: 'blob' },
+      { name: 'collection_interval_minutes', type: 'integer' },
+      { name: 'enabled', type: 'boolean' },
+      { name: 'created_at', type: 'datetime' },
+    ],
+  },
+];
+
+// Helper function to draw rounded rectangle
+function drawRoundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// Draw grid
+ctx.strokeStyle = colors.gridLine;
+ctx.lineWidth = 0.5;
+for (let i = 0; i <= canvas.width; i += 50) {
+  ctx.beginPath();
+  ctx.moveTo(i, 0);
+  ctx.lineTo(i, canvas.height);
+  ctx.stroke();
+}
+for (let i = 0; i <= canvas.height; i += 50) {
+  ctx.beginPath();
+  ctx.moveTo(0, i);
+  ctx.lineTo(canvas.width, i);
+  ctx.stroke();
+}
+
+// Draw entities
+entities.forEach(entity => {
+  const w = entity.isJoin ? 160 : 200;
+  const h = 30 + entity.fields.length * 20;
+
+  // Entity box
+  ctx.fillStyle = entity.color + '20';
+  ctx.strokeStyle = entity.color;
+  ctx.lineWidth = 1.5;
+  drawRoundRect(entity.x, entity.y, w, h, 6);
+  ctx.fill();
+  ctx.stroke();
+
+  // Append-only indicator
+  if (entity.isAppendOnly) {
+    ctx.fillStyle = colors.history + '40';
+    drawRoundRect(entity.x, entity.y, w, h, 6);
+    ctx.fill();
+  }
+
+  // Header
+  ctx.fillStyle = entity.color;
+  drawRoundRect(entity.x, entity.y, w, 30, 6);
+  ctx.fill();
+
+  // Title
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 12px "Anthropic Sans"';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(entity.name, entity.x + w / 2, entity.y + 15);
+
+  // Append-only badge
+  if (entity.isAppendOnly) {
+    ctx.fillStyle = colors.history;
+    ctx.font = '9px "Anthropic Sans"';
+    ctx.textAlign = 'right';
+    ctx.fillText('⬇ append-only', entity.x + w - 6, entity.y + 15);
+  }
+
+  // Fields
+  ctx.fillStyle = colors.text;
+  ctx.font = '10px "Anthropic Sans"';
+  ctx.textAlign = 'left';
+  entity.fields.forEach((field, idx) => {
+    const y = entity.y + 30 + idx * 20 + 12;
+    const keyColor = field.key === 'PK' ? colors.compliance : field.key ? colors.evidence : colors.textSecondary;
+    
+    // Key indicator
+    ctx.fillStyle = keyColor;
+    ctx.fillText(field.key || '', entity.x + 6, y);
+
+    // Field name
+    ctx.fillStyle = colors.text;
+    ctx.fillText(field.name, entity.x + 40, y);
+
+    // Type
+    ctx.fillStyle = colors.textSecondary;
+    ctx.font = '9px "Anthropic Sans"';
+    ctx.fillText(field.type, entity.x + 140, y);
+  });
+
+  // Store for relationship drawing
+  entity.width = w;
+  entity.height = h;
+});
+
+// Draw relationships
+const relationships = [
+  { from: 'Role', to: 'User', fromSide: 'right', toSide: 'left', cardinality: '1:N', label: '1:N' },
+  { from: 'User', to: 'Project', fromSide: 'bottom', toSide: 'top', cardinality: '1:N', label: 'creates' },
+  { from: 'Project', to: 'ProjectFramework', fromSide: 'right', toSide: 'left', cardinality: 'N:N', label: 'N:N' },
+  { from: 'ProjectFramework', to: 'Framework', fromSide: 'right', toSide: 'left', cardinality: 'N:N', label: 'N:N' },
+  { from: 'Project', to: 'Connector_Config', fromSide: 'bottom', toSide: 'left', cardinality: '1:N', label: '1:N' },
+  { from: 'Framework', to: 'Control', fromSide: 'bottom', toSide: 'top', cardinality: '1:N', label: '1:N' },
+  { from: 'Control', to: 'Requirement', fromSide: 'bottom', toSide: 'top', cardinality: '1:N', label: '1:N' },
+  { from: 'Control', to: 'Evidence_Item', fromSide: 'right', toSide: 'left', cardinality: '1:N', label: '1:N' },
+  { from: 'Requirement', to: 'Evidence_Item', fromSide: 'right', toSide: 'bottom', cardinality: '1:N', label: '1:N' },
+  { from: 'Control', to: 'Status_History', fromSide: 'bottom', toSide: 'top', cardinality: '1:N', label: '1:N' },
+];
+
+ctx.strokeStyle = colors.border;
+ctx.lineWidth = 1;
+relationships.forEach(rel => {
+  const fromEntity = entities.find(e => e.name === rel.from);
+  const toEntity = entities.find(e => e.name === rel.to);
+
+  if (!fromEntity || !toEntity) return;
+
+  // Calculate connection points
+  let fromX = fromEntity.x + fromEntity.width / 2;
+  let fromY = fromEntity.y + fromEntity.height / 2;
+  let toX = toEntity.x + toEntity.width / 2;
+  let toY = toEntity.y + toEntity.height / 2;
+
+  // Adjust for sides
+  if (rel.fromSide === 'right') fromX = fromEntity.x + fromEntity.width;
+  if (rel.fromSide === 'bottom') fromY = fromEntity.y + fromEntity.height;
+  if (rel.fromSide === 'left') fromX = fromEntity.x;
+  if (rel.fromSide === 'top') fromY = fromEntity.y;
+
+  if (rel.toSide === 'right') toX = toEntity.x + toEntity.width;
+  if (rel.toSide === 'bottom') toY = toEntity.y + toEntity.height;
+  if (rel.toSide === 'left') toX = toEntity.x;
+  if (rel.toSide === 'top') toY = toEntity.y;
+
+  // Draw line with slight curve
+  const mx = (fromX + toX) / 2;
+  const my = (fromY + toY) / 2;
+
+  ctx.strokeStyle = rel.cardinality === 'N:N' ? colors.history : colors.border;
+  ctx.lineWidth = rel.cardinality === 'N:N' ? 1.5 : 1;
+  ctx.setLineDash(rel.cardinality === 'N:N' ? [4, 4] : []);
+
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.quadraticCurveTo(mx, my, toX, toY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Draw cardinality label
+  ctx.fillStyle = colors.text;
+  ctx.font = '9px "Anthropic Sans"';
+  ctx.textAlign = 'center';
+  ctx.fillText(rel.label, mx, my - 8);
+});
+
+// Draw crow's foot notation at relationship endpoints
+relationships.forEach(rel => {
+  const toEntity = entities.find(e => e.name === rel.to);
+  if (!toEntity) return;
+
+  let x = toEntity.x + toEntity.width / 2;
+  let y = toEntity.y + toEntity.height / 2;
+
+  if (rel.toSide === 'right') x = toEntity.x + toEntity.width;
+  if (rel.toSide === 'bottom') y = toEntity.y + toEntity.height;
+  if (rel.toSide === 'left') x = toEntity.x;
+  if (rel.toSide === 'top') y = toEntity.y;
+
+  ctx.strokeStyle = colors.border;
+  ctx.lineWidth = 0.5;
+
+  // Crow's foot for 1:N or N:N
+  if (rel.cardinality.includes('N')) {
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y - 4);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x - 4, y + 4);
+    ctx.stroke();
+  }
+});
+</script>
