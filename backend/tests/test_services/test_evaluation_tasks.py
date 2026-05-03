@@ -100,12 +100,16 @@ async def test_tamper_detection_in_evaluation(db_session: AsyncSession):
     assert status_log.rationale is not None
     assert "INTEGRITY ALERT" in status_log.rationale
 
-    # 7. Fix evidence
+    # 7. Fix evidence (restore BOTH content_json AND sha256_hash per DoD)
+    original_content = {"message": "Original Evidence"}
+    original_str = json.dumps(original_content, sort_keys=True, default=str)
+    original_hash = compute_sha256(original_str)
     await db_session.execute(
-        text(f"UPDATE evidence_items SET content_json = '{{\"message\": \"Original Evidence\"}}' WHERE id = '{evidence_id}'")
+        text("UPDATE evidence_items SET content_json = :cj, sha256_hash = :hash WHERE id = :eid"),
+        {"cj": original_str, "hash": original_hash, "eid": str(evidence_id)},
     )
     await db_session.commit()
 
-    # 8. Re-evaluate - should pass normally
+    # 8. Re-evaluate - should pass normally now that hash matches content
     res_fixed = await _evaluate_control_async(str(control_id))
     assert res_fixed["status"] == "evaluated"
