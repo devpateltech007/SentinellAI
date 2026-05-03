@@ -137,7 +137,13 @@ async def generate_controls(
     )
 
     raw = response.choices[0].message.content
-    parsed = json.loads(raw or "{}")
+    if raw is None:
+        logger.error(
+            "OpenAI returned no message content while generating controls for %s",
+            framework_name,
+        )
+        raise ValueError("OpenAI returned no message content for control generation")
+    parsed = json.loads(raw)
 
     controls: list[GeneratedControl] = []
     for item in parsed.get("controls", []):
