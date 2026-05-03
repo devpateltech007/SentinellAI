@@ -16,9 +16,11 @@ from app.main import app
 from app.models import Base
 from app.models.user import User, UserRole
 
+from sqlalchemy.pool import NullPool
+
 TEST_DATABASE_URL = settings.DATABASE_URL
 
-engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
 TestSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
