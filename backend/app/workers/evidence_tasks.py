@@ -23,6 +23,7 @@ from app.services.compliance_brain.generator import generate_controls
 from app.services.compliance_brain.ingestion import ingest_document
 from app.services.compliance_brain.rag import rerank, retrieve_context
 from app.services.evidence_engine.github_actions import GitHubActionsConnector
+from app.services.evidence_engine.normalizer import DEFAULT_REDACTION_CONFIG, normalize_evidence
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -156,7 +157,7 @@ async def _collect_evidence_async(connector_id: str) -> dict:
                 count = 0
                 for raw in raw_items:
                     if gh.validate(raw):
-                        normalized = gh.normalize(raw)
+                        normalized = normalize_evidence(raw, redaction_config=DEFAULT_REDACTION_CONFIG)
                         evidence = EvidenceItem(
                             source_type=EvidenceSourceType.GITHUB_ACTIONS,
                             source_ref=normalized.source_ref,

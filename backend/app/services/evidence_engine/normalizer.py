@@ -9,10 +9,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from datetime import datetime, timezone
 
 from app.services.evidence_engine.base import NormalizedEvidence, RawEvidence
 from app.services.evidence_engine.redaction import redact_fields
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_REDACTION_CONFIG: dict = {
+    "pattern_scan": True,  # Enable regex-based PII/PHI scan on all string values
+}
 
 
 def compute_sha256(content: str) -> str:
@@ -34,6 +41,7 @@ def normalize_evidence(
     redacted = False
     if redaction_config:
         content, redacted = redact_fields(content, redaction_config)
+        logger.info("Evidence redaction applied: %s fields redacted", redacted)
 
     content_str = json.dumps(content, sort_keys=True, default=str)
     sha256 = compute_sha256(content_str)

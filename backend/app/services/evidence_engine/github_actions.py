@@ -24,9 +24,10 @@ class GitHubActionsConnector(ConnectorInterface):
         self.base_url = f"https://api.github.com/repos/{owner}/{repo}"
         self._headers = {
             "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {self.token}",
             "X-GitHub-Api-Version": "2022-11-28",
         }
+        if self.token:
+            self._headers["Authorization"] = f"Bearer {self.token}"
 
     async def collect(self) -> list[RawEvidence]:
         """Fetch recent workflow runs from GitHub Actions API.
@@ -62,6 +63,8 @@ class GitHubActionsConnector(ConnectorInterface):
                                     "updated_at": run.get("updated_at"),
                                     "run_attempt": run.get("run_attempt"),
                                     "workflow_id": run.get("workflow_id"),
+                                    "commit_author_email": run.get("head_commit", {}).get("author", {}).get("email"),
+                                    "commit_author_name": run.get("head_commit", {}).get("author", {}).get("name"),
                                 },
                                 collected_at=datetime.now(timezone.utc),
                             )
