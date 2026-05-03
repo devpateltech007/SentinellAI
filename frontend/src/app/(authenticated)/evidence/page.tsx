@@ -12,8 +12,6 @@ export default function EvidencePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLoading(true);
     const params = new URLSearchParams({ page: String(page), size: "20" });
     if (sourceFilter) params.set("source_type", sourceFilter);
 
@@ -38,6 +36,7 @@ export default function EvidencePage() {
           <button
             key={filter}
             onClick={() => {
+              setLoading(true);
               setSourceFilter(filter);
               setPage(1);
             }}
@@ -68,14 +67,20 @@ export default function EvidencePage() {
               <div className="flex gap-2">
                 <button
                   disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
+                  onClick={() => {
+                  setLoading(true);
+                  setPage((p) => p - 1);
+                }}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
                 >
                   Previous
                 </button>
                 <button
                   disabled={page >= Math.ceil(data.total / data.size)}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => {
+                  setLoading(true);
+                  setPage((p) => p + 1);
+                }}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
                 >
                   Next
