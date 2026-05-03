@@ -29,7 +29,7 @@ def _create_token(user: User) -> str:
         "role": user.role.value,
         "exp": expire,
     }
-    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
+    return str(jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM))
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

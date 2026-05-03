@@ -46,7 +46,7 @@ async def evaluate_control(
             rationale="No evidence collected for this control. Manual review required.",
         )
 
-    evidence_ids = [e.get("id") for e in evidence_items if e.get("id")]
+    evidence_ids: list[UUID] = [UUID(str(e.get("id"))) for e in evidence_items if e.get("id")]
     failures: list[str] = []
     passes: list[str] = []
 

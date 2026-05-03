@@ -53,7 +53,8 @@ async def ingest_document(
         ),
         {"name": framework_name, "hash": doc_hash},
     )
-    if existing.scalar() > 0:
+    val = existing.scalar()
+    if val and val > 0:
         logger.info("Document already ingested for %s (hash=%s)", framework_name, doc_hash[:12])
         return []
 
@@ -92,7 +93,7 @@ async def ingest_document(
 
     for chunk in chunks:
         chunk_id = uuid.uuid4()
-        embedding_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
+        embedding_str = "[" + ",".join(str(v) for v in (chunk.embedding or [])) + "]"
         await db.execute(
             text(
                 "INSERT INTO regulatory_chunks "

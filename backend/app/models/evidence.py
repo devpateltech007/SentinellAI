@@ -1,6 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, String, Text
 from sqlalchemy import Enum as SAEnum
@@ -8,6 +9,9 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models import Base
+
+if TYPE_CHECKING:
+    from app.models.control_evidence import ControlEvidence
 
 
 class EvidenceSourceType(str, enum.Enum):

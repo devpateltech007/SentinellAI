@@ -87,5 +87,7 @@ async def generate_pdf_report(report_data: dict) -> bytes:
         frameworks=report_data.get("frameworks", []),
     )
 
+    import typing
+
     from weasyprint import HTML
-    return HTML(string=html).write_pdf()
+    return typing.cast(bytes, HTML(string=html).write_pdf())
