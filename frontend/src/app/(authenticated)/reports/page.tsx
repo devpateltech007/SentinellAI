@@ -62,7 +62,7 @@ export default function ReportsPage() {
               const newId = e.target.value;
               setProjectId(newId);
               setFrameworkId("");
-              if (!newId) setProjectDetail(null);
+              setProjectDetail(null);
             }}
             className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           >
