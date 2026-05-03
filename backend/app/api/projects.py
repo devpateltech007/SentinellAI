@@ -1,19 +1,23 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession, require_role
 from app.middleware.audit_log import log_action
 from app.models.control import Control, ControlStatusEnum
-from app.models.framework import Framework, FrameworkName
+from app.models.framework import Framework
 from app.models.project import Project
 from app.models.user import User, UserRole
 from app.schemas.control import ControlResponse
 from app.schemas.framework import FrameworkCreate, FrameworkResponse
-from app.schemas.project import ProjectCreate, ProjectDetailResponse, ProjectResponse, FrameworkSummary
+from app.schemas.project import (
+    FrameworkSummary,
+    ProjectCreate,
+    ProjectDetailResponse,
+    ProjectResponse,
+)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 

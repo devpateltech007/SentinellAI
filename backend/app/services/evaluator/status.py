@@ -6,15 +6,12 @@ and updates the denormalized status on the Control record.
 
 from __future__ import annotations
 
-from uuid import UUID
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.control import Control, ControlStatusEnum
 from app.models.control_status import ControlStatus
 from app.services.evaluator.engine import EvaluationResult
-
 
 STATUS_MAP = {
     "Pass": ControlStatusEnum.PASS,
@@ -44,7 +41,6 @@ async def persist_evaluation(
     )
     control = control_result.scalar_one_or_none()
     if control:
-        previous_status = control.status
         control.status = STATUS_MAP[result.status]
 
     await db.flush()

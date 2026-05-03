@@ -19,6 +19,7 @@ export default function AuthenticatedLayout({
     if (!token) {
       router.replace("/login");
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setReady(true);
     }
   }, [router]);

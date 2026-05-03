@@ -4,11 +4,10 @@ import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, status
 from jose import jwt
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import DbSession, get_current_user
 from app.config import settings
-from app.models.user import User, UserRole
+from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse
 
 router = APIRouter(prefix="/auth", tags=["auth"])

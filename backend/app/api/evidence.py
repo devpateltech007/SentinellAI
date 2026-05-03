@@ -1,14 +1,13 @@
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession
-from app.models.evidence import EvidenceItem, EvidenceSourceType
 from app.models.control_evidence import ControlEvidence
+from app.models.evidence import EvidenceItem, EvidenceSourceType
 from app.schemas.evidence import EvidenceDetailResponse, EvidenceListResponse, EvidenceResponse
 
 router = APIRouter(prefix="/evidence", tags=["evidence"])

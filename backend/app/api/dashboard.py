@@ -1,8 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Query
-from sqlalchemy import select, func
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter
+from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DbSession
 from app.models.control import Control, ControlStatusEnum

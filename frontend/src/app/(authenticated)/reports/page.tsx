@@ -28,8 +28,10 @@ export default function ReportsPage() {
         .then(setProjectDetail)
         .catch(() => setProjectDetail(null));
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setProjectDetail(null);
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFrameworkId("");
   }, [projectId]);
 

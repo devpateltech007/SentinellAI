@@ -7,25 +7,22 @@ with retry and exponential backoff on failures (NFR-05).
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from app.database import async_session
 from app.models.connector import Connector
 from app.models.control import Control, ControlStatusEnum
-from app.models.control_evidence import ControlEvidence
 from app.models.evidence import EvidenceItem, EvidenceSourceType
 from app.models.framework import Framework
 from app.models.requirement import Requirement
-from app.services.compliance_brain.ingestion import ingest_document
-from app.services.compliance_brain.rag import retrieve_context, rerank
 from app.services.compliance_brain.generator import generate_controls
+from app.services.compliance_brain.ingestion import ingest_document
+from app.services.compliance_brain.rag import rerank, retrieve_context
 from app.services.evidence_engine.github_actions import GitHubActionsConnector
-from app.services.evidence_engine.normalizer import compute_sha256
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)

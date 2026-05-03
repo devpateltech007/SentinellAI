@@ -10,7 +10,6 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timezone
-from uuid import UUID
 
 from app.services.evidence_engine.base import NormalizedEvidence, RawEvidence
 from app.services.evidence_engine.redaction import redact_fields

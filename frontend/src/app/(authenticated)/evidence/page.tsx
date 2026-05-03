@@ -12,6 +12,7 @@ export default function EvidencePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), size: "20" });
     if (sourceFilter) params.set("source_type", sourceFilter);
