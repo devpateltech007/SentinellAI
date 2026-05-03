@@ -45,3 +45,7 @@ docker-compose.override.yml
 # Artifacts
 *.pdf
 regulatory_docs/*.pdf
+
+# Should not push files ends with lint.txt
+*lint.txt
+
