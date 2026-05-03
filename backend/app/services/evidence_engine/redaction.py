@@ -56,7 +56,8 @@ def redact_fields(
 def _scan_and_redact(data: dict) -> tuple[dict, bool]:
     """Recursively scan dict values for PII patterns and redact matches."""
     any_hit = False
-    result = {}
+    from typing import Any
+    result: dict[str, Any] = {}
 
     for key, value in data.items():
         if isinstance(value, str):
@@ -70,7 +71,7 @@ def _scan_and_redact(data: dict) -> tuple[dict, bool]:
             result[key], nested_hit = _scan_and_redact(value)
             any_hit = any_hit or nested_hit
         elif isinstance(value, list):
-            new_list = []
+            new_list: list[Any] = []
             for item in value:
                 if isinstance(item, dict):
                     redacted_item, nested_hit = _scan_and_redact(item)

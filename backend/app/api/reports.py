@@ -41,14 +41,15 @@ async def export_report(
     if body.framework_id:
         frameworks = [fw for fw in frameworks if fw.id == body.framework_id]
 
-    report_data = {
+    from typing import Any
+    report_data: dict[str, Any] = {
         "project": {"id": str(project.id), "name": project.name},
         "generated_by": current_user.email,
         "frameworks": [],
     }
 
     for fw in frameworks:
-        fw_data = {
+        fw_data: dict[str, Any] = {
             "id": str(fw.id),
             "name": fw.name.value,
             "version": fw.version,

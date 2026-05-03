@@ -1,10 +1,15 @@
 import uuid
+from typing import TYPE_CHECKING
 
 from sqlalchemy import ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models import Base
+
+if TYPE_CHECKING:
+    from app.models.control import Control
+    from app.models.evidence import EvidenceItem
 
 
 class ControlEvidence(Base):

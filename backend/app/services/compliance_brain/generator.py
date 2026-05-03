@@ -125,17 +125,24 @@ async def generate_controls(
 
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
+    from typing import Any, cast
     response = await client.chat.completions.create(
         model="gpt-4o",
-        messages=[
+        messages=cast(Any, [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
-        ],
-        response_format=RESPONSE_SCHEMA,
+        ]),
+        response_format=cast(Any, RESPONSE_SCHEMA),
         temperature=0.1,
     )
 
     raw = response.choices[0].message.content
+    if raw is None:
+        logger.error(
+            "OpenAI returned no message content while generating controls for %s",
+            framework_name,
+        )
+        raise ValueError("OpenAI returned no message content for control generation")
     parsed = json.loads(raw)
 
     controls: list[GeneratedControl] = []
