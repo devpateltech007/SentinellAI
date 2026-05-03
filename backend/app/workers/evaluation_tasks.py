@@ -13,12 +13,14 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.database import async_session
 from app.models.control import Control, ControlStatusEnum
 from app.models.control_evidence import ControlEvidence
 from app.services.alerting import send_failure_alert
-from app.services.evaluator.engine import evaluate_control
+from app.services.evaluator.engine import EvaluationResult, evaluate_control
 from app.services.evaluator.status import persist_evaluation
+from app.services.evidence_engine.integrity import verify_batch_integrity
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,50 @@ async def _evaluate_control_async(control_id: str) -> dict:
                     "content_json": ev.content_json,
                 }
             )
+
+        evidence_uuids = [UUID(str(e["id"])) for e in evidence_items if e.get("id")]
+
+        if not settings.SKIP_INTEGRITY_CHECK and evidence_uuids:
+            integrity_results = await verify_batch_integrity(evidence_uuids, db)
+            tampered = [r for r in integrity_results if not r.integrity_valid]
+
+            if tampered:
+                tamper_ids = [str(r.evidence_id) for r in tampered]
+                logger.warning(
+                    "TAMPER DETECTED: Control %s has %d tampered evidence items: %s",
+                    control_id, len(tampered), tamper_ids,
+                )
+
+                eval_result = EvaluationResult(
+                    control_id=control.id,
+                    status="NeedsReview",
+                    evidence_ids=evidence_uuids,
+                    rationale=(
+                        f"INTEGRITY ALERT: {len(tampered)} evidence item(s) failed SHA-256 "
+                        f"integrity verification. Evidence IDs: {', '.join(tamper_ids)}. "
+                        f"This may indicate unauthorized modification of compliance evidence. "
+                        f"Manual review and re-collection required."
+                    ),
+                )
+
+                await persist_evaluation(db, eval_result)
+
+                try:
+                    await send_failure_alert(
+                        control_id=control.id,
+                        control_id_code=control.control_id_code,
+                        title=f"[TAMPER ALERT] {control.title}",
+                        reason=eval_result.rationale,
+                    )
+                except Exception:
+                    logger.exception("Failed to send tamper alert for %s", control_id)
+
+                await db.commit()
+                return {
+                    "status": "tamper_detected",
+                    "control_id": control_id,
+                    "tampered_evidence": tamper_ids,
+                }
 
         eval_result = await evaluate_control(
             control_id=control.id,
