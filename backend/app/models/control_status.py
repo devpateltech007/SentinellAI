@@ -8,10 +8,10 @@ from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models import Base
+from app.models.control import ControlStatusEnum
 
 if TYPE_CHECKING:
     from app.models.control import Control
-from app.models.control import ControlStatusEnum
 
 
 class ControlStatus(Base):
