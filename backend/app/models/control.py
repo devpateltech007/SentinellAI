@@ -2,10 +2,11 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, Text, DateTime, ForeignKey, Enum as SAEnum
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from pgvector.sqlalchemy import Vector
 
 from app.models import Base
 

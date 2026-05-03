@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -17,11 +16,9 @@ from sqlalchemy.orm import selectinload
 from app.database import async_session
 from app.models.control import Control, ControlStatusEnum
 from app.models.control_evidence import ControlEvidence
-from app.models.control_status import ControlStatus
-from app.models.evidence import EvidenceItem
+from app.services.alerting import send_failure_alert
 from app.services.evaluator.engine import evaluate_control
 from app.services.evaluator.status import persist_evaluation
-from app.services.alerting import send_failure_alert
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)

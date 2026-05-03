@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import { getStoredToken } from "@/lib/auth";
+
+const subscribeToToken = (callback: () => void) => {
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", callback);
+    return () => window.removeEventListener("storage", callback);
+  }
+  return () => {};
+};
 
 export default function AuthenticatedLayout({
   children,
@@ -12,18 +20,20 @@ export default function AuthenticatedLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const [ready, setReady] = useState(false);
+  // Hydration-safe external store reading that eliminates the need for useEffect setState
+  const token = useSyncExternalStore(
+    subscribeToToken,
+    () => getStoredToken(),
+    () => null,
+  );
 
   useEffect(() => {
-    const token = getStoredToken();
-    if (!token) {
+    if (typeof window !== "undefined" && !token) {
       router.replace("/login");
-    } else {
-      setReady(true);
     }
-  }, [router]);
+  }, [token, router]);
 
-  if (!ready) {
+  if (!token) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />

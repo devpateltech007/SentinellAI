@@ -234,10 +234,4 @@ This platform is intended for research and automation assistance purposes. It do
 
 ---
 
-## 📬 Contact
-
-For questions or collaboration opportunities, please reach out to the team members listed above.
-
----
-
 ⭐ If you find this project interesting, consider giving the repository a star!

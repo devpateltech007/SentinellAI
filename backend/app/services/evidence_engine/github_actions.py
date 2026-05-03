@@ -6,7 +6,6 @@ from the GitHub Actions API. Implements ConnectorInterface.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime, timezone
 

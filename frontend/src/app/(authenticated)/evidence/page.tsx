@@ -12,7 +12,6 @@ export default function EvidencePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setLoading(true);
     const params = new URLSearchParams({ page: String(page), size: "20" });
     if (sourceFilter) params.set("source_type", sourceFilter);
 
@@ -37,8 +36,11 @@ export default function EvidencePage() {
           <button
             key={filter}
             onClick={() => {
-              setSourceFilter(filter);
-              setPage(1);
+              if (sourceFilter !== filter || page !== 1) {
+                setLoading(true);
+                setSourceFilter(filter);
+                setPage(1);
+              }
             }}
             className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               sourceFilter === filter
@@ -67,14 +69,20 @@ export default function EvidencePage() {
               <div className="flex gap-2">
                 <button
                   disabled={page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
+                  onClick={() => {
+                  setLoading(true);
+                  setPage((p) => p - 1);
+                }}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
                 >
                   Previous
                 </button>
                 <button
                   disabled={page >= Math.ceil(data.total / data.size)}
-                  onClick={() => setPage((p) => p + 1)}
+                  onClick={() => {
+                  setLoading(true);
+                  setPage((p) => p + 1);
+                }}
                   className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm disabled:opacity-50"
                 >
                   Next

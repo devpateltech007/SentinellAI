@@ -1,8 +1,7 @@
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import CurrentUser, DbSession, require_role
@@ -10,7 +9,6 @@ from app.middleware.audit_log import log_action
 from app.models.control import Control, ControlStatusEnum
 from app.models.control_evidence import ControlEvidence
 from app.models.control_status import ControlStatus
-from app.models.evidence import EvidenceItem
 from app.models.user import User, UserRole
 from app.schemas.control import (
     ControlDetailResponse,

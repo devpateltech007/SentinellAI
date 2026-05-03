@@ -27,10 +27,7 @@ export default function ReportsPage() {
         .get<ProjectDetail>(`/projects/${projectId}`)
         .then(setProjectDetail)
         .catch(() => setProjectDetail(null));
-    } else {
-      setProjectDetail(null);
     }
-    setFrameworkId("");
   }, [projectId]);
 
   return (
@@ -61,7 +58,12 @@ export default function ReportsPage() {
           </label>
           <select
             value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
+            onChange={(e) => {
+              const newId = e.target.value;
+              setProjectId(newId);
+              setFrameworkId("");
+              setProjectDetail(null);
+            }}
             className="mt-1 w-full rounded-lg border border-slate-300 px-4 py-2.5 text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
           >
             <option value="">Select a project...</option>
