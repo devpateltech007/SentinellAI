@@ -36,6 +36,7 @@ ROLE_PERMISSIONS: dict[str, list[str]] = {
     "auditor": [
         "controls:read",
         "evidence:read",
+        "evidence:verify",
         "reports:read",
         "reports:export",
         "dashboard:read",

@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, String, Text
+from sqlalchemy import Boolean, DateTime, String, Text, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -36,7 +36,7 @@ class EvidenceItem(Base):
     sha256_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     content_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     raw_content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    redacted: Mapped[bool] = mapped_column(Boolean, default=False)
+    redacted: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
 
     control_links: Mapped[list["ControlEvidence"]] = relationship(  # noqa: F821
         back_populates="evidence", cascade="all, delete-orphan"
