@@ -1,9 +1,20 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.models.evidence import EvidenceSourceType
+
+
+class EvidenceIntegrityResponse(BaseModel):
+    evidence_id: UUID
+    integrity_valid: bool
+    stored_hash: str
+    computed_hash: str
+    verified_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 
 class EvidenceResponse(BaseModel):

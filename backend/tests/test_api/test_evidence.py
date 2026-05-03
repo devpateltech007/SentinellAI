@@ -33,3 +33,76 @@ async def test_get_evidence_not_found(client: AsyncClient, admin_token: str):
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_verify_evidence(client: AsyncClient, admin_token: str, db_session):
+    import json
+    import uuid
+    from app.models.evidence import EvidenceItem, EvidenceSourceType
+    from app.services.evidence_engine.normalizer import compute_sha256
+    from sqlalchemy import text
+    
+    # 1. Setup evidence
+    evidence_id = uuid.uuid4()
+    content = {"status": "ok"}
+    content_str = json.dumps(content, sort_keys=True, default=str)
+    sha256_hash = compute_sha256(content_str)
+    
+    item = EvidenceItem(
+        id=evidence_id,
+        source_type=EvidenceSourceType.GITHUB_ACTIONS,
+        source_ref="test_ref",
+        content_json=content,
+        sha256_hash=sha256_hash,
+    )
+    db_session.add(item)
+    await db_session.commit()
+
+    # 2. Verify via API
+    response = await client.get(
+        f"/api/v1/evidence/{evidence_id}/verify",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["integrity_valid"] is True
+    assert data["computed_hash"] == sha256_hash
+
+    # 3. Tamper via raw SQL
+    await db_session.execute(
+        text(f"UPDATE evidence_items SET content_json = '{{\"status\": \"hacked\"}}' WHERE id = '{evidence_id}'")
+    )
+    await db_session.commit()
+    db_session.expire_all()
+
+    # 4. Re-verify via API
+    response_tampered = await client.get(
+        f"/api/v1/evidence/{evidence_id}/verify",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response_tampered.status_code == 200
+    data_tampered = response_tampered.json()
+    assert data_tampered["integrity_valid"] is False
+
+    # 5. Check audit logs
+    from app.models.audit_log import AuditLog
+    from sqlalchemy import select
+    logs = (await db_session.execute(select(AuditLog).where(AuditLog.resource_id == evidence_id))).scalars().all()
+    assert len(logs) == 2
+    assert logs[0].action == "verify_evidence"
+    assert logs[0].detail_json["integrity_valid"] is True
+    assert logs[1].action == "verify_evidence"
+    assert logs[1].detail_json["integrity_valid"] is False
+
+
+@pytest.mark.asyncio
+async def test_verify_evidence_forbidden_for_developer(client: AsyncClient, developer_token: str, db_session):
+    import uuid
+    evidence_id = uuid.uuid4()
+    response = await client.get(
+        f"/api/v1/evidence/{evidence_id}/verify",
+        headers={"Authorization": f"Bearer {developer_token}"},
+    )
+    assert response.status_code == 403
+
