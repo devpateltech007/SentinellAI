@@ -93,7 +93,28 @@ async def ingest_document(
 
     for chunk in chunks:
         chunk_id = uuid.uuid4()
-        embedding_str = "[" + ",".join(str(v) for v in (chunk.embedding or [])) + "]"
+        if chunk.embedding is None:
+            logger.error(
+                "Missing embedding for framework=%s chunk_index=%d; refusing to insert chunk",
+                framework_name,
+                chunk.chunk_index,
+            )
+            raise ValueError(
+                f"Missing embedding for framework={framework_name} chunk_index={chunk.chunk_index}"
+            )
+        if len(chunk.embedding) != EMBEDDING_DIM:
+            logger.error(
+                "Invalid embedding dimension for framework=%s chunk_index=%d: expected %d, got %d",
+                framework_name,
+                chunk.chunk_index,
+                EMBEDDING_DIM,
+                len(chunk.embedding),
+            )
+            raise ValueError(
+                f"Invalid embedding dimension for framework={framework_name} "
+                f"chunk_index={chunk.chunk_index}: expected {EMBEDDING_DIM}, got {len(chunk.embedding)}"
+            )
+        embedding_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
         await db.execute(
             text(
                 "INSERT INTO regulatory_chunks "
