@@ -39,16 +39,18 @@ async def test_get_evidence_not_found(client: AsyncClient, admin_token: str):
 async def test_verify_evidence(client: AsyncClient, admin_token: str, db_session):
     import json
     import uuid
+
+    from sqlalchemy import text
+
     from app.models.evidence import EvidenceItem, EvidenceSourceType
     from app.services.evidence_engine.normalizer import compute_sha256
-    from sqlalchemy import text
-    
+
     # 1. Setup evidence
     evidence_id = uuid.uuid4()
     content = {"status": "ok"}
     content_str = json.dumps(content, sort_keys=True, default=str)
     sha256_hash = compute_sha256(content_str)
-    
+
     item = EvidenceItem(
         id=evidence_id,
         source_type=EvidenceSourceType.GITHUB_ACTIONS,
@@ -86,8 +88,9 @@ async def test_verify_evidence(client: AsyncClient, admin_token: str, db_session
     assert data_tampered["integrity_valid"] is False
 
     # 5. Check audit logs
-    from app.models.audit_log import AuditLog
     from sqlalchemy import select
+
+    from app.models.audit_log import AuditLog
     logs = (await db_session.execute(select(AuditLog).where(AuditLog.resource_id == evidence_id))).scalars().all()
     assert len(logs) == 2
     assert logs[0].action == "verify_evidence"
@@ -105,4 +108,37 @@ async def test_verify_evidence_forbidden_for_developer(client: AsyncClient, deve
         headers={"Authorization": f"Bearer {developer_token}"},
     )
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_evidence_list_includes_redacted_flag(client: AsyncClient, admin_token: str, db_session):
+    import uuid
+
+    from app.models.evidence import EvidenceItem, EvidenceSourceType
+
+    # 1. Setup evidence with redacted=True
+    evidence_id = uuid.uuid4()
+    item = EvidenceItem(
+        id=evidence_id,
+        source_type=EvidenceSourceType.GITHUB_ACTIONS,
+        source_ref="test_ref_redacted",
+        content_json={"email": "[REDACTED]"},
+        sha256_hash="fakehash",
+        redacted=True,
+    )
+    db_session.add(item)
+    await db_session.commit()
+
+    # 2. Check list API
+    response = await client.get(
+        "/api/v1/evidence",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    # Find our item
+    found_item = next((i for i in data["items"] if i["id"] == str(evidence_id)), None)
+    assert found_item is not None
+    assert found_item["redacted"] is True
 

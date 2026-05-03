@@ -1,8 +1,6 @@
 import pytest
 from httpx import AsyncClient
 
-from tests.conftest import make_token
-
 
 @pytest.mark.asyncio
 async def test_developer_cannot_create_project(client: AsyncClient, developer_token: str):

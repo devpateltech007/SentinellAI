@@ -164,6 +164,7 @@ async def _collect_evidence_async(connector_id: str) -> dict:
                             collected_at=normalized.collected_at,
                             sha256_hash=normalized.sha256_hash,
                             content_json=normalized.content_json,
+                            redacted=normalized.redacted,
                         )
                         db.add(evidence)
                         count += 1
