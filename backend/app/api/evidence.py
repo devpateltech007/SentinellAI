@@ -1,14 +1,22 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import CurrentUser, DbSession
+from app.api.deps import CurrentUser, DbSession, require_role
+from app.models.audit_log import AuditLog
 from app.models.control_evidence import ControlEvidence
 from app.models.evidence import EvidenceItem, EvidenceSourceType
-from app.schemas.evidence import EvidenceDetailResponse, EvidenceListResponse, EvidenceResponse
+from app.models.user import User, UserRole
+from app.schemas.evidence import (
+    EvidenceDetailResponse,
+    EvidenceIntegrityResponse,
+    EvidenceListResponse,
+    EvidenceResponse,
+)
+from app.services.evidence_engine.integrity import EvidenceNotFoundError, verify_evidence_integrity
 
 router = APIRouter(prefix="/evidence", tags=["evidence"])
 
@@ -78,4 +86,34 @@ async def get_evidence(
         redacted=evidence.redacted,
         content_json=evidence.content_json,
         linked_control_ids=linked_control_ids,
+    )
+
+
+@router.get("/{evidence_id}/verify", response_model=EvidenceIntegrityResponse)
+async def verify_evidence(
+    evidence_id: UUID,
+    db: DbSession,
+    current_user: User = Depends(require_role(UserRole.ADMIN, UserRole.AUDITOR)),
+):
+    try:
+        result = await verify_evidence_integrity(evidence_id, db)
+    except EvidenceNotFoundError:
+        raise HTTPException(status_code=404, detail="Evidence item not found")
+
+    audit_entry = AuditLog(
+        actor_id=current_user.id,
+        action="verify_evidence",
+        resource_type="evidence",
+        resource_id=evidence_id,
+        detail_json={"integrity_valid": result.integrity_valid},
+    )
+    db.add(audit_entry)
+    await db.commit()
+
+    return EvidenceIntegrityResponse(
+        evidence_id=result.evidence_id,
+        integrity_valid=result.integrity_valid,
+        stored_hash=result.stored_hash,
+        computed_hash=result.computed_hash,
+        verified_at=datetime.now(timezone.utc),
     )

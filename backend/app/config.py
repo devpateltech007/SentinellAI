@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Testing / Integrity
+    SKIP_INTEGRITY_CHECK: bool = False
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
