@@ -1,7 +1,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+from croniter import croniter
 
 
 class ConnectorCreate(BaseModel):
@@ -9,6 +10,33 @@ class ConnectorCreate(BaseModel):
     source_type: str
     config: dict
     schedule: str | None = None
+
+    @field_validator("schedule")
+    @classmethod
+    def validate_cron(cls, v: str | None) -> str | None:
+        if v and not croniter.is_valid(v):
+            raise ValueError(f"Invalid cron expression: '{v}'. Example: '0 */6 * * *'")
+        return v
+
+class ConnectorUpdate(BaseModel):
+    config_json: dict | None = None
+    schedule: str | None = None
+    is_active: bool | None = None
+
+    @field_validator("schedule")
+    @classmethod
+    def validate_cron(cls, v: str | None) -> str | None:
+        if v and not croniter.is_valid(v):
+            raise ValueError(f"Invalid cron expression: '{v}'. Example: '0 */6 * * *'")
+        return v
+
+class ConnectorHealthResponse(BaseModel):
+    connector_id: UUID
+    source_type: str
+    reachable: bool
+    rate_limit_remaining: int | None = None
+    error: str | None = None
+    checked_at: datetime
 
 
 class ConnectorResponse(BaseModel):

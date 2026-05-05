@@ -21,6 +21,7 @@ bcrypt>=4.2.0
 # Task queue
 celery[redis]>=5.4.0
 redis>=5.2.0
+croniter>=2.0.0
 
 # HTTP client
 httpx>=0.28.0

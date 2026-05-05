@@ -69,3 +69,99 @@ async def test_trigger_connector(
     assert response.status_code == 200
     data = response.json()
     assert data["last_status"] == "triggered"
+
+@pytest.mark.asyncio
+async def test_connector_health(
+    client: AsyncClient, admin_token: str, devops_token: str
+):
+    project = await client.post(
+        "/api/v1/projects",
+        json={"name": "Health Test Project"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    project_id = project.json()["id"]
+
+    connector = await client.post(
+        "/api/v1/connectors",
+        json={
+            "project_id": project_id,
+            "source_type": "iac_config",
+            "config": {"config_path": "/tmp/test"},
+        },
+        headers={"Authorization": f"Bearer {devops_token}"},
+    )
+    connector_id = connector.json()["id"]
+
+    response = await client.get(
+        f"/api/v1/connectors/{connector_id}/health",
+        headers={"Authorization": f"Bearer {devops_token}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "reachable" in data
+    assert data["source_type"] == "iac_config"
+
+@pytest.mark.asyncio
+async def test_connector_update_and_delete(
+    client: AsyncClient, admin_token: str, devops_token: str
+):
+    project = await client.post(
+        "/api/v1/projects",
+        json={"name": "Update Test Project"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    project_id = project.json()["id"]
+
+    connector = await client.post(
+        "/api/v1/connectors",
+        json={
+            "project_id": project_id,
+            "source_type": "iac_config",
+            "config": {"config_path": "/tmp/test"},
+            "schedule": "0 0 * * *"
+        },
+        headers={"Authorization": f"Bearer {devops_token}"},
+    )
+    connector_id = connector.json()["id"]
+
+    update_resp = await client.put(
+        f"/api/v1/connectors/{connector_id}",
+        json={
+            "schedule": "0 12 * * *",
+            "is_active": False
+        },
+        headers={"Authorization": f"Bearer {devops_token}"},
+    )
+    assert update_resp.status_code == 200
+    assert update_resp.json()["schedule"] == "0 12 * * *"
+
+    delete_resp = await client.delete(
+        f"/api/v1/connectors/{connector_id}",
+        headers={"Authorization": f"Bearer {devops_token}"},
+    )
+    assert delete_resp.status_code == 204
+
+@pytest.mark.asyncio
+async def test_connector_cron_validation(
+    client: AsyncClient, admin_token: str, devops_token: str
+):
+    project = await client.post(
+        "/api/v1/projects",
+        json={"name": "Cron Test Project"},
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    project_id = project.json()["id"]
+
+    # Test invalid cron
+    response = await client.post(
+        "/api/v1/connectors",
+        json={
+            "project_id": project_id,
+            "source_type": "iac_config",
+            "config": {},
+            "schedule": "not-a-cron-expression"
+        },
+        headers={"Authorization": f"Bearer {devops_token}"},
+    )
+    assert response.status_code == 422
+

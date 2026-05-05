@@ -7,7 +7,17 @@ from app.api.deps import DbSession, require_role
 from app.middleware.audit_log import log_action
 from app.models.connector import Connector
 from app.models.user import User, UserRole
-from app.schemas.connector import ConnectorCreate, ConnectorResponse, ConnectorStatusResponse
+from app.schemas.connector import (
+    ConnectorCreate,
+    ConnectorResponse,
+    ConnectorStatusResponse,
+    ConnectorHealthResponse,
+    ConnectorUpdate,
+)
+import httpx
+import os
+from datetime import datetime, timezone
+from app.config import settings
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
 
@@ -86,3 +96,118 @@ async def trigger_connector(
         last_status="triggered",
         last_error=connector.last_error,
     )
+
+@router.get("/{connector_id}/health", response_model=ConnectorHealthResponse)
+async def check_connector_health(
+    connector_id: UUID,
+    db: DbSession,
+    current_user: User = Depends(require_role(
+        UserRole.ADMIN, UserRole.DEVOPS_ENGINEER, UserRole.COMPLIANCE_MANAGER
+    )),
+):
+    result = await db.execute(select(Connector).where(Connector.id == connector_id))
+    connector = result.scalar_one_or_none()
+    if not connector:
+        raise HTTPException(status_code=404, detail="Connector not found")
+
+    if connector.source_type in ("github_actions", "github_code"):
+        config = connector.config_json
+        async with httpx.AsyncClient() as client:
+            try:
+                resp = await client.get(
+                    f"https://api.github.com/repos/{config['owner']}/{config['repo']}",
+                    headers={"Authorization": f"Bearer {settings.GITHUB_TOKEN}", "X-GitHub-Api-Version": "2022-11-28"},
+                    timeout=10.0,
+                )
+                return ConnectorHealthResponse(
+                    connector_id=connector.id,
+                    source_type=connector.source_type,
+                    reachable=resp.status_code == 200,
+                    rate_limit_remaining=int(resp.headers.get("X-RateLimit-Remaining", 0)),
+                    error=None if resp.status_code == 200 else f"HTTP {resp.status_code}: {resp.text[:200]}",
+                    checked_at=datetime.now(timezone.utc),
+                )
+            except httpx.HTTPError as e:
+                return ConnectorHealthResponse(
+                    connector_id=connector.id,
+                    source_type=connector.source_type,
+                    reachable=False,
+                    error=str(e),
+                    checked_at=datetime.now(timezone.utc),
+                )
+    elif connector.source_type == "iac_config":
+        config = connector.config_json
+        path = config.get("config_path", "")
+        reachable = os.path.exists(path)
+        return ConnectorHealthResponse(
+            connector_id=connector.id,
+            source_type=connector.source_type,
+            reachable=reachable,
+            error=None if reachable else f"Path '{path}' not found",
+            checked_at=datetime.now(timezone.utc),
+        )
+    
+    return ConnectorHealthResponse(
+        connector_id=connector.id,
+        source_type=connector.source_type,
+        reachable=True,
+        checked_at=datetime.now(timezone.utc),
+    )
+
+
+@router.put("/{connector_id}", response_model=ConnectorResponse)
+async def update_connector(
+    connector_id: UUID,
+    body: ConnectorUpdate,
+    db: DbSession,
+    current_user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVOPS_ENGINEER)),
+):
+    result = await db.execute(select(Connector).where(Connector.id == connector_id))
+    connector = result.scalar_one_or_none()
+    if not connector:
+        raise HTTPException(status_code=404, detail="Connector not found")
+
+    if body.config_json is not None:
+        connector.config_json = body.config_json
+    if body.schedule is not None:
+        connector.schedule = body.schedule
+    if body.is_active is not None:
+        connector.is_active = body.is_active
+
+    await db.commit()
+    await db.refresh(connector)
+
+    await log_action(
+        db,
+        actor_id=current_user.id,
+        action="update_connector",
+        resource_type="connector",
+        resource_id=connector.id,
+        detail={"updated_fields": body.model_dump(exclude_unset=True)},
+    )
+    return ConnectorResponse.model_validate(connector)
+
+
+@router.delete("/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_connector(
+    connector_id: UUID,
+    db: DbSession,
+    current_user: User = Depends(require_role(UserRole.ADMIN, UserRole.DEVOPS_ENGINEER)),
+):
+    result = await db.execute(select(Connector).where(Connector.id == connector_id))
+    connector = result.scalar_one_or_none()
+    if not connector:
+        raise HTTPException(status_code=404, detail="Connector not found")
+
+    connector.is_active = False
+    await db.commit()
+
+    await log_action(
+        db,
+        actor_id=current_user.id,
+        action="delete_connector",
+        resource_type="connector",
+        resource_id=connector.id,
+        detail={"soft_delete": True},
+    )
+    return None

@@ -18,6 +18,7 @@ class EvidenceSourceType(str, enum.Enum):
     GITHUB_ACTIONS = "github_actions"
     IAC_CONFIG = "iac_config"
     APP_LOG = "app_log"
+    GITHUB_CODE = "github_code"
 
 
 class EvidenceItem(Base):

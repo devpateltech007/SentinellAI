@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, ForeignKey, String, Text
+import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +21,7 @@ class Connector(Base):
     source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     config_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     schedule: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True, server_default=sa.text("true"))
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

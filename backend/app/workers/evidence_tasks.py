@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import UUID
 
 from sqlalchemy import select
@@ -176,6 +176,28 @@ async def _collect_evidence_async(connector_id: str) -> dict:
                         )
                         db.add(evidence)
                         count += 1
+            elif connector.source_type == "github_code":
+                from app.services.evidence_engine.github_code import GitHubCodeConnector
+                config = connector.config_json
+                gc = GitHubCodeConnector(
+                    owner=config.get("owner", ""),
+                    repo=config.get("repo", ""),
+                )
+                raw_items = await gc.collect()
+                count = 0
+                for raw in raw_items:
+                    if gc.validate(raw):
+                        normalized = normalize_evidence(raw, redaction_config=DEFAULT_REDACTION_CONFIG)
+                        evidence = EvidenceItem(
+                            source_type=EvidenceSourceType.GITHUB_CODE,
+                            source_ref=normalized.source_ref,
+                            collected_at=normalized.collected_at,
+                            sha256_hash=normalized.sha256_hash,
+                            content_json=normalized.content_json,
+                            redacted=normalized.redacted,
+                        )
+                        db.add(evidence)
+                        count += 1
 
             connector.last_run_at = datetime.now(timezone.utc)
             connector.last_status = "success"
@@ -209,14 +231,29 @@ def scheduled_evidence_collection() -> dict:
             loop.close()
 
 
+from croniter import croniter
+
 async def _scheduled_evidence_async() -> dict:
     async with async_session() as db:
-        result = await db.execute(select(Connector))
+        result = await db.execute(
+            select(Connector).where(Connector.is_active == True)
+        )
         connectors = result.scalars().all()
 
+    now = datetime.now(timezone.utc)
     dispatched = 0
     for c in connectors:
-        collect_evidence.delay(str(c.id))
-        dispatched += 1
+        if not c.schedule:
+            continue
+        try:
+            cron = croniter(c.schedule, c.last_run_at or now - timedelta(days=1))
+            next_run = cron.get_next(datetime)
+            if next_run.tzinfo is None:
+                next_run = next_run.replace(tzinfo=timezone.utc)
+            if next_run <= now:
+                collect_evidence.delay(str(c.id))
+                dispatched += 1
+        except Exception as e:
+            logger.error(f"Cron evaluation failed for connector {c.id}: {e}")
 
     return {"status": "scheduled", "connectors_dispatched": dispatched}
