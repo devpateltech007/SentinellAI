@@ -106,6 +106,41 @@ RESPONSE_SCHEMA = {
 }
 
 
+def _ground_controls(
+    controls: list[GeneratedControl],
+    context_chunks: list[dict],
+) -> list[GeneratedControl]:
+    """Verify that each control's citation actually exists in the provided context.
+
+    Checks whether the cited regulatory clause appears as a substring in the
+    concatenated context.  Ungrounded controls are NOT deleted — they are kept
+    with ``confidence = 0.3`` (which maps to ``NEEDS_REVIEW``) and an
+    ``[UNGROUNDED]`` title prefix so compliance managers can spot them in the UI.
+    """
+    # Build a single searchable text from all context chunks
+    full_context = " ".join(c["text"] for c in context_chunks).lower()
+
+    for control in controls:
+        citation = control.source_citation.strip()
+        if not citation:
+            continue
+
+        # Extract the core clause reference (e.g., "164.312(a)(1)" from "§ 164.312(a)(1)")
+        # Strip common prefixes
+        clean_citation = citation.replace("§", "").replace("Article", "").strip()
+
+        # Check if the citation appears in any provided context chunk
+        if clean_citation.lower() not in full_context:
+            logger.warning(
+                "UNGROUNDED citation detected: %s for control %s",
+                citation, control.control_id_code,
+            )
+            control.confidence = 0.3
+            control.title = f"[UNGROUNDED] {control.title}"
+
+    return controls
+
+
 async def generate_controls(
     framework_name: str,
     context_chunks: list[dict],
@@ -168,6 +203,7 @@ async def generate_controls(
         )
 
     valid, rejected = enforce_citations(controls)
+    valid = _ground_controls(valid, context_chunks)
     if rejected:
         logger.warning("Rejected %d controls without citations", len(rejected))
 

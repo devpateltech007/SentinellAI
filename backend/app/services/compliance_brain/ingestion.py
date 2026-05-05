@@ -92,6 +92,22 @@ async def ingest_document(
             batch[j].embedding = item.embedding
 
     for chunk in chunks:
+        # --- Chunk-level deduplication (Task 2.6) ---
+        chunk_hash = hashlib.sha256(chunk.text.encode()).hexdigest()
+
+        existing_chunk = await db.execute(
+            text(
+                "SELECT id FROM regulatory_chunks "
+                "WHERE framework_name = :name AND chunk_hash = :hash"
+            ),
+            {"name": framework_name, "hash": chunk_hash},
+        )
+        if existing_chunk.scalar():
+            logger.debug(
+                "Skipping duplicate chunk %d (hash=%s)", chunk.chunk_index, chunk_hash[:12]
+            )
+            continue
+
         chunk_id = uuid.uuid4()
         if chunk.embedding is None:
             logger.error(
@@ -118,8 +134,10 @@ async def ingest_document(
         await db.execute(
             text(
                 "INSERT INTO regulatory_chunks "
-                "(id, framework_name, chunk_text, source_section, chunk_index, doc_hash, created_at, embedding) "
-                "VALUES (:id, :name, :text, :section, :idx, :hash, :created, CAST(:emb AS vector))"
+                "(id, framework_name, chunk_text, source_section, chunk_index, "
+                "doc_hash, chunk_hash, created_at, embedding) "
+                "VALUES (:id, :name, :text, :section, :idx, :hash, :chunk_hash, "
+                ":created, CAST(:emb AS vector))"
             ),
             {
                 "id": chunk_id,
@@ -128,6 +146,7 @@ async def ingest_document(
                 "section": chunk.source_section,
                 "idx": chunk.chunk_index,
                 "hash": doc_hash,
+                "chunk_hash": chunk_hash,
                 "created": datetime.now(timezone.utc),
                 "emb": embedding_str,
             },

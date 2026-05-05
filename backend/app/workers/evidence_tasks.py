@@ -13,6 +13,7 @@ from uuid import UUID
 
 from sqlalchemy import select
 
+from app.config import settings
 from app.database import async_session
 from app.models.connector import Connector
 from app.models.control import Control, ControlStatusEnum
@@ -21,7 +22,11 @@ from app.models.framework import Framework
 from app.models.requirement import Requirement
 from app.services.compliance_brain.generator import generate_controls
 from app.services.compliance_brain.ingestion import ingest_document
-from app.services.compliance_brain.rag import rerank, retrieve_context
+from app.services.compliance_brain.rag import (
+    hybrid_retrieve,
+    rerank_by_score,
+    rerank_with_llm,
+)
 from app.services.evidence_engine.github_actions import GitHubActionsConnector
 from app.services.evidence_engine.normalizer import DEFAULT_REDACTION_CONFIG, normalize_evidence
 from app.workers.celery_app import celery_app
@@ -72,8 +77,11 @@ async def _generate_controls_async(framework_id: str) -> dict:
         await ingest_document(doc_path, framework_name, db)
 
         query = f"Extract all compliance controls from {framework_name} regulatory requirements"
-        chunks = await retrieve_context(query, framework_name, db, top_k=15)
-        top_chunks = await rerank(query, chunks, top_n=10)
+        chunks = await hybrid_retrieve(query, framework_name, db, top_k=20)
+        if settings.OPENAI_API_KEY:
+            top_chunks = await rerank_with_llm(query, chunks, top_n=10)
+        else:
+            top_chunks = rerank_by_score(query, chunks, top_n=10)
 
         context_dicts = [
             {"text": c.text, "source_section": c.source_section}

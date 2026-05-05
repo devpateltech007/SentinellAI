@@ -4,7 +4,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import auth, connectors, controls, dashboard, evidence, projects, reports
+from app.api import (
+    auth,
+    compliance_brain,
+    connectors,
+    controls,
+    dashboard,
+    evidence,
+    projects,
+    reports,
+)
 from app.config import settings
 from app.database import engine
 
@@ -39,6 +48,7 @@ app.include_router(evidence.router, prefix=PREFIX)
 app.include_router(controls.router, prefix=PREFIX)
 app.include_router(reports.router, prefix=PREFIX)
 app.include_router(dashboard.router, prefix=PREFIX)
+app.include_router(compliance_brain.router, prefix=PREFIX)
 
 
 @app.get(f"{PREFIX}/health")

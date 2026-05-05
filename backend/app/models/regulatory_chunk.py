@@ -19,6 +19,8 @@ class RegulatoryChunk(Base):
     source_section: Mapped[str] = mapped_column(String(500), nullable=False)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     doc_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    chunk_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
+
