@@ -9,7 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from app.services.evaluator.rules import RULE_REGISTRY
+from app.services.evaluator.loader import load_rules_from_directory
+
+RULE_REGISTRY = load_rules_from_directory()
 
 
 @dataclass
@@ -24,6 +26,8 @@ async def evaluate_control(
     control_id: UUID,
     control_id_code: str,
     evidence_items: list[dict],
+    control_title: str = "",
+    control_description: str = "",
 ) -> EvaluationResult:
     """Evaluate a single control against its collected evidence.
 
@@ -34,6 +38,8 @@ async def evaluate_control(
         control_id: UUID of the control being evaluated.
         control_id_code: The control's identifier code (e.g., "HIPAA-AC-001").
         evidence_items: List of evidence content dicts linked to this control.
+        control_title: Title of the control (for AI fallback).
+        control_description: Description of the control (for AI fallback).
 
     Returns:
         EvaluationResult with status and supporting evidence references.
@@ -50,8 +56,19 @@ async def evaluate_control(
     failures: list[str] = []
     passes: list[str] = []
 
-    for rule_fn in RULE_REGISTRY:
-        result = rule_fn(control_id_code, evidence_items)
+    for spec in RULE_REGISTRY:
+        # Check applicability via RuleSpec patterns
+        code_lower = control_id_code.lower()
+        if not any(p in code_lower for p in spec.applicable_control_patterns):
+            continue
+
+        # Check source type applicability
+        if "*" not in spec.applicable_source_types:
+            evidence_types = {str(e.get("source_type")) for e in evidence_items}
+            if not evidence_types.intersection(spec.applicable_source_types):
+                continue
+
+        result = spec.fn(control_id_code, evidence_items)
         if result is None:
             continue  # rule does not apply to this control
         if result["passed"]:
@@ -75,9 +92,17 @@ async def evaluate_control(
             rationale="; ".join(passes),
         )
 
+    # No rules matched this control — ask AI for guidance
+    from app.services.evaluator.ai_rule_suggest import suggest_evaluation_approach
+    suggestion = await suggest_evaluation_approach(
+        control_id_code=control_id_code,
+        title=control_title,
+        description=control_description,
+        evidence_items=evidence_items,
+    )
     return EvaluationResult(
         control_id=control_id,
         status="NeedsReview",
         evidence_ids=evidence_ids,
-        rationale="No applicable rules matched. Human review required.",
+        rationale=suggestion,
     )

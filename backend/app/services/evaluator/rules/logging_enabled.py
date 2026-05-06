@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-APPLICABLE_PATTERNS = ["audit", "log", "logging", "164.312(b)"]
+from app.services.evaluator.rules.rule_spec import RuleSpec
+
+APPLICABLE_PATTERNS = ["log", "logging"]
 
 
 def check_logging_enabled(
@@ -13,10 +15,6 @@ def check_logging_enabled(
 
     Applies to controls related to audit logging.
     """
-    code_lower = control_id_code.lower()
-    if not any(p in code_lower for p in APPLICABLE_PATTERNS):
-        return None
-
     for evidence in evidence_items:
         content = evidence.get("content_json", {})
         raw = str(content).lower()
@@ -43,3 +41,12 @@ def check_logging_enabled(
         "reason": "No logging configuration found in collected evidence. "
         "Remediation: Ensure audit log configuration is included in your IaC or application config.",
     }
+
+
+RULE_SPEC = RuleSpec(
+    name="check_logging_enabled",
+    description="Verify system logging / audit logging is enabled in evidence",
+    fn=check_logging_enabled,
+    applicable_control_patterns=APPLICABLE_PATTERNS,
+    applicable_source_types=["github_actions", "iac_config", "github_code"],
+)

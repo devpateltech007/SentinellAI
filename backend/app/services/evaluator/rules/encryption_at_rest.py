@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-APPLICABLE_PATTERNS = ["encrypt", "aes", "164.312(a)", "164.312(e)", "article 32"]
+from app.services.evaluator.rules.rule_spec import RuleSpec
+
+APPLICABLE_PATTERNS = ["encrypt", "aes", "164.312(a)", "article 32"]
 
 
 def check_encryption_at_rest(
@@ -13,10 +15,6 @@ def check_encryption_at_rest(
 
     Applies to controls related to data encryption.
     """
-    code_lower = control_id_code.lower()
-    if not any(p in code_lower for p in APPLICABLE_PATTERNS):
-        return None
-
     for evidence in evidence_items:
         content = evidence.get("content_json", {})
         raw = str(content).lower()
@@ -33,3 +31,12 @@ def check_encryption_at_rest(
         "reason": "No encryption-at-rest configuration found in collected evidence. "
         "Remediation: Enable AES-256 encryption for data at rest in your storage configuration.",
     }
+
+
+RULE_SPEC = RuleSpec(
+    name="check_encryption_at_rest",
+    description="Verify encryption at rest is enabled in evidence",
+    fn=check_encryption_at_rest,
+    applicable_control_patterns=APPLICABLE_PATTERNS,
+    applicable_source_types=["github_actions", "iac_config", "github_code"],
+)

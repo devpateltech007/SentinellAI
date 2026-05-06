@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.services.evaluator.rules.rule_spec import RuleSpec
+
 APPLICABLE_PATTERNS = ["access", "rbac", "role", "164.312(a)", "164.308(a)(4)", "article 25"]
 
 
@@ -13,10 +15,6 @@ def check_access_control(
 
     Applies to controls related to access management.
     """
-    code_lower = control_id_code.lower()
-    if not any(p in code_lower for p in APPLICABLE_PATTERNS):
-        return None
-
     for evidence in evidence_items:
         content = evidence.get("content_json", {})
         raw = str(content).lower()
@@ -32,3 +30,12 @@ def check_access_control(
         "reason": "No access control or RBAC configuration found in collected evidence. "
         "Remediation: Implement role-based access control in your application and infrastructure.",
     }
+
+
+RULE_SPEC = RuleSpec(
+    name="check_access_control",
+    description="Verify RBAC or access control is configured in evidence",
+    fn=check_access_control,
+    applicable_control_patterns=APPLICABLE_PATTERNS,
+    applicable_source_types=["github_actions", "iac_config", "github_code"],
+)

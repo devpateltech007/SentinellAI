@@ -71,6 +71,7 @@ async def _evaluate_control_async(control_id: str) -> dict:
                 {
                     "id": str(ev.id),
                     "source_type": ev.source_type.value,
+                    "source_ref": ev.source_ref,
                     "content_json": ev.content_json,
                 }
             )
@@ -123,6 +124,8 @@ async def _evaluate_control_async(control_id: str) -> dict:
             control_id=control.id,
             control_id_code=control.control_id_code,
             evidence_items=evidence_items,
+            control_title=control.title,
+            control_description=control.description,
         )
 
         await persist_evaluation(db, eval_result)
