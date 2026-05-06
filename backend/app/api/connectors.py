@@ -87,11 +87,12 @@ async def trigger_connector(
     )
 
     from app.workers.evidence_tasks import collect_evidence
-    collect_evidence.delay(str(connector.id))
+    task = collect_evidence.delay(str(connector.id))
 
     return ConnectorStatusResponse(
         id=connector.id,
         source_type=connector.source_type,
+        task_id=str(task.id),
         last_run_at=connector.last_run_at,
         last_status="triggered",
         last_error=connector.last_error,

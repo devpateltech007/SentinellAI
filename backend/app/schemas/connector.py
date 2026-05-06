@@ -55,6 +55,7 @@ class ConnectorResponse(BaseModel):
 class ConnectorStatusResponse(BaseModel):
     id: UUID
     source_type: str
+    task_id: str | None = None
     last_run_at: datetime | None = None
     last_status: str | None = None
     last_error: str | None = None

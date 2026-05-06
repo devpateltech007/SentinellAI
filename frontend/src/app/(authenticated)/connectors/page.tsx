@@ -12,7 +12,136 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
-import type { Connector, Project } from "@/lib/types";
+import type { Connector, Project, ConnectorStatusResponse } from "@/lib/types";
+import { useTaskStream } from "@/lib/useTaskStream";
+import { Loader2 } from "lucide-react";
+
+function ConnectorRow({ connector, onRefresh }: { connector: Connector, onRefresh: () => void }) {
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const { state, result, error, isComplete } = useTaskStream(taskId);
+
+  const handleTrigger = async () => {
+    try {
+      const res = await api.post<ConnectorStatusResponse>(
+        `/connectors/${connector.id}/trigger`
+      );
+      if (res.task_id) {
+        setTaskId(res.task_id);
+      } else {
+        // Fallback refresh if no task id returned
+        onRefresh();
+      }
+    } catch (e) {
+      console.error("Trigger failed", e);
+    }
+  };
+
+  useEffect(() => {
+    if (isComplete) {
+      if (state === "SUCCESS") {
+        onRefresh(); // Refresh list to get updated last_run_at and status
+      }
+      const timer = setTimeout(() => setTaskId(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [isComplete, state, onRefresh]);
+
+  const statusIcon = (status: string | null) => {
+    switch (status) {
+      case "success":
+        return <CheckCircle className="h-5 w-5 text-emerald-500" />;
+      case "error":
+        return <XCircle className="h-5 w-5 text-red-500" />;
+      default:
+        return <Clock className="h-5 w-5 text-slate-400" />;
+    }
+  };
+
+  const renderStatus = () => {
+    if (!taskId) return null;
+    switch (state) {
+      case "PENDING":
+      case "STARTED":
+        return (
+          <span className="ml-3 inline-flex items-center gap-1.5 text-xs text-indigo-600">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Collecting evidence...
+          </span>
+        );
+      case "SUCCESS":
+        return (
+          <span className="ml-3 inline-flex items-center gap-1.5 text-xs text-emerald-600">
+            <CheckCircle className="h-3 w-3" />
+            {(result as { items_collected?: number })?.items_collected ?? 0} items collected
+          </span>
+        );
+      case "FAILURE":
+        return (
+          <span
+            className="ml-3 inline-flex items-center gap-1.5 text-xs text-red-600"
+            title={error || "Unknown error"}
+          >
+            <XCircle className="h-3 w-3" />
+            Collection failed
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <tr className="border-b border-slate-100">
+      <td className="px-4 py-3 font-medium text-slate-900">
+        <div className="flex items-center gap-2">
+          <Plug className="h-4 w-4 text-slate-400" />
+          {connector.source_type}
+        </div>
+      </td>
+      <td className="px-4 py-3 text-slate-600">
+        {connector.schedule || "Manual"}
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          {statusIcon(connector.last_status)}
+          <span className="text-sm">
+            {connector.last_status || "Never run"}
+          </span>
+        </div>
+      </td>
+      <td className="px-4 py-3 text-xs text-slate-500">
+        {connector.last_run_at
+          ? formatDate(connector.last_run_at)
+          : "—"}
+      </td>
+      <td className="max-w-[200px] truncate px-4 py-3 text-xs text-red-500">
+        {connector.last_error || "—"}
+      </td>
+      <td className="px-4 py-3">
+        <div className="flex items-center">
+          <button
+            onClick={handleTrigger}
+            disabled={state === "STARTED" || state === "PENDING"}
+            className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
+          >
+            {state === "STARTED" || state === "PENDING" ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Running...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-3.5 w-3.5" />
+                Trigger
+              </>
+            )}
+          </button>
+          {renderStatus()}
+        </div>
+      </td>
+    </tr>
+  );
+}
 
 export default function ConnectorsPage() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
@@ -84,22 +213,9 @@ export default function ConnectorsPage() {
     }
   };
 
-  const triggerConnector = async (id: string) => {
-    await api.post(`/connectors/${id}/trigger`);
-    const updated = await api.get<Connector[]>("/connectors");
-    setConnectors(updated);
-  };
 
-  const statusIcon = (status: string | null) => {
-    switch (status) {
-      case "success":
-        return <CheckCircle className="h-5 w-5 text-emerald-500" />;
-      case "error":
-        return <XCircle className="h-5 w-5 text-red-500" />;
-      default:
-        return <Clock className="h-5 w-5 text-slate-400" />;
-    }
-  };
+
+
 
   return (
     <div className="space-y-6">
@@ -257,45 +373,7 @@ export default function ConnectorsPage() {
             </thead>
             <tbody>
               {connectors.map((connector) => (
-                <tr
-                  key={connector.id}
-                  className="border-b border-slate-100"
-                >
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    <div className="flex items-center gap-2">
-                      <Plug className="h-4 w-4 text-slate-400" />
-                      {connector.source_type}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {connector.schedule || "Manual"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {statusIcon(connector.last_status)}
-                      <span className="text-sm">
-                        {connector.last_status || "Never run"}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">
-                    {connector.last_run_at
-                      ? formatDate(connector.last_run_at)
-                      : "—"}
-                  </td>
-                  <td className="max-w-[200px] truncate px-4 py-3 text-xs text-red-500">
-                    {connector.last_error || "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      onClick={() => triggerConnector(connector.id)}
-                      className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
-                    >
-                      <RefreshCw className="h-3.5 w-3.5" />
-                      Trigger
-                    </button>
-                  </td>
-                </tr>
+                <ConnectorRow key={connector.id} connector={connector} onRefresh={loadConnectors} />
               ))}
             </tbody>
           </table>

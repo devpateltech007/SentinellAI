@@ -1,22 +1,52 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api } from "@/lib/api";
 import type { DashboardSummary } from "@/lib/types";
 import StatusSummaryCards from "@/components/dashboard/StatusSummaryCards";
 import CoverageChart from "@/components/dashboard/CoverageChart";
+import { ControlDrawer } from "@/components/controls/ControlDrawer";
+import { Loader2 } from "lucide-react";
 
 export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  const [timeAgo, setTimeAgo] = useState("just now");
+  const [selectedControlId, setSelectedControlId] = useState<string | null>(null);
+
+  const fetchSummary = useCallback(async (isInitial = false) => {
+    if (!isInitial) setIsRefreshing(true);
+    try {
+      const data = await api.get<DashboardSummary>("/dashboard/summary");
+      setSummary(data);
+      setLastUpdated(new Date());
+    } catch (e) {
+      console.error("Failed to fetch dashboard summary", e);
+    } finally {
+      setIsRefreshing(false);
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    api
-      .get<DashboardSummary>("/dashboard/summary")
-      .then(setSummary)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+    fetchSummary(true);
+    const interval = setInterval(() => fetchSummary(false), 30_000);
+    return () => clearInterval(interval);
+  }, [fetchSummary]);
+
+  // Update "time ago" string every second
+  useEffect(() => {
+    const updateTimeAgo = () => {
+      const seconds = Math.floor((new Date().getTime() - lastUpdated.getTime()) / 1000);
+      if (seconds < 5) setTimeAgo("just now");
+      else if (seconds < 60) setTimeAgo(`${seconds} seconds ago`);
+      else setTimeAgo(`${Math.floor(seconds / 60)} minutes ago`);
+    };
+    const interval = setInterval(updateTimeAgo, 1000);
+    return () => clearInterval(interval);
+  }, [lastUpdated]);
 
   if (loading) {
     return (
@@ -36,13 +66,19 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">
-          Compliance Dashboard
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Overview of control statuses, evidence coverage, and recent failures.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">
+            Compliance Dashboard
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Overview of control statuses, evidence coverage, and recent failures.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-slate-400">
+          {isRefreshing && <Loader2 className="h-3 w-3 animate-spin" />}
+          <span>Last updated: {timeAgo}</span>
+        </div>
       </div>
 
       <StatusSummaryCards summary={summary} />
@@ -57,7 +93,8 @@ export default function DashboardPage() {
               {summary.recent_failures.map((failure) => (
                 <div
                   key={failure.control_id}
-                  className="rounded-lg border border-red-200 bg-red-50 p-4"
+                  className="rounded-lg border border-red-200 bg-red-50 p-4 cursor-pointer hover:bg-red-100 transition-colors"
+                  onClick={() => setSelectedControlId(failure.control_id)}
                 >
                   <div className="flex items-center justify-between">
                     <span className="font-mono text-sm font-medium text-red-800">
@@ -88,6 +125,10 @@ export default function DashboardPage() {
           <CoverageChart summary={summary} />
         </div>
       </div>
+      <ControlDrawer
+        controlId={selectedControlId}
+        onClose={() => setSelectedControlId(null)}
+      />
     </div>
   );
 }

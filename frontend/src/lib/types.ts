@@ -119,6 +119,15 @@ export interface Connector {
   created_at: string;
 }
 
+export interface ConnectorStatusResponse {
+  id: string;
+  source_type: string;
+  task_id: string | null;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_error: string | null;
+}
+
 export interface DashboardSummary {
   pass_count: number;
   fail_count: number;

@@ -1,18 +1,19 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import Link from "next/link";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { cn, statusColor, formatDate } from "@/lib/utils";
 import type { Control } from "@/lib/types";
+import { ControlDrawer } from "@/components/controls/ControlDrawer";
 
 interface Props {
   controls: Control[];
   projectId?: string;
 }
 
-export default function ControlTable({ controls, projectId }: Props) {
+export default function ControlTable({ controls }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [drawerControlId, setDrawerControlId] = useState<string | null>(null);
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -73,16 +74,15 @@ export default function ControlTable({ controls, projectId }: Props) {
                       {control.description}
                     </p>
                     <div className="mt-3">
-                      <Link
-                        href={
-                          projectId
-                            ? `/projects/${projectId}/controls/${control.id}`
-                            : `/controls/${control.id}`
-                        }
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDrawerControlId(control.id);
+                        }}
                         className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-800"
                       >
                         View Details <ExternalLink className="h-3.5 w-3.5" />
-                      </Link>
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -96,6 +96,10 @@ export default function ControlTable({ controls, projectId }: Props) {
           No controls found. Add a framework to generate controls.
         </div>
       )}
+      <ControlDrawer
+        controlId={drawerControlId}
+        onClose={() => setDrawerControlId(null)}
+      />
     </div>
   );
 }

@@ -13,6 +13,7 @@ from app.api import (
     evidence,
     projects,
     reports,
+    tasks,
 )
 from app.config import settings
 from app.database import engine
@@ -49,6 +50,7 @@ app.include_router(controls.router, prefix=PREFIX)
 app.include_router(reports.router, prefix=PREFIX)
 app.include_router(dashboard.router, prefix=PREFIX)
 app.include_router(compliance_brain.router, prefix=PREFIX)
+app.include_router(tasks.router, prefix=PREFIX)
 
 
 @app.get(f"{PREFIX}/health")

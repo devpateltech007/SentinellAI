@@ -2,12 +2,16 @@
 
 import { formatDate } from "@/lib/utils";
 import type { EvidenceSummary } from "@/lib/types";
+import { EvidenceModal } from "@/components/evidence/EvidenceModal";
+import { useState } from "react";
 
 interface Props {
   items: EvidenceSummary[];
 }
 
 export default function EvidenceList({ items }: Props) {
+  const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
+
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <table className="w-full text-left text-sm">
@@ -25,7 +29,8 @@ export default function EvidenceList({ items }: Props) {
           {items.map((item) => (
             <tr
               key={item.id}
-              className="border-b border-slate-100 transition-colors hover:bg-slate-50"
+              className="border-b border-slate-100 transition-colors hover:bg-slate-50 cursor-pointer"
+              onClick={() => setSelectedEvidenceId(item.id)}
             >
               <td className="px-4 py-3">
                 <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
@@ -50,6 +55,10 @@ export default function EvidenceList({ items }: Props) {
           No evidence items found.
         </div>
       )}
+      <EvidenceModal
+        evidenceId={selectedEvidenceId}
+        onClose={() => setSelectedEvidenceId(null)}
+      />
     </div>
   );
 }
