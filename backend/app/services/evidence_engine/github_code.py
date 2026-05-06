@@ -8,7 +8,6 @@ import base64
 import fnmatch
 import logging
 from datetime import datetime, timezone
-from typing import Any
 
 import httpx
 
@@ -63,7 +62,7 @@ class GitHubCodeConnector(ConnectorInterface):
                 headers=self._headers,
             )
             tree_resp.raise_for_status()
-            
+
             # Rate limit check after tree call
             remaining = int(tree_resp.headers.get("X-RateLimit-Remaining", "5000"))
             if remaining < 100:
@@ -94,9 +93,9 @@ class GitHubCodeConnector(ConnectorInterface):
                 if content_resp.status_code != 200:
                     logger.warning(f"Failed to fetch {path}: {content_resp.status_code}")
                     continue
-                
+
                 data = content_resp.json()
-                
+
                 # Check file size (reject > 1MB)
                 size_bytes = data.get("size", 0)
                 if size_bytes > 1024 * 1024:
@@ -126,15 +125,15 @@ class GitHubCodeConnector(ConnectorInterface):
         """Validate that the evidence has required fields."""
         if evidence.source_type != EvidenceSourceType.GITHUB_CODE:
             return False
-            
+
         data = evidence.raw_data
         if not isinstance(data, dict):
             return False
-            
+
         required_keys = {"content", "path", "sha"}
         if not required_keys.issubset(data.keys()):
             return False
-            
+
         # Optional validation: if we wanted to strictly enforce the 1MB limit here
         # (we already enforce during collect)
         if data.get("size_bytes", 0) > 1024 * 1024:
@@ -146,7 +145,7 @@ class GitHubCodeConnector(ConnectorInterface):
         """Normalize the raw evidence into a standard format."""
         data = evidence.raw_data
         content = data.get("content", "")
-        
+
         # Truncate for DB storage
         truncated_content = content[:5000]
 

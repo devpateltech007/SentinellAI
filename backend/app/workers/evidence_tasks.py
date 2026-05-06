@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
+from croniter import croniter
 from sqlalchemy import select
 
 from app.config import settings
@@ -231,12 +232,11 @@ def scheduled_evidence_collection() -> dict:
             loop.close()
 
 
-from croniter import croniter
 
 async def _scheduled_evidence_async() -> dict:
     async with async_session() as db:
         result = await db.execute(
-            select(Connector).where(Connector.is_active == True)
+            select(Connector).where(Connector.is_active)
         )
         connectors = result.scalars().all()
 

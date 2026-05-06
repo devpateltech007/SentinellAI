@@ -1,8 +1,8 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
 from croniter import croniter
+from pydantic import BaseModel, field_validator
 
 
 class ConnectorCreate(BaseModel):

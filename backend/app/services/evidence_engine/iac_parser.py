@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 
+
 @dataclass
 class TerraformSecurityFlags:
     encryption_at_rest: bool = False

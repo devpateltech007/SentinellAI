@@ -1,23 +1,23 @@
+import os
+from datetime import datetime, timezone
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 
 from app.api.deps import DbSession, require_role
+from app.config import settings
 from app.middleware.audit_log import log_action
 from app.models.connector import Connector
 from app.models.user import User, UserRole
 from app.schemas.connector import (
     ConnectorCreate,
+    ConnectorHealthResponse,
     ConnectorResponse,
     ConnectorStatusResponse,
-    ConnectorHealthResponse,
     ConnectorUpdate,
 )
-import httpx
-import os
-from datetime import datetime, timezone
-from app.config import settings
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
 
@@ -147,7 +147,7 @@ async def check_connector_health(
             error=None if reachable else f"Path '{path}' not found",
             checked_at=datetime.now(timezone.utc),
         )
-    
+
     return ConnectorHealthResponse(
         connector_id=connector.id,
         source_type=connector.source_type,
