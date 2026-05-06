@@ -92,7 +92,18 @@ export function EvidenceModal({ evidenceId, onClose }: EvidenceModalProps) {
                   {/* Metadata Header */}
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <p className="text-sm font-medium text-slate-900">{evidence.source_ref}</p>
+                      {evidence.source_ref.startsWith("http") ? (
+                        <a 
+                          href={evidence.source_ref} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="text-sm font-medium text-indigo-600 hover:underline"
+                        >
+                          {evidence.source_ref}
+                        </a>
+                      ) : (
+                        <p className="text-sm font-medium text-slate-900">{evidence.source_ref}</p>
+                      )}
                       <p className="text-sm text-slate-500">Collected {formatDate(evidence.collected_at)}</p>
                       <span className="mt-2 inline-flex items-center rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
                         {evidence.source_type}

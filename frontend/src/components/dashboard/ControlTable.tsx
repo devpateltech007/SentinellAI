@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { cn, statusColor, formatDate } from "@/lib/utils";
 import type { Control } from "@/lib/types";
 import { ControlDrawer } from "@/components/controls/ControlDrawer";
@@ -12,7 +11,6 @@ interface Props {
 }
 
 export default function ControlTable({ controls }: Props) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [drawerControlId, setDrawerControlId] = useState<string | null>(null);
 
   return (
@@ -20,7 +18,6 @@ export default function ControlTable({ controls }: Props) {
       <table className="w-full text-left text-sm">
         <thead className="border-b border-slate-200 bg-slate-50">
           <tr>
-            <th className="w-8 px-4 py-3" />
             <th className="px-4 py-3 font-medium text-slate-600">Control ID</th>
             <th className="px-4 py-3 font-medium text-slate-600">Title</th>
             <th className="px-4 py-3 font-medium text-slate-600">Status</th>
@@ -33,17 +30,8 @@ export default function ControlTable({ controls }: Props) {
             <Fragment key={control.id}>
               <tr
                 className="cursor-pointer border-b border-slate-100 transition-colors hover:bg-slate-50"
-                onClick={() =>
-                  setExpandedId(expandedId === control.id ? null : control.id)
-                }
+                onClick={() => setDrawerControlId(control.id)}
               >
-                <td className="px-4 py-3">
-                  {expandedId === control.id ? (
-                    <ChevronDown className="h-4 w-4 text-slate-400" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                  )}
-                </td>
                 <td className="px-4 py-3 font-mono text-xs font-medium">
                   {control.control_id_code}
                 </td>
@@ -67,26 +55,6 @@ export default function ControlTable({ controls }: Props) {
                   {formatDate(control.generated_at)}
                 </td>
               </tr>
-              {expandedId === control.id && (
-                <tr key={`${control.id}-expanded`}>
-                  <td colSpan={6} className="bg-slate-50 px-8 py-4">
-                    <p className="text-sm text-slate-700">
-                      {control.description}
-                    </p>
-                    <div className="mt-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDrawerControlId(control.id);
-                        }}
-                        className="inline-flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-800"
-                      >
-                        View Details <ExternalLink className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )}
             </Fragment>
           ))}
         </tbody>

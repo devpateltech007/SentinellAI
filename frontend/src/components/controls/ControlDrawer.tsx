@@ -17,17 +17,28 @@ export function ControlDrawer({ controlId, onClose }: ControlDrawerProps) {
   const [loading, setLoading] = useState(false);
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
 
+  const [isOpen, setIsOpen] = useState(false);
+  const [renderId, setRenderId] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!controlId) {
+    if (controlId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setControl(null);
-      return;
+      setRenderId(controlId);
+       
+      setIsOpen(true);
+       
+      setLoading(true);
+      api.get<ControlDetail>(`/controls/${controlId}`)
+        .then(setControl)
+        .finally(() => setLoading(false));
+    } else {
+      setIsOpen(false);
+      const timer = setTimeout(() => {
+        setRenderId(null);
+        setControl(null);
+      }, 300); // Wait for animation
+      return () => clearTimeout(timer);
     }
-     
-    setLoading(true);
-    api.get<ControlDetail>(`/controls/${controlId}`)
-      .then(setControl)
-      .finally(() => setLoading(false));
   }, [controlId]);
 
   // Handle escape to close
@@ -39,7 +50,7 @@ export function ControlDrawer({ controlId, onClose }: ControlDrawerProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  if (!controlId) return null;
+  if (!renderId) return null;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -62,11 +73,11 @@ export function ControlDrawer({ controlId, onClose }: ControlDrawerProps) {
   return (
     <>
       <div 
-        className="fixed inset-0 z-40 bg-slate-900/40 transition-opacity" 
+        className={`fixed inset-0 z-40 bg-slate-900/40 transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0"}`} 
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md transform overflow-y-auto bg-white shadow-xl transition-transform duration-300 ease-in-out sm:max-w-lg md:max-w-xl">
+      <div className={`fixed inset-y-0 right-0 z-50 w-full max-w-md transform overflow-y-auto bg-white shadow-xl transition-transform duration-300 ease-in-out sm:max-w-lg md:max-w-xl ${isOpen ? "translate-x-0" : "translate-x-full"}`}>
         <div className="flex h-full flex-col">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
@@ -142,7 +153,19 @@ export function ControlDrawer({ controlId, onClose }: ControlDrawerProps) {
                           <div className="flex items-center gap-3">
                             <FileCode className="h-5 w-5 text-slate-400" />
                             <div>
-                              <p className="text-sm font-medium text-indigo-600 hover:underline">{evidence.source_ref}</p>
+                              {evidence.source_ref.startsWith("http") ? (
+                                <a 
+                                  href={evidence.source_ref} 
+                                  target="_blank" 
+                                  rel="noreferrer" 
+                                  className="text-sm font-medium text-indigo-600 hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {evidence.source_ref}
+                                </a>
+                              ) : (
+                                <p className="text-sm font-medium text-indigo-600">{evidence.source_ref}</p>
+                              )}
                               <p className="text-xs text-slate-500">Collected {formatDate(evidence.collected_at)} • {evidence.source_type}</p>
                             </div>
                           </div>

@@ -23,14 +23,17 @@ export default function StatusSummaryCards({ summary }: Props) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setChangedKeys(changes);
       
+      prevSummaryRef.current = summary;
+
       // Clear the animation state after 1 second
       if (changes.size > 0) {
          
         const timer = setTimeout(() => setChangedKeys(new Set()), 1000);
         return () => clearTimeout(timer);
       }
+    } else {
+      prevSummaryRef.current = summary;
     }
-    prevSummaryRef.current = summary;
   }, [summary]);
 
   const cards = [
