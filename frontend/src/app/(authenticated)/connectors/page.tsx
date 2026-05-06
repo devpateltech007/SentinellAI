@@ -18,9 +18,11 @@ import { Loader2 } from "lucide-react";
 
 function ConnectorRow({ connector, onRefresh }: { connector: Connector, onRefresh: () => void }) {
   const [taskId, setTaskId] = useState<string | null>(null);
+  const [isTriggering, setIsTriggering] = useState(false);
   const { state, result, error, isComplete } = useTaskStream(taskId);
 
   const handleTrigger = async () => {
+    setIsTriggering(true);
     try {
       const res = await api.post<ConnectorStatusResponse>(
         `/connectors/${connector.id}/trigger`
@@ -33,6 +35,7 @@ function ConnectorRow({ connector, onRefresh }: { connector: Connector, onRefres
       }
     } catch (e) {
       console.error("Trigger failed", e);
+      setIsTriggering(false);
     }
   };
 
@@ -41,7 +44,10 @@ function ConnectorRow({ connector, onRefresh }: { connector: Connector, onRefres
       if (state === "SUCCESS") {
         onRefresh(); // Refresh list to get updated last_run_at and status
       }
-      const timer = setTimeout(() => setTaskId(null), 5000);
+      const timer = setTimeout(() => {
+        setTaskId(null);
+        setIsTriggering(false);
+      }, 5000);
       return () => clearTimeout(timer);
     }
   }, [isComplete, state, onRefresh]);
@@ -121,10 +127,10 @@ function ConnectorRow({ connector, onRefresh }: { connector: Connector, onRefres
         <div className="flex items-center">
           <button
             onClick={handleTrigger}
-            disabled={state === "STARTED" || state === "PENDING"}
+            disabled={isTriggering || state === "STARTED" || state === "PENDING" || (taskId !== null && !isComplete)}
             className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
           >
-            {state === "STARTED" || state === "PENDING" ? (
+            {isTriggering || state === "STARTED" || state === "PENDING" ? (
               <>
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 Running...
