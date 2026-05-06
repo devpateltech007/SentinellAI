@@ -31,6 +31,8 @@ class Settings(BaseSettings):
 
     # Frontend
     FRONTEND_URL: str = "http://localhost:3000"
+    # Reports
+    REPORTS_DIR: str = "/app/reports"
 
     # Testing / Integrity
     SKIP_INTEGRITY_CHECK: bool = False

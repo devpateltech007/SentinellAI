@@ -13,6 +13,7 @@ pgvector>=0.3.6
 pydantic>=2.10.0
 pydantic-settings>=2.7.0
 email-validator>=2.1.0
+jsonschema>=4.20.0
 
 # Authentication
 python-jose[cryptography]>=3.3.0

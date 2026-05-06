@@ -14,12 +14,14 @@ from app.models.evidence import EvidenceItem  # noqa: E402, F401
 from app.models.framework import Framework  # noqa: E402, F401
 from app.models.project import Project  # noqa: E402, F401
 from app.models.regulatory_chunk import RegulatoryChunk  # noqa: E402, F401
+from app.models.report import Report  # noqa: E402, F401
 from app.models.requirement import Requirement  # noqa: E402, F401
 from app.models.user import User  # noqa: E402, F401
 
 __all__ = [
     "Base",
     "Project",
+    "Report",
     "Framework",
     "Control",
     "Requirement",
