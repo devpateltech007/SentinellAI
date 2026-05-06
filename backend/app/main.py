@@ -1,8 +1,10 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pythonjsonlogger.json import JsonFormatter
 
 from app.api import (
     auth,
@@ -11,12 +13,29 @@ from app.api import (
     controls,
     dashboard,
     evidence,
+    health,
     projects,
     reports,
     tasks,
 )
 from app.config import settings
 from app.database import engine
+from app.middleware.logging import CorrelationIdFilter, CorrelationIdMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
+
+# ---------------------------------------------------------------------------
+# Structured JSON logging
+# ---------------------------------------------------------------------------
+handler = logging.StreamHandler()
+formatter = JsonFormatter(
+    "%(asctime)s %(name)s %(levelname)s %(correlation_id)s %(message)s"
+)
+handler.setFormatter(formatter)
+
+root = logging.getLogger()
+root.handlers = [handler]
+root.setLevel(logging.INFO)
+root.addFilter(CorrelationIdFilter())
 
 
 @asynccontextmanager
@@ -31,6 +50,12 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+# Correlation-ID middleware (outermost — runs first)
+app.add_middleware(CorrelationIdMiddleware)
+
+# Rate limiting middleware
+app.add_middleware(RateLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,8 +76,5 @@ app.include_router(reports.router, prefix=PREFIX)
 app.include_router(dashboard.router, prefix=PREFIX)
 app.include_router(compliance_brain.router, prefix=PREFIX)
 app.include_router(tasks.router, prefix=PREFIX)
+app.include_router(health.router, prefix=PREFIX)
 
-
-@app.get(f"{PREFIX}/health")
-async def health_check():
-    return {"status": "healthy", "service": "sentinellai"}

@@ -19,13 +19,13 @@ from app.models.user import User, UserRole
 TEST_DATABASE_URL = settings.DATABASE_URL
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(scope="session")
 async def db_engine():
     engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
     yield engine
     await engine.dispose()
 
-@pytest_asyncio.fixture(autouse=True)
+@pytest_asyncio.fixture(scope="session", autouse=True)
 async def setup_database(db_engine):
     async with db_engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector;"))
