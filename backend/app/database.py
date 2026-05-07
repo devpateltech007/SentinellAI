@@ -4,11 +4,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import settings
 
+import sys
+from sqlalchemy.pool import NullPool
+
+pool_args = {"poolclass": NullPool} if "celery" in sys.argv[0] else {"pool_size": 20, "max_overflow": 10}
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
-    pool_size=20,
-    max_overflow=10,
+    **pool_args
 )
 
 async_session = async_sessionmaker(
