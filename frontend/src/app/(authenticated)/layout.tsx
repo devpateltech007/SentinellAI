@@ -28,7 +28,7 @@ export default function AuthenticatedLayout({
   );
 
   useEffect(() => {
-    if (typeof window !== "undefined" && !token) {
+    if (typeof window !== "undefined" && !getStoredToken()) {
       router.replace("/login");
     }
   }, [token, router]);

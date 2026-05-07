@@ -1,20 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  Plug,
-  RefreshCw,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Plus,
-  X,
-} from "lucide-react";
+import { Plug, RefreshCw, CheckCircle, XCircle, Clock, Plus, X, ChevronRight, ChevronDown, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/utils";
 import type { Connector, Project, ConnectorStatusResponse } from "@/lib/types";
 import { useTaskStream } from "@/lib/useTaskStream";
-import { Loader2 } from "lucide-react";
 
 function ConnectorRow({ connector, onRefresh }: { connector: Connector, onRefresh: () => void }) {
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -149,6 +140,47 @@ function ConnectorRow({ connector, onRefresh }: { connector: Connector, onRefres
   );
 }
 
+function ProjectConnectorsGroup({ project, connectors, onRefresh }: { project: Project, connectors: Connector[], onRefresh: () => void }) {
+  const [isOpen, setIsOpen] = useState(true);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center gap-2 bg-slate-50 px-4 py-3 text-left font-semibold text-slate-800 hover:bg-slate-100 transition-colors"
+      >
+        {isOpen ? <ChevronDown className="h-5 w-5 text-slate-500" /> : <ChevronRight className="h-5 w-5 text-slate-500" />}
+        Project: {project.name}
+        <span className="ml-auto rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
+          {connectors.length} connector{connectors.length !== 1 && 's'}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="border-t border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50/50">
+              <tr>
+                <th className="px-4 py-3 font-medium text-slate-600">Source Type</th>
+                <th className="px-4 py-3 font-medium text-slate-600">Schedule</th>
+                <th className="px-4 py-3 font-medium text-slate-600">Status</th>
+                <th className="px-4 py-3 font-medium text-slate-600">Last Run</th>
+                <th className="px-4 py-3 font-medium text-slate-600">Error</th>
+                <th className="px-4 py-3 font-medium text-slate-600">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {connectors.map((connector) => (
+                <ConnectorRow key={connector.id} connector={connector} onRefresh={onRefresh} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ConnectorsPage() {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
@@ -163,25 +195,26 @@ export default function ConnectorsPage() {
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const loadConnectors = () => {
-    api
-      .get<Connector[]>("/connectors")
-      .then(setConnectors)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const loadData = async () => {
+    try {
+      const [connRes, projRes] = await Promise.all([
+        api.get<Connector[]>("/connectors"),
+        api.get<Project[]>("/projects")
+      ]);
+      setConnectors(connRes);
+      setProjects(projRes);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadConnectors();
+    loadData();
   }, []);
 
-  const openForm = async () => {
-    try {
-      const p = await api.get<Project[]>("/projects");
-      setProjects(p);
-    } catch {
-      setProjects([]);
-    }
+  const openForm = () => {
     setShowForm(true);
   };
 
@@ -205,7 +238,7 @@ export default function ConnectorsPage() {
         config: '{"owner": "", "repo": ""}',
         schedule: "",
       });
-      loadConnectors();
+      loadData();
     } catch (err) {
       if (err instanceof SyntaxError) {
         setFormError("Invalid JSON in config field.");
@@ -355,34 +388,19 @@ export default function ConnectorsPage() {
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-600 border-t-transparent" />
         </div>
       ) : connectors.length > 0 ? (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50">
-              <tr>
-                <th className="px-4 py-3 font-medium text-slate-600">
-                  Source Type
-                </th>
-                <th className="px-4 py-3 font-medium text-slate-600">
-                  Schedule
-                </th>
-                <th className="px-4 py-3 font-medium text-slate-600">
-                  Status
-                </th>
-                <th className="px-4 py-3 font-medium text-slate-600">
-                  Last Run
-                </th>
-                <th className="px-4 py-3 font-medium text-slate-600">Error</th>
-                <th className="px-4 py-3 font-medium text-slate-600">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {connectors.map((connector) => (
-                <ConnectorRow key={connector.id} connector={connector} onRefresh={loadConnectors} />
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-4">
+          {projects.map((project) => {
+            const projectConnectors = connectors.filter(c => c.project_id === project.id);
+            if (projectConnectors.length === 0) return null;
+            return (
+              <ProjectConnectorsGroup
+                key={project.id}
+                project={project}
+                connectors={projectConnectors}
+                onRefresh={loadData}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="rounded-xl border-2 border-dashed border-slate-300 py-16 text-center">

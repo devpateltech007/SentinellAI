@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import type { EvidenceListResponse } from "@/lib/types";
+import type { EvidenceListResponse, Project, Connector } from "@/lib/types";
 import EvidenceList from "@/components/evidence/EvidenceList";
 
 export default function EvidencePage() {
@@ -10,14 +10,25 @@ export default function EvidencePage() {
   const [sourceFilter, setSourceFilter] = useState("");
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
+  const [projectFilter, setProjectFilter] = useState("");
+
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [connectors, setConnectors] = useState<Connector[]>([]);
 
   useEffect(() => {
     const params = new URLSearchParams({ page: String(page), size: "20" });
     if (sourceFilter) params.set("source_type", sourceFilter);
 
-    api
-      .get<EvidenceListResponse>(`/evidence?${params}`)
-      .then(setData)
+    Promise.all([
+      api.get<EvidenceListResponse>(`/evidence?${params}`),
+      api.get<Project[]>("/projects"),
+      api.get<Connector[]>("/connectors")
+    ])
+      .then(([evData, projData, connData]) => {
+        setData(evData);
+        setProjects(projData);
+        setConnectors(connData);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [page, sourceFilter]);
@@ -31,26 +42,41 @@ export default function EvidencePage() {
         </p>
       </div>
 
-      <div className="flex gap-3">
-        {["", "github_actions", "iac_config", "app_log"].map((filter) => (
-          <button
-            key={filter}
-            onClick={() => {
-              if (sourceFilter !== filter || page !== 1) {
-                setLoading(true);
-                setSourceFilter(filter);
-                setPage(1);
-              }
-            }}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-              sourceFilter === filter
-                ? "bg-indigo-100 text-indigo-700"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            {filter === "" ? "All" : filter.replace("_", " ")}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex gap-2">
+          {["", "github_actions", "iac_config", "app_log"].map((filter) => (
+            <button
+              key={filter}
+              onClick={() => {
+                if (sourceFilter !== filter || page !== 1) {
+                  setLoading(true);
+                  setSourceFilter(filter);
+                  setPage(1);
+                }
+              }}
+              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                sourceFilter === filter
+                  ? "bg-indigo-100 text-indigo-700"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {filter === "" ? "All Sources" : filter.replace("_", " ")}
+            </button>
+          ))}
+        </div>
+
+        <select
+          value={projectFilter}
+          onChange={(e) => setProjectFilter(e.target.value)}
+          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        >
+          <option value="">All Projects</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {loading ? (
@@ -59,7 +85,7 @@ export default function EvidencePage() {
         </div>
       ) : (
         <>
-          <EvidenceList items={data?.items ?? []} />
+          <EvidenceList items={data?.items ?? []} projects={projects} connectors={connectors} projectFilter={projectFilter} />
           {data && data.total > 20 && (
             <div className="flex items-center justify-between">
               <span className="text-sm text-slate-500">

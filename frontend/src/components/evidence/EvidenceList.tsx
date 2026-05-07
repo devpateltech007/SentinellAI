@@ -1,22 +1,48 @@
 "use client";
 
 import { formatDate } from "@/lib/utils";
-import type { EvidenceSummary } from "@/lib/types";
+import type { EvidenceSummary, Project, Connector } from "@/lib/types";
 import { EvidenceModal } from "@/components/evidence/EvidenceModal";
 import { useState } from "react";
 
 interface Props {
   items: EvidenceSummary[];
+  projects?: Project[];
+  connectors?: Connector[];
+  projectFilter?: string;
 }
 
-export default function EvidenceList({ items }: Props) {
+export default function EvidenceList({ items, projects = [], connectors = [], projectFilter = "" }: Props) {
   const [selectedEvidenceId, setSelectedEvidenceId] = useState<string | null>(null);
+
+  const getProject = (item: EvidenceSummary) => {
+    const matchingConnector = connectors.find(c => {
+      if (!c.project_id) return false;
+      return item.source_ref.includes("github");
+    });
+    if (matchingConnector) {
+      return projects.find(p => p.id === matchingConnector.project_id);
+    }
+    return undefined;
+  };
+
+  const getProjectName = (item: EvidenceSummary) => {
+    const proj = getProject(item);
+    return proj ? proj.name : "Global";
+  };
+
+  const filteredItems = items.filter(item => {
+    if (!projectFilter) return true;
+    const proj = getProject(item);
+    return proj?.id === projectFilter;
+  });
 
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
       <table className="w-full text-left text-sm">
         <thead className="border-b border-slate-200 bg-slate-50">
           <tr>
+            <th className="px-4 py-3 font-medium text-slate-600">Project</th>
             <th className="px-4 py-3 font-medium text-slate-600">Source</th>
             <th className="px-4 py-3 font-medium text-slate-600">Reference</th>
             <th className="px-4 py-3 font-medium text-slate-600">
@@ -26,12 +52,17 @@ export default function EvidenceList({ items }: Props) {
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <tr
               key={item.id}
               className="border-b border-slate-100 transition-colors hover:bg-slate-50 cursor-pointer"
               onClick={() => setSelectedEvidenceId(item.id)}
             >
+              <td className="px-4 py-3">
+                <span className="inline-flex rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-700">
+                  {getProjectName(item)}
+                </span>
+              </td>
               <td className="px-4 py-3">
                 <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
                   {item.source_type}
@@ -50,9 +81,9 @@ export default function EvidenceList({ items }: Props) {
           ))}
         </tbody>
       </table>
-      {items.length === 0 && (
+      {filteredItems.length === 0 && (
         <div className="py-12 text-center text-sm text-slate-400">
-          No evidence items found.
+          No evidence items found for this project.
         </div>
       )}
       <EvidenceModal
