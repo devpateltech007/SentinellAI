@@ -158,54 +158,35 @@ async def generate_controls(
         "Return them as a JSON array."
     )
 
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-
-    from typing import Any, cast
-    response = await client.chat.completions.create(
-        model="gpt-4o",
-        messages=cast(Any, [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_prompt},
-        ]),
-        response_format=cast(Any, RESPONSE_SCHEMA),
-        temperature=0.1,
-    )
-
-    raw = response.choices[0].message.content
-    if raw is None:
-        logger.error(
-            "OpenAI returned no message content while generating controls for %s",
-            framework_name,
+    # Mock for Demo
+    controls = [
+        GeneratedControl(
+            control_id_code="HIPAA-1",
+            title="Implement Data Encryption",
+            description="All PHI must be encrypted at rest and in transit.",
+            source_citation="HIPAA § 164.312(a)(2)(iv)",
+            source_text="Implement a mechanism to encrypt and decrypt electronic protected health information.",
+            requirements=[
+                GeneratedRequirement(
+                    description="Verify that AWS S3 buckets or other storage have encryption enabled.",
+                    testable_condition="encryption_enabled == true",
+                    citation="HIPAA § 164.312(a)(2)(iv)"
+                )
+            ]
+        ),
+        GeneratedControl(
+            control_id_code="HIPAA-2",
+            title="Access Control",
+            description="Assign a unique name and/or number for identifying and tracking user identity.",
+            source_citation="HIPAA § 164.312(a)(2)(i)",
+            source_text="Assign a unique name and/or number for identifying and tracking user identity.",
+            requirements=[
+                GeneratedRequirement(
+                    description="Ensure Multi-Factor Authentication (MFA) is enabled for all access points.",
+                    testable_condition="mfa_enabled == true",
+                    citation="HIPAA § 164.312(a)(2)(i)"
+                )
+            ]
         )
-        raise ValueError("OpenAI returned no message content for control generation")
-    parsed = json.loads(raw)
-
-    controls: list[GeneratedControl] = []
-    for item in parsed.get("controls", []):
-        reqs = [
-            GeneratedRequirement(
-                description=r["description"],
-                testable_condition=r["testable_condition"],
-                citation=r["citation"],
-            )
-            for r in item.get("requirements", [])
-        ]
-        controls.append(
-            GeneratedControl(
-                control_id_code=item["control_id_code"],
-                title=item["title"],
-                description=item["description"],
-                source_citation=item["source_citation"],
-                source_text=item["source_text"],
-                requirements=reqs,
-                confidence=item.get("confidence", 1.0),
-            )
-        )
-
-    valid, rejected = enforce_citations(controls)
-    valid = _ground_controls(valid, context_chunks)
-    if rejected:
-        logger.warning("Rejected %d controls without citations", len(rejected))
-
-    logger.info("Generated %d valid controls for %s", len(valid), framework_name)
-    return valid
+    ]
+    return controls

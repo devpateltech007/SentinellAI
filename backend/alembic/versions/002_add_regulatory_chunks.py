@@ -29,7 +29,7 @@ def upgrade() -> None:
     )
     op.execute(
         "ALTER TABLE regulatory_chunks "
-        "ADD COLUMN IF NOT EXISTS embedding vector(1536)"
+        "ADD COLUMN IF NOT EXISTS embedding vector(768)"
     )
     op.execute(
         "CREATE INDEX IF NOT EXISTS ix_regulatory_chunks_embedding "

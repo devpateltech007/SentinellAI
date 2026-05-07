@@ -32,7 +32,7 @@ async def suggest_evaluation_approach(
     evidence_items: list[dict],
 ) -> str:
     """Generate AI-powered evaluation guidance for unmatched controls."""
-    if not settings.OPENAI_API_KEY:
+    if not settings.GEMINI_API_KEY:
         return (
             "No automated evaluation rule exists for this control. "
             "Manual review required by compliance manager."
@@ -49,9 +49,12 @@ async def suggest_evaluation_approach(
     evidence_summary = "\n".join(evidence_lines) if evidence_lines else "  No evidence available."
 
     try:
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        client = AsyncOpenAI(
+            api_key=settings.GEMINI_API_KEY,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
         resp = await client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gemini-1.5-flash",
             messages=[{
                 "role": "user",
                 "content": SUGGESTION_PROMPT.format(

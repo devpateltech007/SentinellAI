@@ -107,7 +107,7 @@ def upgrade() -> None:
         ),
     )
     op.execute(
-        "ALTER TABLE controls ADD COLUMN IF NOT EXISTS embedding vector(1536)"
+        "ALTER TABLE controls ADD COLUMN IF NOT EXISTS embedding vector(768)"
     )
 
     # Requirements

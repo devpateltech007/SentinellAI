@@ -43,7 +43,7 @@ class Control(Base):
         SAEnum(ControlStatusEnum, name="control_status_enum", values_callable=lambda e: [x.value for x in e]),
         default=ControlStatusEnum.PENDING,
     )
-    embedding = mapped_column(Vector(1536), nullable=True)
+    embedding = mapped_column(Vector(768), nullable=True)
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

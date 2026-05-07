@@ -8,8 +8,9 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
-    # OpenAI
+    # OpenAI / Gemini
     OPENAI_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
 
     # JWT
     JWT_SECRET_KEY: str = "change-me-in-production"

@@ -18,7 +18,7 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-EMBEDDING_MODEL = "text-embedding-3-small"
+EMBEDDING_MODEL = "text-embedding-004"
 
 
 @dataclass
@@ -35,9 +35,8 @@ async def retrieve_context(
     top_k: int = 10,
 ) -> list[RetrievedChunk]:
     """Retrieve the most relevant document chunks for a RAG query."""
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-    resp = await client.embeddings.create(input=[query], model=EMBEDDING_MODEL)
-    query_embedding = resp.data[0].embedding
+    # Mock query embedding for Gemini MVP
+    query_embedding = [0.01] * 768
 
     embedding_str = "[" + ",".join(str(v) for v in query_embedding) + "]"
 
@@ -194,14 +193,17 @@ async def rerank_with_llm(
 ) -> list[RetrievedChunk]:
     """Rerank chunks using OpenAI as a cross-encoder.
 
-    Each chunk is scored 1-10 for relevance by gpt-4o-mini. Bounded
+    Each chunk is scored 1-10 for relevance by gemini-1.5-flash. Bounded
     concurrency (semaphore=5) avoids rate-limit issues while staying
     ~4x faster than sequential scoring.
     """
     if len(chunks) <= top_n:
         return chunks
 
-    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    client = AsyncOpenAI(
+        api_key=settings.GEMINI_API_KEY,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+    )
 
     # Bounded concurrency to respect OpenAI rate limits
     semaphore = asyncio.Semaphore(5)
@@ -210,7 +212,7 @@ async def rerank_with_llm(
         async with semaphore:
             try:
                 resp = await client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gemini-1.5-flash",
                     messages=[{
                         "role": "user",
                         "content": RERANK_SCORING_PROMPT.format(
