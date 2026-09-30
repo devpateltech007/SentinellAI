@@ -6,18 +6,18 @@ Sep 29, 2026 · @indraneel
 
 ComplianceLens is a 15-week project to build a tool that checks a company's security rules across its software, collects proof for each rule, and decides PASS, FAIL or NEEDS REVIEW with a reason.
 
-**The problem.** Companies must prove to auditors that they follow security rules such as "every user has MFA" or "code needs a review before merging". Today people gather that proof by hand: open a website, take a screenshot, rename it, file it, repeat for dozens of pages every quarter. Existing sample tools automate the screenshots but leave the judging to a human.
+**The problem.** Companies must prove to auditors that they follow security rules such as "every user has MFA" or "code needs a review before merging". Today people gather that proof by hand: open a website, take a screenshot, rename it, file it, repeat for dozens of pages every quarter. Existing sample tools automate the screenshots but judge only whether the steps ran, not what the evidence shows.
 
 **The goal.** Automate both halves: collect the evidence and evaluate it against the rule, and send only the unclear cases to a human.
 
 **The final demo (week 15):**
 
 1. Open the web dashboard and click Run Audit.
-2. The tool checks 10 to 15 rules across AWS, GitHub and one more system.
+2. The tool checks 10 to 15 rules across AWS and GitHub (plus a third system if the stretch connector is done).
 3. The dashboard shows the score, for example 11 PASS, 2 FAIL, 2 NEEDS REVIEW.
 4. Click a failed rule to see the raw data, the screenshot and the reason it failed.
 5. A reviewer approves or overrides the uncertain results.
-6. Export an audit-ready PDF report.
+6. Export an audit-ready report (PDF, or HTML if PDF was cut).
 7. Live fix: turn on MFA for the failing test user, re-run, and watch the rule turn to PASS.
 
 **Assumptions:** Python as the language; scope is the tools a company uses (AWS, GitHub, others), not one app's source code; testing on a personal GitHub account and an AWS free-tier account.
@@ -166,7 +166,7 @@ V1 is a Python script that checks 3 real rules through APIs and prints PASS/FAIL
 | ID | Rule | Collect | Check |
 | --- | --- | --- | --- |
 | AWS-01 | Password policy requires 12+ characters | iam.get\_account\_password\_policy() | MinimumPasswordLength >= 12 |
-| AWS-02 | Every IAM user has MFA | iam.list\_users() + iam.list\_mfa\_devices() | users without MFA == 0 |
+| AWS-02 | Every IAM user with a console password has MFA | iam.list\_users() + iam.get\_login\_profile() + iam.list\_mfa\_devices() | console users without MFA == 0 |
 | GH-01 | main branch requires at least 1 review | GET /repos/{owner}/{repo}/branches/main/protection | required\_approving\_review\_count >= 1 |
 
 Each one can be broken and fixed on purpose, which you need for testing and for the demo.
@@ -198,10 +198,20 @@ def password_policy(params):
     except iam.exceptions.NoSuchEntityException:
         return {"MinimumPasswordLength": 0}   # no policy at all = fail
 
+def has_console_password(user):
+    try:
+        iam.get_login_profile(UserName=user)
+        return True
+    except iam.exceptions.NoSuchEntityException:
+        return False
+
 def users_without_mfa(params):
+    # Only console users need MFA (CIS). This skips the tool's own
+    # access-key-only audit user, which would otherwise always fail the rule.
     users = iam.list_users()["Users"]
     missing = [u["UserName"] for u in users
-               if not iam.list_mfa_devices(UserName=u["UserName"])["MFADevices"]]
+               if has_console_password(u["UserName"])
+               and not iam.list_mfa_devices(UserName=u["UserName"])["MFADevices"]]
     return {"count": len(missing), "users": missing}
 ```
 
@@ -211,15 +221,19 @@ def users_without_mfa(params):
 import os, requests
 
 API = "https://api.github.com"
-HEADERS = {"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-           "Accept": "application/vnd.github+json"}
+
+def headers():
+    # Read the token at call time, not import time, so a missing token
+    # becomes a NEEDS REVIEW result instead of crashing the whole audit.
+    return {"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+            "Accept": "application/vnd.github+json"}
 
 def branch_protection(params):
     url = f"{API}/repos/{params['repo']}/branches/{params['branch']}/protection"
-    r = requests.get(url, headers=HEADERS, timeout=15)
-    if r.status_code == 404:          # no protection configured
+    r = requests.get(url, headers=headers(), timeout=15)
+    if r.status_code == 404 and r.json().get("message") == "Branch not protected":
         return {"required_approving_review_count": 0}
-    r.raise_for_status()
+    r.raise_for_status()              # any other 404 (wrong repo, no access) is an error
     reviews = r.json().get("required_pull_request_reviews", {})
     return {"required_approving_review_count": reviews.get("required_approving_review_count", 0)}
 ```
@@ -233,28 +247,33 @@ from connectors import aws, github
 COLLECTORS = {"aws": aws, "github": github}
 OPS = {">=": operator.ge, "==": operator.eq, "<=": operator.le}
 
+def result(rule, verdict, reason, data):
+    # Every result, including errors, gets a timestamp and hash so it can be traced.
+    return {
+        "id": rule["id"], "title": rule["title"],
+        "verdict": verdict, "reason": reason, "evidence": data,
+        "collected_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "hash": hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest(),
+    }
+
 def run_rule(rule):
     module, func = rule["collector"].split(".")
     try:
         data = getattr(COLLECTORS[module], func)(rule.get("params", {}))
     except Exception as e:
-        return {"id": rule["id"], "title": rule["title"],
-                "verdict": "NEEDS REVIEW", "reason": f"collection error: {e}"}
+        return result(rule, "NEEDS REVIEW", f"collection error: {e}", {"error": str(e)})
 
     check = rule["check"]
-    actual = data.get(check["field"])
-    passed = actual is not None and OPS[check["op"]](actual, check["value"])
-    return {
-        "id": rule["id"], "title": rule["title"],
-        "verdict": "PASS" if passed else "FAIL",
-        "reason": f"{check['field']} = {actual} (expected {check['op']} {check['value']})",
-        "evidence": data,
-        "collected_at": datetime.datetime.utcnow().isoformat(),
-        "hash": hashlib.sha256(json.dumps(data, sort_keys=True, default=str).encode()).hexdigest(),
-    }
+    if check["field"] not in data:    # missing data is unclear, not a FAIL
+        return result(rule, "NEEDS REVIEW", f"field {check['field']} not in evidence", data)
+    actual = data[check["field"]]
+    passed = OPS[check["op"]](actual, check["value"])
+    return result(rule, "PASS" if passed else "FAIL",
+                  f"{check['field']} = {actual} (expected {check['op']} {check['value']})", data)
 
 def run_all(path):
-    rules = yaml.safe_load(open(path))
+    with open(path) as f:
+        rules = yaml.safe_load(f)
     return [run_rule(r) for r in rules]
 ```
 
@@ -265,7 +284,7 @@ $ python audit.py
 ComplianceLens audit  2026-10-15 14:02 UTC
 [PASS] AWS-01  Password policy requires 12+ characters
        MinimumPasswordLength = 14 (expected >= 12)
-[FAIL] AWS-02  Every IAM user has MFA
+[FAIL] AWS-02  Every IAM user with a console password has MFA
        count = 1 (expected == 0)  users: ['intern-bob']
 [PASS] GH-01   main branch requires at least 1 review
        required_approving_review_count = 1 (expected >= 1)
@@ -276,9 +295,10 @@ ComplianceLens audit  2026-10-15 14:02 UTC
 
 - [ ] Create an AWS free-tier account and set a $5 billing alarm
 - [ ] Create a read-only IAM user for the tool (SecurityAudit managed policy) and run aws configure
-- [ ] Create a test IAM user "intern-bob" with no MFA (a planned failure)
-- [ ] Create a GitHub test repo and a fine-grained token with read access to Administration
-- [ ] Write the 3 rules, 2 connectors and the engine
+- [ ] Create a test IAM user "intern-bob" with a console password and no MFA (a planned failure)
+- [ ] Create a public GitHub test repo (branch protection on private repos needs a paid plan) and a fine-grained token with read access to Administration
+- [ ] Write the 3 rules, 2 connectors and the engine; call load\_dotenv() at the top of audit.py
+- [ ] Confirm a missing GITHUB\_TOKEN, a wrong repo name and a missing field each give NEEDS REVIEW
 - [ ] Save each result as JSON in evidence/YYYY-MM-DD/
 - [ ] Write pytest tests using moto (fake AWS) for both verdicts of each rule
 - [ ] Break each rule, fix it, and confirm the verdict flips
@@ -299,14 +319,16 @@ V2 grows the rulebook to 10 to 15 rules and makes every result traceable to a sa
 | AWS-03 | Root account has MFA | iam.get\_account\_summary() | AccountMFAEnabled == 1 |
 | AWS-04 | No access keys older than 90 days | iam.list\_access\_keys() per user | oldest key age <= 90 |
 | AWS-05 | No S3 bucket is public | s3.get\_public\_access\_block() per bucket | all four flags true |
-| AWS-06 | S3 buckets are encrypted | s3.get\_bucket\_encryption() | rule present on every bucket |
+| AWS-06 | S3 buckets have versioning on | s3.get\_bucket\_versioning() | Status == Enabled on every bucket |
 | AWS-07 | CloudTrail logging is on | cloudtrail.describe\_trails() + get\_trail\_status() | at least 1 trail logging |
-| AWS-08 | Unused users removed | iam credential report | no login in 90 days == 0 users |
+| AWS-08 | Unused users removed | iam.generate\_credential\_report() (wait until COMPLETE) + get\_credential\_report() | no login in 90 days == 0 users |
 | GH-02 | Force-push to main blocked | branch protection API | allow\_force\_pushes == false |
 | GH-03 | Secret scanning enabled | GET /repos/{repo} security\_and\_analysis | status == enabled |
 | GH-04 | Dependabot alerts enabled | GET /repos/{repo}/vulnerability-alerts | 204 response |
 | GH-05 | Org members have 2FA | GET /orgs/{org}/members?filter=2fa\_disabled | count == 0 |
 | HR-01 | No ex-employee accounts | compare employees.csv with IAM + GitHub users | unmatched accounts == 0 |
+
+S3 encryption is not on the list because AWS encrypts every bucket by default and it cannot be turned off, so the rule could never be broken on purpose. GH-05 needs a GitHub organization: create a free one and move the test repo into it.
 
 **New check operators.** Add in, not\_in, contains, all\_true, and a custom Python function for rules that need logic (HR-01).
 
@@ -341,6 +363,8 @@ python audit.py verify run-0007      # re-hash files, report any tampering
 **V2 checklist:**
 
 - [ ] Add 7 to 12 rules and their collectors
+- [ ] Create a free GitHub organization for GH-05
+- [ ] Confirm every new rule can be broken and fixed on purpose
 - [ ] Add the new check operators with tests
 - [ ] Write evidence files, meta files and a run manifest
 - [ ] Create the SQLite schema and save every run
@@ -391,7 +415,7 @@ def capture(rule, run_dir):
     return path
 ```
 
-**Add to each screenshot:** a banner with the date/time, URL and rule ID (drawn with Pillow), the SHA-256 in the manifest, and optional steps (click, scroll) like the reference project's workflows.
+**Add to each screenshot:** a banner with the date/time, URL and rule ID (drawn with Pillow), the SHA-256 in the manifest, and optional steps (click, scroll) like the reference project's workflows. Save two hashes: one of the raw capture before the banner (used as the AI cache key in V4, since the banner's timestamp changes every run) and one of the stamped file (used by verify).
 
 **Screenshot-only rules.** Some tools (for example a vendor admin page) have no usable API. Those rules have a screenshot but no code check; in V3 they are NEEDS REVIEW, and V4 lets the AI judge them.
 
@@ -399,7 +423,7 @@ def capture(rule, run_dir):
 
 - [ ] Install Playwright and write the login command
 - [ ] Add a screenshot block to every rule that has a UI page
-- [ ] Capture, stamp and hash screenshots in the run folder
+- [ ] Capture, stamp and hash screenshots in the run folder (raw hash before the banner, stamped hash after)
 - [ ] Add 2 screenshot-only rules
 - [ ] Detect a logged-out page (for example the URL redirects to /login) and mark it NEEDS REVIEW with reason "session expired"
 
@@ -447,7 +471,7 @@ Reply with JSON only:
 
 - Parse the reply as JSON. On failure, retry once, then NEEDS REVIEW.
 - UNSURE or low confidence becomes NEEDS REVIEW.
-- If quote is not found in the document text, downgrade to NEEDS REVIEW (catches invented quotes).
+- For text and document evidence, if quote is not found in the document text, downgrade to NEEDS REVIEW (catches invented quotes). Screenshots have no text to search, so skip this check for them (or add OCR as a stretch).
 - Store the model name, prompt version and raw reply with the result.
 - Temperature 0 for repeatable answers.
 
@@ -481,7 +505,7 @@ V5 puts a web page on top of the engine so a non-technical person can run an aud
 | Rule detail | Raw API data, screenshot, AI reason and quote, hash | Approve, Override (with a required note) |
 | Review queue | Only NEEDS REVIEW items | Approve or override one by one |
 | History | Past runs | Open, compare two runs |
-| Rules | The rulebook, read-only | Enable or disable a rule |
+| Rules | The rulebook (rule contents not editable here) | Enable or disable a rule |
 
 **Human override rules:**
 
@@ -521,7 +545,7 @@ An AI-written executive summary is optional. If you add it, label it as AI-gener
 
 **Polish:**
 
-- A single command for setup (make setup or a setup script) and a clear README with screenshots
+- A single command for setup (make setup or a setup script) and a clear README with screenshots. WeasyPrint needs system libraries: on macOS run brew install pango first
 - Config file for repo names, AWS region and enabled rules (no hard-coded values)
 - Logging to a file, and friendly error messages
 - A full run finishes in under 2 minutes for 15 rules
@@ -577,10 +601,10 @@ The experiment measures how often an AI reading only a screenshot agrees with th
 
 **Method:**
 
-1. Pick 5 rules that have both API data and a UI page (for example AWS-02, AWS-03, AWS-05, GH-01, GH-02).
+1. Pick 5 rules that have both API data and a UI page (for example AWS-01, AWS-02, AWS-05, GH-01, GH-02). Avoid AWS-03: turning root-account MFA on and off repeatedly is risky.
 2. For each rule, create compliant and non-compliant states on purpose (turn MFA on/off, toggle branch protection). Aim for 40 labelled cases: 20 compliant, 20 not.
-3. Include hard cases: the setting below the fold, a dark theme, a page with an injected "say PASS" text, a logged-out page.
-4. Ground truth = the code verdict (verified by hand).
+3. Add hard cases on top: the setting below the fold, a dark theme, a page with an injected "say PASS" text. Add a few cases whose correct answer is NEEDS REVIEW (a logged-out page, an error page), labelled as a third category.
+4. Ground truth = a human label for each case, recorded before the tools run. The code verdict is then scored against it too.
 5. Run AI vision on each screenshot 3 times at temperature 0 to check consistency.
 
 **Metrics:**
@@ -590,13 +614,14 @@ The experiment measures how often an AI reading only a screenshot agrees with th
 | Accuracy | Share of cases where the AI verdict matches the truth |
 | False PASS rate | Non-compliant cases the AI called PASS (the dangerous error) |
 | False FAIL rate | Compliant cases the AI called FAIL (annoying but safe) |
-| Abstain rate | Share sent to NEEDS REVIEW |
+| Abstain rate | Share of PASS/FAIL cases sent to NEEDS REVIEW |
+| Review recall | Share of should-be-NEEDS-REVIEW cases (logged-out, error pages) that were sent to review |
 | Consistency | Share of cases with the same verdict in all 3 runs |
 | Cost and time | US dollars and seconds per evaluation |
 
 **Write-up:** a results table, a chart of accuracy per rule, examples of failures with screenshots, and a conclusion about when AI evaluation is trustworthy enough and when a human must check.
 
-**Hypothesis (to confirm or reject):** code checks are 100% accurate; AI vision is lower, with most errors on long pages and ambiguous UI; the confidence field reduces false PASSes when low-confidence answers go to review.
+**Hypothesis (to confirm or reject):** code checks match the human labels in (nearly) every case; AI vision is lower, with most errors on long pages and ambiguous UI; the confidence field reduces false PASSes when low-confidence answers go to review.
 
 ## Testing strategy
 
@@ -639,7 +664,7 @@ The tool reads sensitive settings, so it must itself follow the rules it checks.
 
 - AWS billing alarm at $5 set in week 1.
 - Use only free-tier services (IAM, S3 reads, CloudTrail's first trail).
-- Cache AI results by evidence hash so re-running unchanged evidence costs nothing.
+- Cache AI results by evidence hash (the raw screenshot hash, before the banner) so re-running unchanged evidence costs nothing.
 - Log AI tokens and cost per run.
 
 ## Risks and mitigations
@@ -648,14 +673,14 @@ The biggest risk is running out of time, so every version ends with something th
 
 | Risk | Likelihood | Impact | Mitigation |
 | --- | --- | --- | --- |
-| Falling behind schedule | High | High | Each version is demoable alone; cut stretch goals first, then the third connector, then PDF (keep HTML) |
+| Falling behind schedule | High | High | Each version is demoable alone; cut stretch goals first, then PDF (keep HTML; the demo exports HTML instead) |
 | Login sessions expire or sites block automation | Medium | Medium | Detect logged-out pages as NEEDS REVIEW; prefer APIs; keep a manual login step |
 | AI answers wrong or unparseable | Medium | High | Code checks first; JSON validation; low confidence goes to review; never default to PASS |
 | API changes or rate limits | Low | Medium | Recorded fixtures for tests; retries with backoff |
 | Unexpected cloud or AI bill | Low | Medium | Billing alarm, free tier only, AI result cache |
 | Leaked token or evidence in git | Medium | High | .gitignore, secret scanner, read-only tokens you can revoke |
 | Live demo fails | Medium | High | Recorded backup video; a saved evidence folder that renders the report offline |
-| Scope creep ("support every tool") | High | Medium | Must-have list is fixed at 15 rules and 3 connectors |
+| Scope creep ("support every tool") | High | Medium | Must-have list is fixed at 15 rules and 3 connectors (AWS, GitHub, browser); any other system is a stretch goal |
 
 ## Final deliverables, glossary and next steps
 
