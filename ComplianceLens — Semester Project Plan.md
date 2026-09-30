@@ -122,7 +122,38 @@ Rules are data, not code: adding a rule means adding a few lines of YAML, not ne
 
 The finished system is a pipeline: rules go in at the top, and verdicts with evidence come out at the bottom. Each box names the version that builds it.
 
-&#91;embedded content: ComplianceLens architecture · 11 components, version that adds each\]
+```mermaid
+flowchart TD
+    rules["<b>Rulebook (V1)</b><br/>rules/*.yaml, one card per rule"]
+    engine["<b>Rule engine (V1)</b><br/>loads each rule, calls its collector"]
+    aws["<b>AWS connector (V1)</b><br/>boto3, read-only access"]
+    gh["<b>GitHub connector (V1)</b><br/>REST API with a token"]
+    browser["<b>Browser connector (V3)</b><br/>Playwright screenshots"]
+    store["<b>Evidence store (V2)</b><br/>JSON + PNG, timestamp, SHA-256"]
+
+    subgraph evaluator["Evaluator: the first method that fits decides (new vs the reference project)"]
+        direction LR
+        code["<b>Code check (V1)</b><br/>exact, for API data"]
+        ai["<b>AI check (V4)</b><br/>documents and screenshots"]
+        human["<b>Needs human review</b><br/>unclear or low confidence"]
+        code --> ai --> human
+    end
+
+    db["<b>Results database (V2)</b><br/>SQLite: runs, results, overrides"]
+    dash["<b>Web dashboard (V5)</b><br/>run audits, review, override"]
+    report["<b>Audit report (V6)</b><br/>HTML/PDF with evidence hashes"]
+
+    rules --> engine
+    engine --> aws & gh & browser
+    aws & gh & browser --> store
+    store --> evaluator
+    evaluator --> db
+    db --> dash & report
+
+    style evaluator fill:#e3eefb,stroke:#2f6fd6,stroke-width:2px
+```
+
+*ComplianceLens architecture · 11 components, version that adds each*
 
 Connectors only collect and the evaluator only judges, so a new system (for example Okta) needs one new connector and no other changes. The highlighted evaluator is the part the reference project lacks.
 
@@ -153,7 +184,41 @@ The whole project runs in Python with free or near-free services.
 
 The 15-week semester splits into six build versions and a final presentation week. The research experiment runs alongside V4 to V6.
 
-&#91;embedded content: Semester roadmap · 15 weeks, 7 versions\]
+```mermaid
+gantt
+    title Six build versions in 14 weeks, final presentation in week 15
+    dateFormat YYYY-MM-DD
+    axisFormat %b %d
+    tickInterval 1week
+    todayMarker off
+
+    section Build
+    V1 Foundations (wk 1-3)               :v1, 2026-09-28, 3w
+    V2 Rules and evidence store (wk 4-5)  :v2, after v1, 2w
+    V3 Screenshots (wk 6-7)               :v3, after v2, 2w
+    V4 AI evaluation (wk 8-10)            :v4, after v3, 3w
+    V5 Dashboard and review (wk 11-12)    :v5, after v4, 2w
+    V6 Reports and polish (wk 13-14)      :v6, after v5, 2w
+
+    section Present
+    V7 Final presentation (wk 15)         :crit, v7, after v6, 1w
+
+    section Research
+    AI vs code experiment (wk 8-14)       :active, exp, after v3, 7w
+```
+
+*Semester roadmap · 15 weeks, 7 versions. Each version ends with something that works on its own. Dates assume week 1 starts Mon Sep 28, 2026.*
+
+| Version | Weeks | Delivers |
+| --- | --- | --- |
+| V1 Foundations | 1–3 | 3 rules checked by API and code |
+| V2 Rules and evidence store | 4–5 | 15 rules, hashed evidence, SQLite |
+| V3 Screenshots | 6–7 | Playwright proof for each UI rule |
+| V4 AI evaluation | 8–10 | Verdict, reason and confidence |
+| V5 Dashboard and review | 11–12 | A non-builder can run and review |
+| V6 Reports and polish | 13–14 | PDF report, tests, rehearsed demo |
+| V7 Final presentation | 15 | Live demo and experiment results |
+| Research experiment | 8–14 | AI vs code accuracy, 40 cases |
 
 If a version runs late, keep its "done when" goal and cut from the stretch list, never from the next version's core.
 
