@@ -1,0 +1,49 @@
+# ComplianceLens CI: lint + tests on GitHub whenever compliance-lens/ changes.
+# Tests use fake AWS (moto) and recorded GitHub replies, so no secrets are needed.
+name: ComplianceLens CI
+
+on:
+  push:
+    paths:
+      - "compliance-lens/**"
+      - ".github/workflows/compliancelens-ci.yml"
+  pull_request:
+    paths:
+      - "compliance-lens/**"
+      - ".github/workflows/compliancelens-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: compliance-lens
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7.0.1
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: compliance-lens/requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e .
+
+      - name: Lint (ruff)
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Tests with coverage (must stay >= 70%)
+        run: pytest --cov

@@ -1,0 +1,29 @@
+# ComplianceLens starter rulebook (V1): 3 rules.
+# How to write a rule card: see rules/README.md.
+#
+# Each rule can be broken and fixed on purpose: see scripts/README.md.
+
+- id: AWS-01
+  title: Password policy requires 12+ characters
+  framework_ref: CIS AWS 1.8
+  severity: medium
+  collector: aws.password_policy
+  params: {}
+  check: { field: MinimumPasswordLength, op: ">=", value: 12 }
+
+- id: AWS-02
+  title: Every IAM user with a console password has MFA
+  framework_ref: CIS AWS 1.10
+  severity: high
+  collector: aws.users_without_mfa
+  params: {}
+  check: { field: count, op: "==", value: 0 }
+
+- id: GH-01
+  title: main branch requires at least 1 review
+  framework_ref: CIS GitHub 1.1.3
+  severity: high
+  collector: github.branch_protection
+  # TODO: replace with your public test repo, e.g. "your-username/compliancelens-test"
+  params: { repo: "your-username/your-repo", branch: main }
+  check: { field: required_approving_review_count, op: ">=", value: 1 }

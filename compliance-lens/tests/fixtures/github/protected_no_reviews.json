@@ -1,0 +1,9 @@
+{
+  "url": "https://api.github.com/repos/your-username/your-repo/branches/main/protection",
+  "enforce_admins": {
+    "url": "https://api.github.com/repos/your-username/your-repo/branches/main/protection/enforce_admins",
+    "enabled": false
+  },
+  "allow_force_pushes": { "enabled": false },
+  "allow_deletions": { "enabled": false }
+}

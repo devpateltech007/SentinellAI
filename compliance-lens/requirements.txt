@@ -1,0 +1,9 @@
+# Runtime libraries: what the tool needs to run an audit.
+# Pinned to exact versions so every machine gets the same setup.
+# pyproject.toml reads this file, so this is the single source of truth.
+# Later versions add: typer (V2), playwright + pillow (V3), an AI SDK (V4),
+# streamlit (V5), jinja2 + weasyprint (V6).
+boto3==1.43.106
+python-dotenv==1.2.3
+pyyaml==6.0.3
+requests==2.34.2

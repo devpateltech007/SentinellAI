@@ -1,0 +1,22 @@
+# Git hooks that run before every commit (https://pre-commit.com).
+# Turn them on once per clone:  cd compliance-lens && make setup
+# (or: pip install pre-commit && pre-commit install)
+# Run them by hand on every file:  pre-commit run --all-files
+
+repos:
+  # Secret scanner for the WHOLE repo: blocks a commit that contains
+  # something that looks like a token, key or password.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # Python lint + format, only for the ComplianceLens project folder.
+  # Settings come from compliance-lens/pyproject.toml.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.9
+    hooks:
+      - id: ruff-check
+        files: ^compliance-lens/
+      - id: ruff-format
+        files: ^compliance-lens/
