@@ -1,0 +1,52 @@
+# ComplianceLens .gitignore
+# Rule of thumb: secrets, generated output and local tooling never go into git.
+
+# --- Secrets -------------------------------------------------------------
+# Real tokens and passwords live in .env. Only .env.example is committed.
+.env
+.env.*
+!.env.example
+
+# --- Python and tooling caches -------------------------------------------
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Generated output (keep each folder's README) ------------------------
+# Evidence can contain account names, emails and settings: keep it local.
+evidence/*
+!evidence/README.md
+
+# Saved browser logins (V3) are as sensitive as passwords.
+sessions/*
+!sessions/README.md
+
+# Generated audit reports (V6).
+reports/*
+!reports/README.md
+
+# Raw experiment screenshots and results (V4-V6).
+experiment/data/
+
+# Results database (V2).
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Logs ------------------------------------------------------------------
+*.log
+logs/
+
+# --- OS and editor junk ------------------------------------------------------
+.DS_Store
+.vscode/
+.idea/

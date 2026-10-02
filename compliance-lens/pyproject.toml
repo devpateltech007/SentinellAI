@@ -1,0 +1,47 @@
+# pyproject.toml: package info plus settings for ruff, pytest and coverage.
+# Exact dependency versions live in requirements.txt (runtime) and
+# requirements-dev.txt (dev tools).
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compliancelens"
+description = "Checks security rules across AWS and GitHub, collects evidence, and decides PASS, FAIL or NEEDS REVIEW."
+readme = "README.md"
+requires-python = ">=3.11"
+dynamic = ["version", "dependencies"]
+
+[tool.setuptools.dynamic]
+version = { attr = "compliancelens.__version__" }
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["compliancelens*"]
+
+# ---------------------------------------------------------------- ruff ----
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+# E/W: style errors, F: real bugs (unused names etc.), I: import order,
+# B: common bug patterns, UP: modern Python syntax, SIM: simpler code.
+select = ["E", "W", "F", "I", "B", "UP", "SIM"]
+ignore = [
+    "B904",  # `raise ... from err` inside except: optional for this project
+]
+
+# -------------------------------------------------------------- pytest ----
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+# ------------------------------------------------------------ coverage ----
+[tool.coverage.run]
+source = ["compliancelens"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true

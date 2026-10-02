@@ -1,0 +1,10 @@
+# Developer libraries: testing, linting and git hooks.
+# Installs everything in requirements.txt first.
+-r requirements.txt
+
+moto[iam]==5.2.3        # fake AWS for tests
+pre-commit==4.6.2       # runs gitleaks + ruff before each commit
+pytest==9.1.1           # test runner
+pytest-cov==7.1.0       # test coverage (target: 70%+)
+responses==0.26.3       # fake HTTP responses for GitHub tests
+ruff==0.16.9            # linter and formatter
