@@ -3,8 +3,8 @@
 Tracks what has been done against [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md).
 Update it whenever a checklist item is finished: tick the box, add a line to the log.
 
-**Current version:** V1 Foundations (weeks 1–3, started Mon Sep 28, 2026)
-**Current branch:** `compliancelens/v1-foundations` (pushed, not merged yet)
+**Current version:** V1 Foundations ✅ complete (tagged `v1.0`). Next: V2 Rules and evidence store (weeks 4–5)
+**Current branch:** `main` (V1 merged in PR #6)
 **Last updated:** Oct 1, 2026 (week 1)
 
 Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
@@ -14,7 +14,7 @@ Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 | Version | Weeks | Status | Notes |
 | --- | --- | --- | --- |
 | Repo setup | 1 | ✅ | `compliance-lens/` folder, tooling, hooks, CI (passing) |
-| V1 Foundations | 1–3 | 🟡 | Code, tests, accounts and first real audit done; GH-01 break-and-fix left |
+| V1 Foundations | 1–3 | ✅ | Done in week 1, ahead of schedule. Tagged `v1.0` |
 | V2 Rules and evidence store | 4–5 | ⬜ | Folders ready: `compliancelens/storage/` |
 | V3 Screenshots | 6–7 | ⬜ | Folders ready: `sessions/` |
 | V4 AI evaluation | 8–10 | ⬜ | Folders ready: `compliancelens/evaluator/`, `policies/` |
@@ -36,13 +36,13 @@ Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 - [x] GitHub Actions CI at the repo root: lint + tests when `compliance-lens/` changes
 - [x] Commit and push `compliancelens/v1-foundations`
 - [x] CI passes on GitHub (first run, Oct 1)
-- [ ] Open and merge the PR for `compliancelens/v1-foundations`
+- [x] Open and merge the PR for `compliancelens/v1-foundations` (PR #6)
 
-## V1 Foundations 🟡
+## V1 Foundations ✅
 
 Checklist from the plan:
 
-- [ ] Create an AWS free-tier account and set a $5 billing alarm (account exists; billing alarm not confirmed yet)
+- [x] Create an AWS free-tier account and set a $5 billing alarm (`compliancelens-5usd`, confirmed Oct 1)
 - [x] Create a read-only IAM user for the tool: `compliancelens-audit` with SecurityAudit + SignInLocalDevelopmentAccess, console password and MFA, no access keys. The CLI signs in with `aws login --profile compliancelens`.
 - [x] Create test IAM user `intern-bob` with a console password and no MFA (planned failure)
 - [x] Set the IAM password policy: minimum length 14, all four character types
@@ -54,14 +54,14 @@ Checklist from the plan:
 - [x] pytest tests using moto (fake AWS) for both verdicts of each rule
 - [x] Point GH-01 at `neels22/compliancelens-test` in `rules/starter_rules.yaml`
 - [x] First real audit with correct verdicts for all 3 rules (Oct 1)
-- [ ] Break each rule, fix it, and confirm the verdict flips: AWS-01 ✅ and AWS-02 ✅ flipped during setup; GH-01 still to do
+- [x] Break each rule, fix it, and confirm the verdict flips: AWS-01 ✅, AWS-02 ✅, GH-01 ✅ (Oct 1)
 - [x] README with setup steps (`compliance-lens/README.md`)
 
 **Done when:** `python audit.py` prints correct verdicts for all 3 rules, and an error in any
 connector shows NEEDS REVIEW, not a crash.
 - Error handling part: ✅ verified (no credentials → 3 × NEEDS REVIEW, no crash)
 - Correct real verdicts: ✅ first real audit on Oct 1 gave 2 PASS, 1 FAIL, 0 NEEDS REVIEW (as expected)
-- Last step: ⬜ GH-01 break-and-fix
+- Break-and-fix: ✅ all 3 rules flipped as expected (see table below)
 
 **First real audit (Oct 1, 2026):**
 
@@ -81,7 +81,7 @@ connector shows NEEDS REVIEW, not a crash.
 | --- | --- | --- | --- | --- |
 | AWS-01 Password policy 12+ chars | `aws.password_policy` | `MinimumPasswordLength >= 12` | ✅ | ✅ FAIL → PASS |
 | AWS-02 Console users have MFA | `aws.users_without_mfa` | `count == 0` | ✅ | ✅ PASS → FAIL |
-| GH-01 main needs 1 review | `github.branch_protection` | `required_approving_review_count >= 1` | ✅ | ✅ PASS (flip not tested yet) |
+| GH-01 main needs 1 review | `github.branch_protection` | `required_approving_review_count >= 1` | ✅ | ✅ PASS → FAIL → PASS |
 
 Tests: 55 passing, 98.7% coverage (target 70%).
 
@@ -168,9 +168,10 @@ Undo each change afterwards (and run `aws login ...` again).
 - [x] Create the AWS read-only IAM user and the test user `intern-bob`
 - [x] Create the GitHub test repo and token
 - [x] Run all 3 rules end to end against the real accounts
-- [ ] Confirm the $5 AWS billing alarm exists (Billing and Cost Management → Budgets)
-- [ ] GH-01 break-and-fix
-- [ ] Open and merge the V1 PR, then tag `v1.0`
+- [x] Confirm the $5 AWS billing alarm exists (Billing and Cost Management → Budgets)
+- [x] GH-01 break-and-fix
+- [x] Open and merge the V1 PR, then tag `v1.0`
+- [ ] Start V2: add 7 to 12 rules, run folders with manifest + hashes, SQLite history, `verify` command
 - [ ] Confirm the assumptions in the Overview (Python, company tools, personal test accounts)
 
 ## Final deliverables (week 15)
@@ -188,6 +189,7 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-10-01 | 1 | **V1 complete.** $5 billing alarm confirmed (`compliancelens-5usd`). GH-01 break-and-fix: PASS → FAIL (PR requirement off) → PASS (back on, 1 approval). All 3 rules flipped as expected. V1 merged (PR #6) and tagged `v1.0`. |
 | 2026-10-01 | 1 | AWS: `compliancelens-audit` (SecurityAudit, MFA, `aws login`, no keys), `intern-bob` (no MFA), password policy 14. GitHub: public test repo with classic protection on `main`, fine-grained read-only token. Added `boto3[crt]` (needed for `aws login`). First real audit: 2 PASS, 1 FAIL, 0 NEEDS REVIEW, as expected. Added "How to test V1". |
 | 2026-10-01 | 1 | Committed and pushed `compliancelens/v1-foundations`; CI passed on GitHub. |
 | 2026-09-30 | 1 | Repo setup: `compliance-lens/` skeleton, V1 code (engine, AWS + GitHub connectors, CLI, evidence JSON), 3 starter rules, 55 tests, pre-commit + CI. |
