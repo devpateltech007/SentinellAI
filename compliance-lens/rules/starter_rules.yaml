@@ -78,28 +78,28 @@
   framework_ref: CIS GitHub 1.1.3
   severity: high
   collector: github.branch_protection
-  params: { repo: "neels22/compliancelens-test", branch: main }
+  params: { repo: "compliancelens-lab-sjsu/compliancelens-test", branch: main }
   check: { field: required_approving_review_count, op: ">=", value: 1 }
 
 - id: GH-02
   title: Force pushes to main are blocked
   severity: high
   collector: github.force_push_protection
-  params: { repo: "neels22/compliancelens-test", branch: main }
+  params: { repo: "compliancelens-lab-sjsu/compliancelens-test", branch: main }
   check: { field: allow_force_pushes, op: "==", value: false }
 
 - id: GH-03
   title: Secret scanning is enabled
   severity: medium
   collector: github.secret_scanning
-  params: { repo: "neels22/compliancelens-test" }
+  params: { repo: "compliancelens-lab-sjsu/compliancelens-test" }
   check: { field: secret_scanning, op: in, value: [enabled] }
 
 - id: GH-04
   title: Dependabot alerts are enabled
   severity: medium
   collector: github.dependabot_alerts
-  params: { repo: "neels22/compliancelens-test" }
+  params: { repo: "compliancelens-lab-sjsu/compliancelens-test" }
   check: { field: dependabot_alerts, op: "==", value: true }
 
 - id: GH-05
