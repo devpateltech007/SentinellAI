@@ -1,0 +1,9 @@
+{
+  "url": "https://api.github.com/repos/your-org/your-repo/branches/main/protection",
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1
+  },
+  "enforce_admins": { "enabled": false },
+  "allow_force_pushes": { "enabled": true },
+  "allow_deletions": { "enabled": false }
+}

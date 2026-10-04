@@ -2,7 +2,7 @@
 # Installs everything in requirements.txt first.
 -r requirements.txt
 
-moto[iam]==5.2.3        # fake AWS for tests
+moto[iam,s3]==5.2.3     # fake AWS for tests (IAM, S3; CloudTrail needs no extra)
 pre-commit==4.6.2       # runs gitleaks + ruff before each commit
 pytest==9.1.1           # test runner
 pytest-cov==7.1.0       # test coverage (target: 70%+)

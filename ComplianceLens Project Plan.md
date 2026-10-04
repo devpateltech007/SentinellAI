@@ -13,7 +13,7 @@ ComplianceLens is a 15-week project to build a tool that checks a company's secu
 **The final demo (week 15):**
 
 1. Open the web dashboard and click Run Audit.
-2. The tool checks 10 to 15 rules across AWS and GitHub (plus a third system if the stretch connector is done).
+2. The tool checks about 19 rules across AWS, GitHub and an HR employee list (plus a third system if the stretch connector is done).
 3. The dashboard shows the score, for example 11 PASS, 2 FAIL, 2 NEEDS REVIEW.
 4. Click a failed rule to see the raw data, the screenshot and the reason it failed.
 5. A reviewer approves or overrides the uncertain results.
@@ -49,7 +49,7 @@ The project is done when all must-haves work end to end in a live demo; nice-to-
 | Must-have | Rules written as YAML files (rule cards) | V1 |
 | Must-have | AWS and GitHub API connectors | V1 |
 | Must-have | Code-based evaluation of API data | V1 |
-| Must-have | 10 to 15 rules | V2 |
+| Must-have | At least 10 rules (14 in V2, about 19 by V4) | V2 |
 | Must-have | Evidence saved with timestamp and SHA-256 hash | V2 |
 | Must-have | Results history in SQLite | V2 |
 | Must-have | Browser screenshot connector (Playwright) | V3 |
@@ -212,7 +212,7 @@ gantt
 | Version | Weeks | Delivers |
 | --- | --- | --- |
 | V1 Foundations | 1–3 | 3 rules checked by API and code |
-| V2 Rules and evidence store | 4–5 | 15 rules, hashed evidence, SQLite |
+| V2 Rules and evidence store | 4–5 | 14 rules, hashed evidence, SQLite |
 | V3 Screenshots | 6–7 | Playwright proof for each UI rule |
 | V4 AI evaluation | 8–10 | Verdict, reason and confidence |
 | V5 Dashboard and review | 11–12 | A non-builder can run and review |
@@ -375,9 +375,9 @@ ComplianceLens audit  2026-10-15 14:02 UTC
 
 ## Version 2: More rules and a trustworthy evidence store (weeks 4 to 5)
 
-V2 grows the rulebook to 10 to 15 rules and makes every result traceable to a saved, tamper-evident evidence file.
+V2 grows the rulebook to 14 rules and makes every result traceable to a saved, tamper-evident evidence file.
 
-**Rules to add (pick 7 to 12):**
+**Rules to add (all 11 were added, for 14 in total):**
 
 | ID | Rule | Collect | Check |
 | --- | --- | --- | --- |
@@ -394,6 +394,8 @@ V2 grows the rulebook to 10 to 15 rules and makes every result traceable to a sa
 | HR-01 | No ex-employee accounts | compare employees.csv with IAM + GitHub users | unmatched accounts == 0 |
 
 S3 encryption is not on the list because AWS encrypts every bucket by default and it cannot be turned off, so the rule could never be broken on purpose. GH-05 needs a GitHub organization: create a free one and move the test repo into it.
+
+**Rule count decision (Oct 2026):** all 11 rules above were added in V2, for 14 in total. V3 adds 2 screenshot-only rules and V4 adds 3 document rules, so the rulebook reaches about 19. The cap was raised from 15 to about 19 to match.
 
 **New check operators.** Add in, not\_in, contains, all\_true, and a custom Python function for rules that need logic (HR-01).
 
@@ -427,7 +429,7 @@ python audit.py verify run-0007      # re-hash files, report any tampering
 
 **V2 checklist:**
 
-- [ ] Add 7 to 12 rules and their collectors
+- [ ] Add the 11 rules and their collectors
 - [ ] Create a free GitHub organization for GH-05
 - [ ] Confirm every new rule can be broken and fixed on purpose
 - [ ] Add the new check operators with tests
@@ -613,7 +615,7 @@ An AI-written executive summary is optional. If you add it, label it as AI-gener
 - A single command for setup (make setup or a setup script) and a clear README with screenshots. WeasyPrint needs system libraries: on macOS run brew install pango first
 - Config file for repo names, AWS region and enabled rules (no hard-coded values)
 - Logging to a file, and friendly error messages
-- A full run finishes in under 2 minutes for 15 rules
+- A full run finishes in under 2 minutes for all rules (about 19)
 
 **Tests to finish:**
 
@@ -745,7 +747,7 @@ The biggest risk is running out of time, so every version ends with something th
 | Unexpected cloud or AI bill | Low | Medium | Billing alarm, free tier only, AI result cache |
 | Leaked token or evidence in git | Medium | High | .gitignore, secret scanner, read-only tokens you can revoke |
 | Live demo fails | Medium | High | Recorded backup video; a saved evidence folder that renders the report offline |
-| Scope creep ("support every tool") | High | Medium | Must-have list is fixed at 15 rules and 3 connectors (AWS, GitHub, browser); any other system is a stretch goal |
+| Scope creep ("support every tool") | High | Medium | Must-have list is fixed at about 19 rules (14 API rules from V2, 2 screenshot rules from V3, 3 document rules from V4) and 3 connectors (AWS, GitHub, browser) plus the local HR list; any other system is a stretch goal |
 
 ## Final deliverables, glossary and next steps
 
@@ -754,7 +756,7 @@ At the end of week 15 the project hands in six things.
 **Final deliverables:**
 
 - [ ] Source code on GitHub with a README, setup steps and a tagged release per version (v1.0 to v6.0)
-- [ ] Rulebook of 10 to 15 rules across at least 2 systems (3 with the stretch connector)
+- [ ] Rulebook of about 19 rules (at least 10) across at least 2 systems (3 with the stretch connector)
 - [ ] Working dashboard and a sample PDF audit report
 - [ ] Research experiment write-up with results table and charts
 - [ ] Final presentation slides and a 5-minute recorded demo video
