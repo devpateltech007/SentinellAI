@@ -1,0 +1,5 @@
+{
+  "message": "Vulnerability alerts are disabled.",
+  "documentation_url": "https://docs.github.com/rest/repos/repos#check-if-vulnerability-alerts-are-enabled-for-a-repository",
+  "status": "404"
+}

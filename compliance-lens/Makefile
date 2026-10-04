@@ -6,7 +6,7 @@ VENV   := .venv
 BIN    := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format audit clean
+.PHONY: help setup test lint format audit history verify clean
 
 help:  ## Show this list
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
@@ -31,8 +31,15 @@ format:  ## Fix code style automatically
 	$(BIN)/ruff check --fix .
 	$(BIN)/ruff format .
 
-audit:  ## Run a compliance audit
-	$(BIN)/python audit.py
+audit:  ## Run a compliance audit (all rules)
+	$(BIN)/python audit.py run
+
+history:  ## Show past audit runs
+	$(BIN)/python audit.py history
+
+verify:  ## Check a run's evidence: make verify RUN=run-0007
+	@if [ -z "$(RUN)" ]; then echo "Usage: make verify RUN=run-0007"; exit 2; fi
+	$(BIN)/python audit.py verify $(RUN)
 
 clean:  ## Delete caches and the virtual environment (keeps evidence)
 	rm -rf $(VENV) .pytest_cache .ruff_cache .coverage htmlcov build dist *.egg-info

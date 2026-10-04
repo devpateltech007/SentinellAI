@@ -1,0 +1,5 @@
+employee_id,name,email,status,aws_username,github_login
+E001,Alex Example,alex@example.com,active,alex-admin,Alex-Example
+E002,Bob Intern,bob@example.com,active,intern-bob,
+E003,Casey Former,casey@example.com,terminated,casey-old,casey-former
+E004,Dana Leave,dana@example.com,on_leave,,dana-leave

@@ -37,10 +37,18 @@ reports/*
 # Raw experiment screenshots and results (V4-V6).
 experiment/data/
 
-# Results database (V2).
+# Results database (V2), plus SQLite's journal and write-ahead files.
 *.db
+*.db-journal
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
+
+# Real employee list for HR-01 (V2): names and emails. Only the example is committed.
+data/*
+!data/README.md
+!data/employees.example.csv
 
 # --- Logs ------------------------------------------------------------------
 *.log
