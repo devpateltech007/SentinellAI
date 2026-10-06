@@ -95,13 +95,15 @@ duplicate IDs, a missing title, an unknown collector, operator or custom check.
 | ID | Rule | Evidence | Verdict |
 | --- | --- | --- | --- |
 | GH-06 | Base repository permission is Read or None | Screenshot of Member privileges | Always NEEDS REVIEW until V4 |
-| GH-07 | Members cannot create public repositories | Screenshot of Member privileges | Always NEEDS REVIEW until V4 |
+| GH-07 | Members cannot delete or transfer repositories | Screenshot of Member privileges | Always NEEDS REVIEW until V4 |
 
 Screenshots: AWS-01 (IAM account settings), AWS-02/04/08 (IAM users list), AWS-03 (IAM
 dashboard), AWS-05/06 (the test bucket's Permissions/Properties), AWS-07 (CloudTrail
 trails), GH-01/02 (the `main` branch protection rule), GH-03/04 (Code security), GH-05
-(People, 2FA filter), GH-06/07 (Member privileges). Both new rules have an API too; they
-are screenshot-only on purpose, so V4 can score the AI against the true answer.
+(People, 2FA filter), GH-06/07 (Member privileges). GH-06's setting is also in GitHub's
+API; it is screenshot-only on purpose, so V4 can score the AI against the true answer.
+GH-07 was first "members cannot create public repositories", but only GitHub Enterprise
+Cloud can turn that off, so a free organization could never be compliant.
 
 Notes:
 - AWS-04 counts only **active** keys. AWS-08 measures a user who never signed in from the

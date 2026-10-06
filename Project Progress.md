@@ -172,7 +172,7 @@ Plan reviewed Oct 5 (V3 plan + review of it). Decisions:
 | # | Decision |
 | --- | --- |
 | D1 | A screenshot problem **never changes an API rule's verdict**. It is saved as a screenshot status, printed under the rule, and summed up with the fix (`python audit.py login aws`). Reason: AWS console logins end after 12 hours; turning verdicts into NEEDS REVIEW would hide AWS-02's planned FAIL. Screenshot-only rules are always NEEDS REVIEW. |
-| D2 | The 2 screenshot-only rules: **GH-06** base repository permission is Read or None, **GH-07** members cannot create public repositories (org → Settings → Member privileges). Both have an API, so V4 can score the AI against the true answer. |
+| D2 | The 2 screenshot-only rules: **GH-06** base repository permission is Read or None, **GH-07** members cannot delete or transfer repositories (org → Settings → Member privileges). GH-06 is also in the API, so V4 can score the AI against the true answer. Changed Oct 6: GH-07 was "members cannot create public repositories", but only GitHub Enterprise Cloud can turn that off, so the free org could never be compliant. |
 | D3 | The browser logs in to GitHub as **`neels22`** (no bot account). Risk written down: `sessions/github.json` is a full login to the account and all its repos. |
 | D4 | **One screenshot per rule.** AWS-05/AWS-06 show the test bucket only; the API JSON covers every bucket. |
 | D5 | GH-06 and GH-07 are severity **medium**. Screenshot-only results use `method: screenshot` (not `human`: nobody has judged them). |
@@ -197,7 +197,8 @@ Also done in code:
 
 Live checks (you, with me):
 - [ ] Tell me the MFA type for `neels22` and `compliancelens-audit` (app code works best)
-- [ ] GH-06/GH-07 compliant: base permission **Read**, **Public** repository creation off
+- [x] GH-06 compliant: base permission **Read** (Oct 6)
+- [ ] GH-07 compliant: **Allow members to delete or transfer repositories** unticked
 - [ ] `make login SITE=github`, `make login SITE=aws` (as `compliancelens-audit`), then a new process reuses both
 - [ ] Fix the page locators on the real pages, one rule at a time (`python audit.py run --rule GH-01`), and check every picture shows the value the code judged
 - [ ] First real V3 audit: 13 PASS, 1 FAIL (AWS-02), 2 NEEDS REVIEW (GH-06, GH-07), 15 screenshots; `verify` OK for 47 files
@@ -452,6 +453,7 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-10-06 | 2 | V3 merged (PR #10, CI green). Live setup started: GH-06 base permission is Read. Found GH-07's "Public" repository creation can't be turned off on a free organization (GitHub Enterprise Cloud only), so GH-07 is now "members cannot delete or transfer repositories" (same page). |
 | 2026-10-05 | 2 | **V3 code done.** V2 closed for now (live break-and-fix moved to "V2 leftovers"; `v2.0` tag after them). Reviewed the V3 plan; decisions D1–D5 (screenshot problems never change API verdicts; GH-06/GH-07 screenshot-only; GitHub login as `neels22`; one screenshot per rule). Built `connectors/browser.py` (`login`, saved sessions `0600`, logged-out/MFA/no-access detection, read-only steps), banner stamping with raw + stamped SHA-256, PNGs in manifest/database/verify, SQLite schema 2 with a backed-up upgrade, `run --no-screenshots`, 16 rules (screenshot blocks on 13 + GH-06, GH-07), CI installs Chromium, version 0.3.0. 527 tests (fake local website for the browser), 100% coverage. Live logins and page checks still to do. |
 | 2026-10-04 | 1 | **V2 merged and live.** PR #8 merged. Set up the S3 test bucket, CloudTrail trail (versioning on its log bucket), GitHub org `compliancelens-lab-sjsu` with the test repo and an org-owned token, and the local employee list. First real V2 audit (`run-0001`): 13 PASS, 1 FAIL (AWS-02, `intern-bob`), 0 NEEDS REVIEW, as expected. `verify` OK; tamper test caught an edited `AWS-02.json`. Left: live break-and-fix, tag `v2.0`. |
 | 2026-10-03 | 1 | **V2 code done.** Reviewed the V2 plan, then built it: 11 new rules (14 total), operators `in`/`not_in`/`contains`/`all_true` + allowlisted custom checks, confidence on every result, GitHub request helper (pagination, rate-limit retries), AWS retries and paginators, HR connector + example CSV, per-run evidence folders with meta files and a manifest, SQLite history (`runs`, `results`, `overrides`), `run`/`history`/`verify` CLI (Typer), version 0.2.0. Project Plan rule cap raised to about 19. 316 tests, 100% coverage. Live setup and checks still to do. |

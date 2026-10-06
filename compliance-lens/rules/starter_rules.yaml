@@ -210,14 +210,14 @@
     wait_for: { role: heading, name: "Base permissions" }
 
 - id: GH-07
-  title: Members cannot create public repositories
+  title: Members cannot delete or transfer repositories
   severity: medium
-  screenshot:
+  screenshot:   # compliant: "Allow members to delete or transfer repositories" unticked
     site: github
     url: "https://github.com/organizations/{org}/settings/member_privileges"
-    wait_for: { role: heading, name: "Repository creation" }
+    wait_for: { text: "Repository deletion and transfer" }
     steps:
-      - scroll_to: { role: heading, name: "Repository creation" }
+      - scroll_to: { text: "Repository deletion and transfer" }
 
 # --- HR ----------------------------------------------------------------------
 

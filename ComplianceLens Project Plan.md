@@ -486,7 +486,7 @@ def capture(rule, run_dir):
 
 **Screenshot-only rules.** Some tools (for example a vendor admin page) have no usable API. Those rules have a screenshot but no code check; in V3 they are NEEDS REVIEW, and V4 lets the AI judge them.
 
-**Screenshot decisions (Oct 2026):** the 2 screenshot-only rules are GH-06 (organization base repository permission is Read or None) and GH-07 (members cannot create public repositories), both on the organization's Member privileges page. GitHub has an API for them too; it is not used for the verdict, only as the true answer when V4's AI is scored. A screenshot problem (for example an AWS console login, which ends after 12 hours) is reported with the result but never changes an API rule's verdict: the API data is the proof, the screenshot is for people.
+**Screenshot decisions (Oct 2026):** the 2 screenshot-only rules are GH-06 (organization base repository permission is Read or None) and GH-07 (members cannot delete or transfer repositories), both on the organization's Member privileges page. GitHub's API also shows the base permission; it is not used for the verdict, only as the true answer when V4's AI is scored. GH-07 was first "members cannot create public repositories", but only GitHub Enterprise Cloud organizations can turn that off. A screenshot problem (for example an AWS console login, which ends after 12 hours) is reported with the result but never changes an API rule's verdict: the API data is the proof, the screenshot is for people.
 
 **V3 checklist:**
 

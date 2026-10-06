@@ -177,12 +177,14 @@ Run `python audit.py run --rule GH-06` after each step and open `GH-06.png`. The
 `raw_sha256` in `GH-06.meta.json` changes with the picture. The verdict can't change
 until V4 adds AI checks.
 
-## GH-07: Members cannot create public repositories (screenshot-only)
+## GH-07: Members cannot delete or transfer repositories (screenshot-only)
 
 | Step | Do this | Expected |
 | --- | --- | --- |
-| Break | Member privileges → Repository creation → tick **Public** → Save | NEEDS REVIEW; the picture shows Public ticked |
-| Fix | Untick **Public** → Save | NEEDS REVIEW; the picture shows it unticked |
+| Break | Member privileges → Repository deletion and transfer → tick **Allow members to delete or transfer repositories** → Save | NEEDS REVIEW; the picture shows it ticked |
+| Fix | Untick it → Save | NEEDS REVIEW; the picture shows it unticked |
+
+Only the organization's members are affected; owners can always delete and transfer.
 
 ## HR-01: Every AWS and GitHub account belongs to an active employee
 
