@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="test-user" content="tester"><title>Slow</title></head>
+<body><h1>Slow page</h1>
+<script>
+  setTimeout(function () {
+    var heading = document.createElement("h2");
+    heading.textContent = "Loaded later";
+    document.body.appendChild(heading);
+  }, 300);
+</script></body></html>

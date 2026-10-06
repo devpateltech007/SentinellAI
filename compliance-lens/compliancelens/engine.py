@@ -2,6 +2,10 @@
 
 Verdicts are PASS, FAIL or NEEDS REVIEW. Any error or unclear data becomes
 NEEDS REVIEW with a reason. Nothing ever defaults to PASS.
+
+A screenshot-only rule (V3) has a `screenshot` block but no collector and no
+check. Code can't judge it, so it is NEEDS REVIEW until the AI checks of V4.
+The screenshots themselves are taken by the runner (see connectors/browser.py).
 """
 
 import datetime
@@ -11,13 +15,17 @@ from pathlib import Path
 
 import yaml
 
-from compliancelens.connectors import aws, github, hr
+from compliancelens.connectors import aws, browser, github, hr
 
 PASS, FAIL, NEEDS_REVIEW = "PASS", "FAIL", "NEEDS REVIEW"
 HIGH, LOW = "high", "low"
+# How a verdict was reached. V4 adds "ai-text" and "ai-vision"; human decisions are
+# overrides (V5). "screenshot" means: a screenshot was the only evidence, nobody judged it.
+CODE, SCREENSHOT = "code", "screenshot"
 
 # Rule cards name a collector as "<system>.<function>", e.g. "aws.users_without_mfa".
 # To add a system: write connectors/<system>.py and register it here.
+# The browser connector is deliberately not here: rule cards can't call it.
 COLLECTORS = {"aws": aws, "github": github, "hr": hr}
 
 # Rule IDs become evidence file names, so keep them to safe characters.
@@ -119,7 +127,7 @@ CUSTOM_CHECKS = {"no_unmatched_accounts": _no_unmatched_accounts}
 # ---------------------------------------------------------------- engine ----
 
 
-def result(rule: dict, verdict: str, reason: str, data) -> dict:
+def result(rule: dict, verdict: str, reason: str, data, method: str = CODE) -> dict:
     """Build one result. Every result, including errors, gets a timestamp.
 
     Confidence is high for an exact code check and low when the data was unclear.
@@ -131,7 +139,7 @@ def result(rule: dict, verdict: str, reason: str, data) -> dict:
         "severity": rule.get("severity"),
         "collector": rule.get("collector"),
         "verdict": verdict,
-        "method": "code",
+        "method": method,
         "confidence": HIGH if verdict in (PASS, FAIL) else LOW,
         "reason": reason,
         "evidence": data,
@@ -212,8 +220,20 @@ def _judge(rule: dict, data: dict) -> dict:
     return result(rule, PASS if passed else FAIL, reason, data)
 
 
+def is_screenshot_only(rule: dict) -> bool:
+    """A rule judged only from its screenshot: no collector, no check (V3)."""
+    return (
+        rule.get("collector") is None
+        and rule.get("check") is None
+        and rule.get("screenshot") is not None
+    )
+
+
 def run_rule(rule: dict) -> dict:
     """Collect evidence for one rule and judge it. Never raises."""
+    if is_screenshot_only(rule):
+        reason = "screenshot-only rule: needs human review until AI checks are added (V4)"
+        return result(rule, NEEDS_REVIEW, reason, {"screenshot_only": True}, method=SCREENSHOT)
     try:
         data, error = _collect(rule)
         return error or _judge(rule, data)
@@ -273,15 +293,18 @@ def validate_rules(rules: list[dict]) -> list[str]:
         seen.add(rule_id)
         if not rule.get("title"):
             problems.append(f"{where}: missing title")
-        try:
-            get_collector(rule.get("collector"))
-        except ValueError as e:
-            problems.append(f"{where}: {e}")
         if not isinstance(rule.get("params", {}), dict):
             problems.append(f"{where}: params must be a mapping")
-        problem = _check_problem(rule.get("check"))
-        if problem:
-            problems.append(f"{where}: {problem}")
+        if not is_screenshot_only(rule):  # an API rule: needs both a collector and a check
+            try:
+                get_collector(rule.get("collector"))
+            except ValueError as e:
+                problems.append(f"{where}: {e}")
+            problem = _check_problem(rule.get("check"))
+            if problem:
+                problems.append(f"{where}: {problem}")
+        if rule.get("screenshot") is not None:
+            problems += [f"{where}: screenshot: {p}" for p in browser.screenshot_problems(rule)]
     return problems
 
 

@@ -41,6 +41,8 @@ addopts = "-ra"
 # ------------------------------------------------------------ coverage ----
 [tool.coverage.run]
 source = ["compliancelens"]
+# Playwright's sync API switches greenlets; without this, lines after a page call look unrun.
+concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
 fail_under = 70

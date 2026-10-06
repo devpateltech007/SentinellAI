@@ -1,6 +1,6 @@
 # scripts/ — break-and-fix routines
 
-**Version:** V1 (3 rules), V2 (14 rules). Grows with every new rule.
+**Version:** V1 (3 rules), V2 (14 rules), V3 (16 rules + screenshot checks). Grows with every new rule.
 
 **Purpose:** for every rule, a short routine that makes the real test account
 **non-compliant** and then **compliant** again, so you can prove the verdict flips.
@@ -31,6 +31,7 @@ automated tests (`make test`) with fake AWS/GitHub data instead.
 | AWS-08 inactive users | ❌ PASS only (quick check below) | A user has to be idle 90 days |
 | GH-01 to GH-04 | ✅ | |
 | GH-05 org 2FA | ❌ PASS only | GitHub requires 2FA for most accounts, so a member without it is hard to create |
+| GH-06, GH-07 | ✅ (the screenshot changes; the verdict stays NEEDS REVIEW until V4) | |
 | HR-01 | ✅ (edit the local CSV) | |
 
 ---
@@ -165,6 +166,24 @@ Live: PASS (you are the only member and have 2FA). GitHub now requires 2FA for m
 accounts, so FAIL is tested with a recorded reply in `tests/test_github.py`. If you do
 have a second account without 2FA: invite it to the organization → FAIL; remove it → PASS.
 
+## GH-06: Organization base repository permission is Read or None (screenshot-only)
+
+| Step | Do this | Expected |
+| --- | --- | --- |
+| Break | Organization → Settings → Member privileges → Base permissions → **Write** | NEEDS REVIEW; the picture shows "Write" |
+| Fix | Set it back to **Read** | NEEDS REVIEW; the picture shows "Read" |
+
+Run `python audit.py run --rule GH-06` after each step and open `GH-06.png`. The
+`raw_sha256` in `GH-06.meta.json` changes with the picture. The verdict can't change
+until V4 adds AI checks.
+
+## GH-07: Members cannot create public repositories (screenshot-only)
+
+| Step | Do this | Expected |
+| --- | --- | --- |
+| Break | Member privileges → Repository creation → tick **Public** → Save | NEEDS REVIEW; the picture shows Public ticked |
+| Fix | Untick **Public** → Save | NEEDS REVIEW; the picture shows it unticked |
+
 ## HR-01: Every AWS and GitHub account belongs to an active employee
 
 | Step | Do this | Expected verdict |
@@ -188,3 +207,16 @@ Also FAIL: an IAM user or org member that isn't in the CSV and isn't in HR-01's
 | Change a rule's `check.field` to a name that doesn't exist | `field ... not in evidence` |
 
 After each step: `make audit` (or `python audit.py run --rule <ID>`) and compare.
+
+## Screenshot checks (V3)
+
+These change nothing in AWS or GitHub. Every one must leave the **API verdicts unchanged**
+and say what is wrong with the screenshot.
+
+| Do this | Expected |
+| --- | --- |
+| Move `sessions/github.json` out of the project, run `make audit` | GitHub rules keep their verdicts; `GitHub: 7 not saved (session missing). Fix: python audit.py login github`; GH-06/GH-07 say why. Move the file back. |
+| Wait more than 12 hours after `make login SITE=aws`, run an AWS rule | `session_expired`; the verdict stays; no PNG is saved (a sign-in page is never proof) |
+| In a **copy** of the rulebook, change one `wait_for` to text that doesn't exist; run `python audit.py run --rules-file <copy> --rule AWS-01` | `selector_timeout: ... did not appear within 20 s` |
+| `python audit.py run --no-screenshots` | No browser; `Screenshots: turned off` |
+| Tamper test on a **backup** of a V3 run: draw on `GH-01.png`, run `verify` | FAILED: `GH-01.png was changed` (manifest and database) and `does not match the hash in GH-01.meta.json`; restore → OK |

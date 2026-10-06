@@ -1,9 +1,13 @@
 """Evidence store tests: file layout, hashes, manifest and tamper detection. No accounts."""
 
 import datetime
+import io
 import json
+import os
+import stat
 
 import pytest
+from PIL import Image, ImageDraw, ImageFont
 
 from compliancelens import evidence
 
@@ -254,3 +258,174 @@ def test_finder_files_are_ignored(run):
     report = verify(run)
     assert report.ok
     assert report.warnings == []
+
+
+# --- screenshots (V3) ----------------------------------------------------------------
+
+
+def make_png(width=200, height=100, colour=(0, 128, 0)):
+    out = io.BytesIO()
+    Image.new("RGB", (width, height), colour).save(out, format="PNG")
+    return out.getvalue()
+
+
+def image(png):
+    return Image.open(io.BytesIO(png)).convert("RGB")
+
+
+def test_banner_text():
+    text = evidence.banner_text("GH-01", "2026-10-29T14:02:03.456+00:00", "https://github.com/x")
+    assert text == "ComplianceLens | GH-01 | 2026-10-29 14:02:03 UTC | https://github.com/x"
+
+
+def test_banner_time_is_converted_to_utc():
+    text = evidence.banner_text("A", "2026-10-29T07:02:03-07:00", "u")
+    assert "2026-10-29 14:02:03 UTC" in text
+
+
+def test_stamp_adds_a_banner_and_keeps_the_page():
+    raw = make_png()
+    stamped, sizes = evidence.stamp_screenshot(raw, "ComplianceLens | X-01 | time | url")
+    assert sizes == {"width": 200, "height": 100, "banner_height": evidence.BANNER_HEIGHT}
+    picture = image(stamped)
+    assert picture.size == (200, 100 + evidence.BANNER_HEIGHT)
+    assert picture.getpixel((0, 0)) == evidence.BANNER_BACKGROUND
+    assert picture.getpixel((199, evidence.BANNER_HEIGHT)) == (0, 128, 0)  # page untouched
+    assert picture.crop((0, evidence.BANNER_HEIGHT, 200, 132)).tobytes() == image(raw).tobytes()
+    assert evidence.sha256_bytes(stamped) != evidence.sha256_bytes(raw)
+
+
+def test_banner_has_text():
+    picture = image(evidence.stamp_screenshot(make_png(), "ComplianceLens")[0])
+    banner = picture.crop((0, 0, 200, evidence.BANNER_HEIGHT))
+    assert evidence.BANNER_TEXT in {colour for _, colour in banner.getcolors(10_000)}
+
+
+def test_long_url_is_cut_to_fit():
+    picture = Image.new("RGB", (10, 10))
+    draw = ImageDraw.Draw(picture)
+    font = ImageFont.load_default(size=evidence.BANNER_FONT_SIZE)
+    line = evidence._fit(draw, "https://example.com/" + "x" * 500, font, 300)
+    assert line.endswith("...")
+    assert draw.textlength(line, font=font) <= 300
+    assert evidence._fit(draw, "short", font, 300) == "short"
+
+
+def test_stamped_size_does_not_depend_on_the_url():
+    short = image(evidence.stamp_screenshot(make_png(), "a")[0])
+    long = image(evidence.stamp_screenshot(make_png(), "a" * 1000)[0])
+    assert short.size == long.size  # V4 can always cut BANNER_HEIGHT off the top
+
+
+def test_too_large_screenshot_is_refused(monkeypatch):
+    monkeypatch.setattr(evidence, "MAX_SCREENSHOT_PIXELS", 100)
+    with pytest.raises(ValueError, match="too large"):
+        evidence.stamp_screenshot(make_png(), "x")
+
+
+def test_not_an_image_is_refused():
+    with pytest.raises(OSError):
+        evidence.stamp_screenshot(b"not a png", "x")
+
+
+def test_transparent_screenshot_becomes_rgb():
+    out = io.BytesIO()
+    Image.new("RGBA", (20, 10), (255, 0, 0, 128)).save(out, format="PNG")
+    assert image(evidence.stamp_screenshot(out.getvalue(), "x")[0]).mode == "RGB"
+
+
+def test_write_screenshot(tmp_path):
+    entry = evidence.write_screenshot(tmp_path, "GH/01", b"png bytes")
+    assert entry == {"path": "GH_01.png", "sha256": evidence.sha256_bytes(b"png bytes"), "size": 9}
+    assert [p.name for p in tmp_path.iterdir()] == ["GH_01.png"]
+
+
+def test_write_atomic_with_a_private_mode(tmp_path):
+    path = tmp_path / "login.json"
+    (tmp_path / ".login.json.tmp").write_bytes(b"left over")  # from an earlier crash
+    os.chmod(tmp_path / ".login.json.tmp", 0o644)
+    evidence.write_atomic(path, b"secret", mode=0o600)
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert path.read_bytes() == b"secret"
+    assert [p.name for p in tmp_path.iterdir()] == ["login.json"]
+
+
+SHOT = {"status": "captured", "reason": "captured", "file": "GH-01.png"}
+
+
+@pytest.fixture
+def run_with_screenshot(tmp_path):
+    """A saved run whose GH-01 has a screenshot. Returns (run folder, manifest sha, db hashes)."""
+    run_dir = evidence.create_run_dir(tmp_path, DAY, 8)
+    png = evidence.write_screenshot(run_dir, "GH-01", make_png())
+    shot = {**SHOT, "stamped_sha256": png["sha256"]}
+    files = evidence.save_result(run_dir, {**RESULT, "id": "GH-01", "screenshot": shot}, "0.3.0")
+    files += evidence.save_result(run_dir, RESULT, "0.3.0") + [png]
+    manifest_sha256 = evidence.write_manifest(run_dir, {"run_id": "run-0008"}, files)
+    return run_dir, manifest_sha256, {f["path"]: f["sha256"] for f in files}
+
+
+def test_meta_records_the_screenshot(run_with_screenshot):
+    run_dir, _, _ = run_with_screenshot
+    meta = json.loads((run_dir / "GH-01.meta.json").read_text())
+    assert meta["screenshot"]["file"] == "GH-01.png"
+    assert meta["screenshot"]["stamped_sha256"] == evidence.sha256_file(run_dir / "GH-01.png")
+    assert "screenshot" not in json.loads((run_dir / "AWS-02.meta.json").read_text())
+
+
+def test_run_with_screenshot_verifies(run_with_screenshot):
+    report = evidence.verify_run_dir(*run_with_screenshot)
+    assert report.ok, report.problems
+    assert report.files_checked == 5
+
+
+def test_edited_screenshot_is_caught(run_with_screenshot):
+    run_dir, _, _ = run_with_screenshot
+    (run_dir / "GH-01.png").write_bytes(make_png(colour=(255, 0, 0)))
+    problems = evidence.verify_run_dir(*run_with_screenshot).problems
+    assert problems == [
+        "GH-01.png was changed (hash does not match manifest.json)",
+        "GH-01.png was changed (hash does not match the database)",
+        "GH-01.png does not match the hash in GH-01.meta.json",
+    ]
+
+
+def test_deleted_screenshot_is_caught(run_with_screenshot):
+    run_dir, _, _ = run_with_screenshot
+    (run_dir / "GH-01.png").unlink()
+    assert evidence.verify_run_dir(*run_with_screenshot).problems == ["GH-01.png is missing"]
+
+
+def test_meta_pointing_at_an_unknown_screenshot_is_caught(tmp_path):
+    run_dir = evidence.create_run_dir(tmp_path, DAY, 9)
+    shot = {**SHOT, "file": "OTHER.png", "stamped_sha256": "a" * 64}
+    files = evidence.save_result(run_dir, {**RESULT, "screenshot": shot}, "0.3.0")
+    sha = evidence.write_manifest(run_dir, {}, files)
+    report = evidence.verify_run_dir(run_dir, sha, {f["path"]: f["sha256"] for f in files})
+    assert report.problems == ["AWS-02.meta.json names OTHER.png, which is not part of the run"]
+
+
+def test_failed_screenshot_in_meta_needs_no_file(tmp_path):
+    run_dir = evidence.create_run_dir(tmp_path, DAY, 10)
+    shot = {"status": "session_expired", "reason": "GitHub login expired"}
+    files = evidence.save_result(run_dir, {**RESULT, "screenshot": shot}, "0.3.0")
+    sha = evidence.write_manifest(run_dir, {}, files)
+    assert evidence.verify_run_dir(run_dir, sha, {f["path"]: f["sha256"] for f in files}).ok
+
+
+@pytest.mark.parametrize(
+    ("shot", "problem"),
+    [
+        ("captured", "screenshot is not a mapping with a status"),
+        ({"file": "GH-01.png"}, "screenshot is not a mapping with a status"),
+        ({"status": "captured", "file": "../GH-01.png", "stamped_sha256": "a"}, "plain file name"),
+        ({"status": "captured", "file": "GH-01.png"}, "plain file name and its stamped_sha256"),
+    ],
+)
+def test_malformed_screenshot_block_is_reported(tmp_path, shot, problem):
+    run_dir = evidence.create_run_dir(tmp_path, DAY, 11)
+    files = evidence.save_result(run_dir, {**RESULT, "screenshot": shot}, "0.3.0")
+    sha = evidence.write_manifest(run_dir, {}, files)
+    [found] = evidence.verify_run_dir(run_dir, sha, {}).problems
+    assert found.startswith("AWS-02.meta.json is malformed: ")
+    assert problem in found

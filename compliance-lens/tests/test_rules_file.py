@@ -6,11 +6,15 @@ from pathlib import Path
 import pytest
 
 from compliancelens import engine
+from compliancelens.connectors import browser
 
 RULES_DIR = Path(__file__).parent.parent / "rules"
 RULE_FILES = sorted(RULES_DIR.glob("*.yaml"))
 ALL_RULES = [rule for path in RULE_FILES for rule in engine.load_rules(path)]
-REQUIRED_KEYS = {"id", "title", "severity", "collector", "check"}
+API_RULES = [rule for rule in ALL_RULES if not engine.is_screenshot_only(rule)]
+SCREENSHOT_RULES = [rule for rule in ALL_RULES if "screenshot" in rule]
+REQUIRED_KEYS = {"id", "title", "severity"}
+API_KEYS = {"collector", "check"}  # every rule except screenshot-only ones
 
 # Token and key formats that must never appear in a rule card.
 SECRET_PATTERNS = [
@@ -22,13 +26,43 @@ SECRET_PATTERNS = [
 SECRET_KEYS = re.compile(r"token|password|secret|api_key|credential", re.IGNORECASE)
 
 
-def test_v2_rules_exist():
+def test_v3_rules_exist():
     ids = [r["id"] for r in engine.load_rules(RULES_DIR / "starter_rules.yaml")]
     assert ids == [
         "AWS-01", "AWS-02", "AWS-03", "AWS-04", "AWS-05", "AWS-06", "AWS-07", "AWS-08",
-        "GH-01", "GH-02", "GH-03", "GH-04", "GH-05",
+        "GH-01", "GH-02", "GH-03", "GH-04", "GH-05", "GH-06", "GH-07",
         "HR-01",
     ]  # fmt: skip
+
+
+def test_every_rule_with_a_web_page_has_a_screenshot():
+    # V3: 13 API rules + 2 screenshot-only rules. HR-01 checks a local CSV: no page.
+    assert [r["id"] for r in ALL_RULES if "screenshot" not in r] == ["HR-01"]
+    assert len(SCREENSHOT_RULES) == 15
+
+
+def test_the_two_screenshot_only_rules():
+    only = [r["id"] for r in ALL_RULES if engine.is_screenshot_only(r)]
+    assert only == ["GH-06", "GH-07"]
+
+
+@pytest.mark.parametrize("rule", SCREENSHOT_RULES, ids=lambda r: r.get("id", "?"))
+def test_screenshot_block_is_valid(rule):
+    assert browser.screenshot_problems(rule) == []
+    shot = rule["screenshot"]
+    assert shot["site"] == ("aws" if rule["id"].startswith("AWS") else "github")
+    assert shot["url"].startswith("https://")
+    # Never wait for something every page has: it must prove the evidence loaded.
+    assert shot["wait_for"] not in ({"role": "main"}, {"role": "heading"}, {"css": "body"})
+
+
+@pytest.mark.parametrize("rule", SCREENSHOT_RULES, ids=lambda r: r.get("id", "?"))
+def test_screenshot_urls_resolve_with_the_usual_settings(rule, monkeypatch):
+    monkeypatch.setenv("GITHUB_ORG", "compliancelens-lab-sjsu")
+    url = browser.resolve_url(rule)
+    site = browser.SITES[rule["screenshot"]["site"]]
+    assert browser.url_problem(site, url) is None
+    assert "{" not in url
 
 
 def test_at_least_ten_rules():
@@ -44,6 +78,10 @@ def test_rulebook_has_no_problems():
 def test_rule_is_well_formed(rule):
     assert rule.keys() >= REQUIRED_KEYS
     assert rule["severity"] in ("low", "medium", "high")
+    if engine.is_screenshot_only(rule):
+        assert not rule.keys() & API_KEYS
+        return
+    assert rule.keys() >= API_KEYS
     assert callable(engine.get_collector(rule["collector"]))
     check = rule["check"]
     if "custom" in check:
@@ -52,7 +90,7 @@ def test_rule_is_well_formed(rule):
         assert check["op"] in engine.OPS
 
 
-@pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.get("id", "?"))
+@pytest.mark.parametrize("rule", API_RULES, ids=lambda r: r.get("id", "?"))
 def test_check_value_has_a_sensible_type(rule):
     # YAML turns yes/no/on/off into booleans; catch a value that changed type by accident.
     check = rule["check"]
@@ -66,7 +104,7 @@ def test_check_value_has_a_sensible_type(rule):
 
 
 def test_github_rules_need_repo_and_branch():
-    for rule in ALL_RULES:
+    for rule in API_RULES:
         if rule["collector"] in ("github.branch_protection", "github.force_push_protection"):
             assert rule["params"].keys() >= {"repo", "branch"}, rule["id"]
         elif rule["collector"] in ("github.secret_scanning", "github.dependabot_alerts"):

@@ -3,9 +3,9 @@
 Tracks what has been done against [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md).
 Update it whenever a checklist item is finished: tick the box, add a line to the log.
 
-**Current version:** V2 Rules and evidence store 🟡 merged (PR #8), first real audit done; live break-and-fix and tag `v2.0` left
-**Current branch:** `main` (V2 merged in PR #8; V1 tagged `v1.0`)
-**Last updated:** Oct 4, 2026 (week 1)
+**Current version:** V3 Screenshots 🟡 code done and tested offline; live login, page checks and PR left
+**Current branch:** `compliancelens/v3-screenshots` (from `main` after PR #9; V1 tagged `v1.0`)
+**Last updated:** Oct 5, 2026 (week 2)
 
 Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 
@@ -15,8 +15,8 @@ Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 | --- | --- | --- | --- |
 | Repo setup | 1 | ✅ | `compliance-lens/` folder, tooling, hooks, CI (passing) |
 | V1 Foundations | 1–3 | ✅ | Done in week 1, ahead of schedule. Tagged `v1.0` |
-| V2 Rules and evidence store | 4–5 | 🟡 | Merged (PR #8). First real audit 13 PASS / 1 FAIL / 0 NEEDS REVIEW; verify + tamper test ✅. Left: live break-and-fix, tag `v2.0` |
-| V3 Screenshots | 6–7 | ⬜ | Folders ready: `sessions/` |
+| V2 Rules and evidence store | 4–5 | ✅ | Closed Oct 5 (PR #8, #9). First real audit 13 PASS / 1 FAIL / 0 NEEDS REVIEW; verify + tamper test ✅. Live break-and-fix moved to "V2 leftovers"; tag `v2.0` after them |
+| V3 Screenshots | 6–7 | 🟡 | Code done (16 rules, `login`, stamped screenshots, schema 2), 527 tests, 100% coverage. Left: live logins, real page locators, live checks, PR, tag `v3.0` |
 | V4 AI evaluation | 8–10 | ⬜ | Folders ready: `compliancelens/evaluator/`, `policies/` |
 | V5 Dashboard and review | 11–12 | ⬜ | Folders ready: `compliancelens/dashboard/` |
 | V6 Reports and polish | 13–14 | ⬜ | Folders ready: `compliancelens/reporting/`, `reports/`, `config/` |
@@ -85,7 +85,16 @@ connector shows NEEDS REVIEW, not a crash.
 
 Tests: 55 passing, 98.7% coverage (target 70%).
 
-## V2 Rules and evidence store 🟡
+## V2 Rules and evidence store ✅ (closed Oct 5)
+
+Closed so V3 can start. The live break-and-fix items below are not done yet; they moved to
+**V2 leftovers (later)**, and the `v2.0` tag waits until they are done.
+
+### V2 leftovers (later)
+
+- [ ] Break-and-fix live: AWS-05, AWS-06, AWS-07, GH-02, GH-03, GH-04, HR-01 (`scripts/README.md`)
+- [ ] GitHub: confirm the Dependabot "disabled" message during GH-04 (if it differs, fix `DEPENDABOT_DISABLED` and its fixture)
+- [ ] Tag `v2.0`
 
 Decision (Oct 2): add all 11 planned rules, for **14** in V2. V3 and V4 add 5 more, so the
 Project Plan's cap was raised from 15 to about 19 rules.
@@ -155,6 +164,132 @@ verifies, and editing any file makes verify report it.
 "flip ⬜": live break-and-fix still to do.
 
 Tests: 316 passing, 100% coverage (target 70%).
+
+## V3 Screenshots 🟡
+
+Plan reviewed Oct 5 (V3 plan + review of it). Decisions:
+
+| # | Decision |
+| --- | --- |
+| D1 | A screenshot problem **never changes an API rule's verdict**. It is saved as a screenshot status, printed under the rule, and summed up with the fix (`python audit.py login aws`). Reason: AWS console logins end after 12 hours; turning verdicts into NEEDS REVIEW would hide AWS-02's planned FAIL. Screenshot-only rules are always NEEDS REVIEW. |
+| D2 | The 2 screenshot-only rules: **GH-06** base repository permission is Read or None, **GH-07** members cannot create public repositories (org → Settings → Member privileges). Both have an API, so V4 can score the AI against the true answer. |
+| D3 | The browser logs in to GitHub as **`neels22`** (no bot account). Risk written down: `sessions/github.json` is a full login to the account and all its repos. |
+| D4 | **One screenshot per rule.** AWS-05/AWS-06 show the test bucket only; the API JSON covers every bucket. |
+| D5 | GH-06 and GH-07 are severity **medium**. Screenshot-only results use `method: screenshot` (not `human`: nobody has judged them). |
+
+Checklist from the plan:
+
+- [x] Install Playwright and write the login command (`python audit.py login github|aws`, `make login SITE=...`)
+- [x] Add a screenshot block to every rule that has a UI page (13 API rules; HR-01 has no page)
+- [x] Capture, stamp and hash screenshots in the run folder (raw hash before the banner, stamped hash after)
+- [x] Add 2 screenshot-only rules (GH-06, GH-07)
+- [x] Detect a logged-out page and report it ("login expired"), never save it as proof (automated tests ✅, live ⬜)
+
+Also done in code:
+- [x] `connectors/browser.py`: site list (GitHub, AWS), session files `0600` in a `0700` folder, login check before saving, one browser per audit started only when a site has a login, fixed browser settings (1440×900, scale 1, en-US, UTC, light)
+- [x] Statuses: `captured`, `skipped`, `session_missing`, `session_expired`, `auth_challenge`, `access_denied`, `navigation_error`, `selector_timeout`, `config_error`, `capture_error`, each with a reason
+- [x] Rule card `screenshot:` block checked before a run: site, https on the site's hosts, known `{placeholders}`, required `wait_for`, steps only wait/scroll/click a link or tab (Delete, Save... refused), masks, timeout
+- [x] Banner above the page (rule, UTC time, cleaned URL); `raw_sha256` + `stamped_sha256`; PNG in the manifest and the database; `verify` checks PNGs and the meta ↔ PNG link
+- [x] SQLite schema 2: 6 screenshot columns; a V2 database is copied to `compliance-v1-backup.db` and upgraded in one transaction (old runs still verify)
+- [x] `run --no-screenshots`; screenshot summary with the login command to run
+- [x] Tests can't use the real `sessions/` or reach any site but 127.0.0.1; browser tests run against a fake local website; CI installs Chromium
+- [x] Version `0.3.0`; docs updated
+
+Live checks (you, with me):
+- [ ] Tell me the MFA type for `neels22` and `compliancelens-audit` (app code works best)
+- [ ] GH-06/GH-07 compliant: base permission **Read**, **Public** repository creation off
+- [ ] `make login SITE=github`, `make login SITE=aws` (as `compliancelens-audit`), then a new process reuses both
+- [ ] Fix the page locators on the real pages, one rule at a time (`python audit.py run --rule GH-01`), and check every picture shows the value the code judged
+- [ ] First real V3 audit: 13 PASS, 1 FAIL (AWS-02), 2 NEEDS REVIEW (GH-06, GH-07), 15 screenshots; `verify` OK for 47 files
+- [ ] Old V2 run (`run-0001`) still verifies after the database upgrade
+- [ ] Missing login, expired AWS login (after 12 h), wrong locator, and PNG tamper test (`scripts/README.md`)
+- [ ] GH-06/GH-07 visual break-and-fix
+- [ ] Time a full run (V6 wants under 2 minutes)
+- [ ] Commit, open the PR, CI passes, merge; tag `v3.0`
+
+**Done when:** a run produces a stamped screenshot for every UI rule, and an expired
+session is reported, not silently captured.
+- Automated: ✅ (`test_browser.py`: a fake website's expired login, MFA and "no access"
+  pages are reported, never saved; `test_cli.py`/`test_browser.py`: a whole run saves
+  stamped PNGs that verify, and an edited PNG fails verify)
+- Live: ⬜
+
+**What exists now:**
+
+| Rule | Screenshot page | Tested offline | Tested live |
+| --- | --- | --- | --- |
+| AWS-01 | IAM → Account settings | ✅ (format) | ⬜ |
+| AWS-02, AWS-04, AWS-08 | IAM → Users list | ✅ (format) | ⬜ |
+| AWS-03 | IAM → Dashboard | ✅ (format) | ⬜ |
+| AWS-05 / AWS-06 | Test bucket → Permissions / Properties | ✅ (format) | ⬜ |
+| AWS-07 | CloudTrail → Trails | ✅ (format) | ⬜ |
+| GH-01, GH-02 | Branches → Edit the `main` rule | ✅ (format) | ⬜ |
+| GH-03, GH-04 | Settings → Code security | ✅ (format) | ⬜ |
+| GH-05 | Org → People, 2FA filter | ✅ (format) | ⬜ |
+| GH-06, GH-07 (new, screenshot-only) | Org → Settings → Member privileges | ✅ (format + NEEDS REVIEW) | ⬜ |
+| HR-01 | none (local CSV) | ✅ | n/a |
+
+"Format": the rule card is valid and its URL resolves to an allowed page. The locators
+were written before seeing the real pages and will be fixed in the live step.
+
+Tests: 527 passing, 100% coverage (target 70%).
+
+## How to test V3 (simple version)
+
+All commands run from the project folder:
+
+```bash
+cd ~/Desktop/SentinellAI/compliance-lens
+make setup        # once: installs Playwright, Pillow and Chromium
+```
+
+### Test 1: the automatic tests (no accounts needed)
+
+```bash
+make test
+```
+
+You want `527 passed` and coverage above 70%. The screenshot tests open a fake website on
+your own computer; they can't reach GitHub or AWS and never use your `sessions/` folder.
+
+### Test 2: save the logins
+
+```bash
+make login SITE=github     # log in as neels22 (2FA), then press Enter in the terminal
+make login SITE=aws        # sign in as compliancelens-audit (MFA), never root, then Enter
+```
+
+Each prints `Saved the ... login to sessions/....json (only you can read it).`
+The AWS login lasts 12 hours.
+
+### Test 3: one screenshot at a time
+
+```bash
+python audit.py run --rule GH-01
+open evidence/<date>/run-NNNN/GH-01.png
+```
+
+Check: the banner says `GH-01`, the UTC time and the page URL, and the picture shows the
+setting the rule checks (here: required approvals = 1). If it says
+`selector_timeout ... did not appear`, the page looks different from what the rule card
+expects: we fix its `wait_for`/`steps` together.
+
+### Test 4: a full audit
+
+```bash
+make audit
+```
+
+Expected: **13 PASS, 1 FAIL (AWS-02), 2 NEEDS REVIEW (GH-06, GH-07)** and
+`Screenshots: 15 of 15 saved.` Then `make verify RUN=run-NNNN` → `OK: 47 files`.
+The first V3 command upgrades `compliance.db` (a copy is kept as `compliance-v1-backup.db`);
+`make verify RUN=run-0001` should still say OK.
+
+### Test 5: it never trusts a logged-out page
+
+Follow "Screenshot checks (V3)" in `compliance-lens/scripts/README.md`: missing login,
+expired AWS login, wrong locator, `--no-screenshots`, and the PNG tamper test. In every
+case the API verdicts stay the same and the screenshot problem is named with its fix.
 
 ## How to test V2 (simple version)
 
@@ -297,7 +432,9 @@ Undo each change afterwards (and run `aws login ...` again).
 - [x] Open and merge the V1 PR, then tag `v1.0`
 - [x] Start V2: add the rules, run folders with manifest + hashes, SQLite history, `verify` command (code done)
 - [x] V2 account setup and first real audit (Oct 4)
-- [ ] V2 live break-and-fix (AWS-05, AWS-06, AWS-07, GH-02, GH-03, GH-04, HR-01), then tag `v2.0`
+- [ ] V2 leftovers: live break-and-fix (AWS-05, AWS-06, AWS-07, GH-02, GH-03, GH-04, HR-01), then tag `v2.0`
+- [x] Start V3: plan reviewed, decisions D1–D5, code + offline tests done (Oct 5)
+- [ ] V3 live: logins, real page locators, first real V3 audit, live checks, PR, tag `v3.0`
 - [ ] Confirm the assumptions in the Overview (Python, company tools, personal test accounts)
 
 ## Final deliverables (week 15)
@@ -315,6 +452,7 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-10-05 | 2 | **V3 code done.** V2 closed for now (live break-and-fix moved to "V2 leftovers"; `v2.0` tag after them). Reviewed the V3 plan; decisions D1–D5 (screenshot problems never change API verdicts; GH-06/GH-07 screenshot-only; GitHub login as `neels22`; one screenshot per rule). Built `connectors/browser.py` (`login`, saved sessions `0600`, logged-out/MFA/no-access detection, read-only steps), banner stamping with raw + stamped SHA-256, PNGs in manifest/database/verify, SQLite schema 2 with a backed-up upgrade, `run --no-screenshots`, 16 rules (screenshot blocks on 13 + GH-06, GH-07), CI installs Chromium, version 0.3.0. 527 tests (fake local website for the browser), 100% coverage. Live logins and page checks still to do. |
 | 2026-10-04 | 1 | **V2 merged and live.** PR #8 merged. Set up the S3 test bucket, CloudTrail trail (versioning on its log bucket), GitHub org `compliancelens-lab-sjsu` with the test repo and an org-owned token, and the local employee list. First real V2 audit (`run-0001`): 13 PASS, 1 FAIL (AWS-02, `intern-bob`), 0 NEEDS REVIEW, as expected. `verify` OK; tamper test caught an edited `AWS-02.json`. Left: live break-and-fix, tag `v2.0`. |
 | 2026-10-03 | 1 | **V2 code done.** Reviewed the V2 plan, then built it: 11 new rules (14 total), operators `in`/`not_in`/`contains`/`all_true` + allowlisted custom checks, confidence on every result, GitHub request helper (pagination, rate-limit retries), AWS retries and paginators, HR connector + example CSV, per-run evidence folders with meta files and a manifest, SQLite history (`runs`, `results`, `overrides`), `run`/`history`/`verify` CLI (Typer), version 0.2.0. Project Plan rule cap raised to about 19. 316 tests, 100% coverage. Live setup and checks still to do. |
 | 2026-10-01 | 1 | **V1 complete.** $5 billing alarm confirmed (`compliancelens-5usd`). GH-01 break-and-fix: PASS → FAIL (PR requirement off) → PASS (back on, 1 approval). All 3 rules flipped as expected. V1 merged (PR #6) and tagged `v1.0`. |

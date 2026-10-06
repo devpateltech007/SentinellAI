@@ -6,16 +6,17 @@ VENV   := .venv
 BIN    := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format audit history verify clean
+.PHONY: help setup test lint format audit history verify login clean
 
 help:  ## Show this list
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
 
-setup:  ## Create .venv, install everything, turn on git hooks
+setup:  ## Create .venv, install everything (and Chromium), turn on git hooks
 	$(PYTHON) -m venv $(VENV)
 	$(BIN)/pip install --upgrade pip
 	$(BIN)/pip install -r requirements-dev.txt
 	$(BIN)/pip install -e .
+	$(BIN)/python -m playwright install chromium
 	@if [ -f ../.pre-commit-config.yaml ]; then $(BIN)/pre-commit install; \
 	else echo "No ../.pre-commit-config.yaml yet: skipping git hooks"; fi
 	@echo "Done. Next: cp .env.example .env  and fill it in."
@@ -41,6 +42,10 @@ verify:  ## Check a run's evidence: make verify RUN=run-0007
 	@if [ -z "$(RUN)" ]; then echo "Usage: make verify RUN=run-0007"; exit 2; fi
 	$(BIN)/python audit.py verify $(RUN)
 
-clean:  ## Delete caches and the virtual environment (keeps evidence)
+login:  ## Save a login for screenshots: make login SITE=github (or aws)
+	@if [ -z "$(SITE)" ]; then echo "Usage: make login SITE=github   (or SITE=aws)"; exit 2; fi
+	$(BIN)/python audit.py login $(SITE)
+
+clean:  ## Delete caches and the virtual environment (keeps evidence and logins)
 	rm -rf $(VENV) .pytest_cache .ruff_cache .coverage htmlcov build dist *.egg-info
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

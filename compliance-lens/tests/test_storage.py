@@ -4,6 +4,7 @@ import sqlite3
 
 import pytest
 
+from compliancelens.connectors import browser
 from compliancelens.storage import db
 
 RESULT = {
@@ -167,3 +168,185 @@ def test_db_path_override(monkeypatch, tmp_path):
     assert db.db_path() == tmp_path / "x.db"
     monkeypatch.delenv(db.ENV_VAR)
     assert db.db_path() == db.PROJECT_ROOT / "compliance.db"
+
+
+# --- schema 2: screenshots (V3) -----------------------------------------------------
+
+SHOT = {
+    "status": "captured",
+    "path": "2026-10-29/run-0001/AWS-01.png",
+    "sha256": "e" * 64,
+    "raw_sha256": "f" * 64,
+    "url": "https://us-east-1.console.aws.amazon.com/iam/home#/account_settings",
+    "captured_at": "2026-10-29T14:02:05+00:00",
+}
+SCREENSHOT_COLUMNS = [
+    "screenshot_status",
+    "screenshot_path",
+    "screenshot_sha256",
+    "screenshot_raw_sha256",
+    "screenshot_url",
+    "screenshot_captured_at",
+]
+
+# The schema exactly as V2 shipped it (schema 1), to test the upgrade.
+V1_SCHEMA = """
+CREATE TABLE runs (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    started_at        TEXT NOT NULL,
+    finished_at       TEXT,
+    status            TEXT NOT NULL CHECK (status IN ('running', 'complete', 'failed')),
+    scope             TEXT NOT NULL CHECK (scope IN ('full', 'partial')),
+    tool_version      TEXT NOT NULL,
+    rules_file        TEXT,
+    rules_sha256      TEXT,
+    run_dir           TEXT,
+    manifest_path     TEXT,
+    manifest_sha256   TEXT,
+    pass_count        INTEGER NOT NULL DEFAULT 0,
+    fail_count        INTEGER NOT NULL DEFAULT 0,
+    review_count      INTEGER NOT NULL DEFAULT 0,
+    error             TEXT
+);
+
+CREATE TABLE results (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id            INTEGER NOT NULL REFERENCES runs(id),
+    rule_id           TEXT NOT NULL,
+    rule_title        TEXT,
+    severity          TEXT,
+    collector         TEXT,
+    verdict           TEXT NOT NULL CHECK (verdict IN ('PASS', 'FAIL', 'NEEDS REVIEW')),
+    method            TEXT NOT NULL,
+    reason            TEXT NOT NULL,
+    confidence        TEXT NOT NULL,
+    collected_at      TEXT NOT NULL,
+    evidence_path     TEXT NOT NULL,
+    sha256            TEXT NOT NULL,
+    meta_path         TEXT NOT NULL,
+    meta_sha256       TEXT NOT NULL,
+    UNIQUE (run_id, rule_id)          -- also serves as the index on run_id
+);
+
+-- Human overrides, used from V5. An override never edits a result; it adds a row.
+CREATE TABLE overrides (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    result_id         INTEGER NOT NULL REFERENCES results(id),
+    new_verdict       TEXT NOT NULL CHECK (new_verdict IN ('PASS', 'FAIL', 'NEEDS REVIEW')),
+    reviewer          TEXT NOT NULL,
+    note              TEXT NOT NULL,
+    created_at        TEXT NOT NULL
+);
+
+CREATE INDEX idx_results_rule_id ON results(rule_id);
+CREATE INDEX idx_results_verdict ON results(verdict);
+CREATE INDEX idx_overrides_result_id ON overrides(result_id);
+"""
+
+
+def columns(conn, table="results"):
+    return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+
+
+def test_new_database_has_screenshot_columns(conn):
+    assert db.SCHEMA_VERSION == 2
+    assert columns(conn)[-6:] == SCREENSHOT_COLUMNS
+
+
+def test_screenshot_statuses_match_the_browser_connector():
+    assert db.SCREENSHOT_STATUSES == browser.STATUSES
+
+
+def test_screenshot_fields_are_saved(conn):
+    run_id = start(conn)
+    db.add_result(conn, run_id, RESULT, EVIDENCE, META, SHOT)
+    db.add_result(conn, run_id, {**RESULT, "id": "HR-01"}, EVIDENCE, META)  # no screenshot
+    with_shot, without = db.get_results(conn, run_id)
+    assert {c: with_shot[c] for c in SCREENSHOT_COLUMNS} == {
+        f"screenshot_{key}": value for key, value in SHOT.items()
+    }
+    assert [without[c] for c in SCREENSHOT_COLUMNS] == [None] * 6
+
+
+def test_failed_screenshot_has_only_a_status(conn):
+    run_id = start(conn)
+    db.add_result(conn, run_id, RESULT, EVIDENCE, META, {"status": "session_expired"})
+    row = db.get_results(conn, run_id)[0]
+    assert row["screenshot_status"] == "session_expired"
+    assert row["screenshot_path"] is None
+
+
+def test_unknown_screenshot_status_is_refused(conn):
+    run_id = start(conn)
+    with pytest.raises(sqlite3.IntegrityError):
+        db.add_result(conn, run_id, RESULT, EVIDENCE, META, {"status": "looks fine"})
+
+
+def make_v1_database(path):
+    """A database as V2 left it: schema 1, one finished run, a result and an override."""
+    conn = sqlite3.connect(path)
+    conn.executescript(f"BEGIN;\n{V1_SCHEMA}\nPRAGMA user_version = 1;\nCOMMIT;")
+    with conn:
+        conn.execute(
+            "INSERT INTO runs (started_at, status, scope, tool_version, manifest_sha256)"
+            " VALUES ('2026-10-04T18:00:00+00:00', 'complete', 'full', '0.2.0', ?)",
+            ("d" * 64,),
+        )
+        conn.execute(
+            "INSERT INTO results (run_id, rule_id, verdict, method, reason, confidence,"
+            " collected_at, evidence_path, sha256, meta_path, meta_sha256)"
+            " VALUES (1, 'AWS-02', 'FAIL', 'code', 'count = 1', 'high', 'now',"
+            " '2026-10-04/run-0001/AWS-02.json', ?, '2026-10-04/run-0001/AWS-02.meta.json', ?)",
+            ("a" * 64, "b" * 64),
+        )
+        conn.execute(
+            "INSERT INTO overrides (result_id, new_verdict, reviewer, note, created_at)"
+            " VALUES (1, 'PASS', 'tester', 'checked', 'now')"
+        )
+    conn.close()
+
+
+def test_v1_database_is_upgraded_and_keeps_its_history(temp_storage):
+    path = temp_storage / "old.db"
+    make_v1_database(path)
+    conn = db.connect(path)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert columns(conn)[-6:] == SCREENSHOT_COLUMNS
+        run = db.get_run(conn, 1)
+        assert (run["status"], run["manifest_sha256"]) == ("complete", "d" * 64)
+        [row] = db.get_results(conn, 1)
+        assert (row["rule_id"], row["verdict"], row["sha256"]) == ("AWS-02", "FAIL", "a" * 64)
+        assert [row[c] for c in SCREENSHOT_COLUMNS] == [None] * 6
+        assert conn.execute("SELECT note FROM overrides").fetchone()[0] == "checked"
+        # New rows can use the new columns, and the old rules still hold.
+        db.add_result(conn, 1, RESULT, EVIDENCE, META, SHOT)
+        with pytest.raises(sqlite3.IntegrityError):
+            db.add_result(conn, 1, {**RESULT, "verdict": "MAYBE", "id": "X"}, EVIDENCE, META)
+    finally:
+        conn.close()
+    backup = sqlite3.connect(temp_storage / "old-v1-backup.db")
+    assert backup.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert backup.execute("SELECT rule_id FROM results").fetchall() == [("AWS-02",)]
+    backup.close()
+
+
+def test_upgrade_keeps_an_existing_backup(temp_storage):
+    path = temp_storage / "old.db"
+    make_v1_database(path)
+    (temp_storage / "old-v1-backup.db").write_bytes(b"first backup")
+    db.connect(path).close()
+    assert (temp_storage / "old-v1-backup.db").read_bytes() == b"first backup"
+
+
+def test_failed_upgrade_changes_nothing(temp_storage, monkeypatch):
+    path = temp_storage / "old.db"
+    make_v1_database(path)
+    broken = "ALTER TABLE results ADD COLUMN half_done TEXT;\nSELECT * FROM no_such_table;\n"
+    monkeypatch.setitem(db.MIGRATIONS, 1, broken)
+    with pytest.raises(RuntimeError, match="could not upgrade old.db from schema 1"):
+        db.connect(path)
+    conn = sqlite3.connect(path)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert "half_done" not in columns(conn)
+    conn.close()
