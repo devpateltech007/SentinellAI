@@ -1,7 +1,7 @@
 """Shared test setup. Runs automatically before every test.
 
 Makes sure no test can ever touch a real AWS or GitHub account, the real
-compliance.db or the real evidence/ folder, and that no test really sleeps.
+compliance.db, evidence/ or sessions/ folder, and that no test really sleeps.
 """
 
 import botocore.httpsession
@@ -9,7 +9,7 @@ import pytest
 import requests.adapters
 
 from compliancelens import evidence
-from compliancelens.connectors import aws, github
+from compliancelens.connectors import aws, browser, github
 from compliancelens.storage import db
 
 
@@ -29,9 +29,14 @@ def fake_credentials(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def temp_storage(tmp_path, monkeypatch):
-    """Every test gets its own empty database and evidence folder."""
+    """Every test gets its own empty database, evidence folder and sessions folder.
+
+    The sessions folder matters most: with your real sessions/ a test could open
+    your real GitHub or AWS pages.
+    """
     monkeypatch.setenv(evidence.ENV_VAR, str(tmp_path / "evidence"))
     monkeypatch.setenv(db.ENV_VAR, str(tmp_path / "compliance.db"))
+    monkeypatch.setenv(browser.ENV_VAR, str(tmp_path / "sessions"))
     return tmp_path
 
 
@@ -40,8 +45,10 @@ def no_network(monkeypatch):
     """Any real HTTP call fails the test.
 
     moto and `responses` replace these same functions while they are active,
-    so faked AWS and GitHub calls still work.
+    so faked AWS and GitHub calls still work. Chromium has its own network code,
+    so the browser connector is told to block everything except 127.0.0.1.
     """
+    monkeypatch.setenv(browser.LOCAL_ONLY_ENV, "1")
 
     def blocked(*args, **kwargs):
         raise RuntimeError("a test tried to use the real network")

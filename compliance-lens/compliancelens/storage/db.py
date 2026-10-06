@@ -5,7 +5,8 @@ with COMPLIANCELENS_DB; tests use a temporary file. All timestamps are UTC ISO
 strings. Evidence paths are relative to the evidence folder.
 
 The schema is created on first use. PRAGMA user_version records its version, so
-later versions (V3 screenshots, V4 AI fields, V5 overrides) can upgrade it.
+later versions can upgrade it: schema 1 (V2) gains the screenshot columns in
+schema 2 (V3). A copy of the old file is kept before an upgrade.
 """
 
 import os
@@ -15,12 +16,45 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_VAR = "COMPLIANCELENS_DB"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 RUNNING, COMPLETE, FAILED = "running", "complete", "failed"
 FULL, PARTIAL = "full", "partial"
 
-SCHEMA = """
+# What happened to a rule's screenshot (V3). Same list as connectors/browser.py.
+SCREENSHOT_STATUSES = (
+    "captured",
+    "skipped",
+    "session_missing",
+    "session_expired",
+    "auth_challenge",
+    "access_denied",
+    "navigation_error",
+    "selector_timeout",
+    "config_error",
+    "capture_error",
+)
+_STATUS_LIST = ", ".join(f"'{status}'" for status in SCREENSHOT_STATUSES)
+
+# V3 screenshot columns: empty (NULL) for rules without a screenshot and for V2 rows.
+SCREENSHOT_COLUMNS = f"""
+    screenshot_status       TEXT CHECK (screenshot_status IS NULL
+                                        OR screenshot_status IN ({_STATUS_LIST})),
+    screenshot_path         TEXT,
+    screenshot_sha256       TEXT,
+    screenshot_raw_sha256   TEXT,
+    screenshot_url          TEXT,
+    screenshot_captured_at  TEXT"""
+
+# Upgrades from each older schema version to the next one, run in one transaction.
+MIGRATIONS = {
+    1: "".join(
+        f"ALTER TABLE results ADD COLUMN {column.strip()};\n"
+        for column in SCREENSHOT_COLUMNS.split(",\n")
+    ),
+}
+
+SCHEMA = f"""
 CREATE TABLE runs (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     started_at        TEXT NOT NULL,
@@ -54,7 +88,7 @@ CREATE TABLE results (
     evidence_path     TEXT NOT NULL,
     sha256            TEXT NOT NULL,
     meta_path         TEXT NOT NULL,
-    meta_sha256       TEXT NOT NULL,
+    meta_sha256       TEXT NOT NULL,{SCREENSHOT_COLUMNS},
     UNIQUE (run_id, rule_id)          -- also serves as the index on run_id
 );
 
@@ -91,7 +125,36 @@ def connect(path=None) -> sqlite3.Connection:
         raise RuntimeError(f"{path.name} was made by a newer ComplianceLens (schema {version})")
     if version == 0:  # new file: create everything in one transaction
         conn.executescript(f"BEGIN;\n{SCHEMA}\nPRAGMA user_version = {SCHEMA_VERSION};\nCOMMIT;")
+    elif version < SCHEMA_VERSION:
+        try:
+            _upgrade(conn, path, version)
+        except Exception:
+            conn.close()
+            raise
     return conn
+
+
+def _upgrade(conn: sqlite3.Connection, path: Path, version: int) -> None:
+    """Bring an older database up to SCHEMA_VERSION, keeping every row.
+
+    A copy of the file is saved first (e.g. compliance-v1-backup.db). The upgrade
+    runs in one transaction: if any step fails, nothing changes.
+    """
+    backup = path.with_name(f"{path.stem}-v{version}-backup{path.suffix}")
+    if not backup.exists():
+        copy = sqlite3.connect(backup)
+        try:
+            conn.backup(copy)
+        finally:
+            copy.close()
+    steps = "".join(MIGRATIONS[v] for v in range(version, SCHEMA_VERSION))
+    try:
+        conn.executescript(f"BEGIN;\n{steps}PRAGMA user_version = {SCHEMA_VERSION};\nCOMMIT;")
+    except sqlite3.Error as e:
+        conn.rollback()
+        raise RuntimeError(
+            f"could not upgrade {path.name} from schema {version}: {e} (nothing was changed)"
+        )
 
 
 def parse_run_name(name: str) -> int:
@@ -123,13 +186,22 @@ def set_run_dir(conn, run_id: int, run_dir: str) -> None:
         conn.execute("UPDATE runs SET run_dir = ? WHERE id = ?", (run_dir, run_id))
 
 
-def add_result(conn, run_id: int, result: dict, evidence: dict, meta: dict) -> None:
-    """Save one rule result. `evidence`/`meta` are {"path", "sha256"} of its two files."""
+def add_result(
+    conn, run_id: int, result: dict, evidence: dict, meta: dict, screenshot: dict | None = None
+) -> None:
+    """Save one rule result. `evidence`/`meta` are {"path", "sha256"} of its two files.
+
+    `screenshot` (V3, rules with a screenshot block only) has a `status` and, when
+    a picture was saved, its `path`, `sha256`, `raw_sha256`, `url` and `captured_at`.
+    """
+    shot = screenshot or {}
     with conn:
         conn.execute(
             "INSERT INTO results (run_id, rule_id, rule_title, severity, collector, verdict,"
             " method, reason, confidence, collected_at, evidence_path, sha256, meta_path,"
-            " meta_sha256) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " meta_sha256, screenshot_status, screenshot_path, screenshot_sha256,"
+            " screenshot_raw_sha256, screenshot_url, screenshot_captured_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 result["id"],
@@ -145,6 +217,12 @@ def add_result(conn, run_id: int, result: dict, evidence: dict, meta: dict) -> N
                 evidence["sha256"],
                 meta["path"],
                 meta["sha256"],
+                shot.get("status"),
+                shot.get("path"),
+                shot.get("sha256"),
+                shot.get("raw_sha256"),
+                shot.get("url"),
+                shot.get("captured_at"),
             ),
         )
 

@@ -18,6 +18,7 @@ touch a real account.
 | `github/rate_limited.json` | 403 "API rate limit exceeded" body |
 | `aws/credential_report.csv` | IAM credential report: root row, recent, never-used, old console and old key users (AWS-08) |
 | `hr/employees.csv` | Fake employee list: active, terminated and on-leave people (HR-01) |
+| `browser/*.html` | A fake website for the screenshot tests, served on 127.0.0.1 by `test_browser.py`: sign-in page, logged-in pages, a tall page, a slow page, a page that signs out after loading, "Confirm access", "no permission" and "Access denied" pages |
 
 The Dependabot "disabled" message is GitHub's documented reply; confirm it once with
 the real token (see `scripts/README.md`, GH-04) and update the fixture if it differs.

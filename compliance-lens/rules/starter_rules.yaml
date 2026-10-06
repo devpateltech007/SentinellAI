@@ -1,10 +1,15 @@
-# ComplianceLens rulebook (V2): 14 rules across AWS, GitHub and the HR list.
+# ComplianceLens rulebook (V3): 16 rules across AWS, GitHub and the HR list.
 # How to write a rule card: see rules/README.md.
 #
 # Each rule can be broken and fixed on purpose (or, where that is unsafe, is
 # tested with fake data): see scripts/README.md.
 #
-# GH-05 and HR-01 read the GitHub organization from GITHUB_ORG in .env.
+# GH-05, GH-06, GH-07 and HR-01 read the GitHub organization from GITHUB_ORG in .env.
+#
+# V3 screenshots: every rule with a web page has a `screenshot:` block. The API data
+# stays the proof; the screenshot is for people. {region} comes from AWS_DEFAULT_REGION
+# and {org} from GITHUB_ORG. Log in once with `python audit.py login aws` / `github`.
+# The locators were written before the first live run: fix them if a page changed.
 
 # --- AWS -------------------------------------------------------------------
 
@@ -15,6 +20,12 @@
   collector: aws.password_policy
   params: {}
   check: { field: MinimumPasswordLength, op: ">=", value: 12 }
+  screenshot:
+    site: aws
+    url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/account_settings"
+    wait_for: { text: "Password policy" }
+    mask:
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
 
 - id: AWS-02
   title: Every IAM user with a console password has MFA
@@ -23,6 +34,12 @@
   collector: aws.users_without_mfa
   params: {}
   check: { field: count, op: "==", value: 0 }
+  screenshot:
+    site: aws
+    url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/users"
+    wait_for: { role: heading, name: "Users" }   # MFA column
+    mask:
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
 
 - id: AWS-03
   title: Root account has MFA
@@ -31,6 +48,12 @@
   collector: aws.root_account_mfa
   params: {}
   check: { field: AccountMFAEnabled, op: "==", value: 1 }
+  screenshot:
+    site: aws
+    url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/home"
+    wait_for: { text: "Security recommendations" }   # "Root user has MFA"
+    mask:
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
 
 - id: AWS-04
   title: No active access key is older than 90 days
@@ -39,6 +62,12 @@
   collector: aws.access_key_age
   params: { max_age_days: 90 }
   check: { field: count, op: "==", value: 0 }
+  screenshot:
+    site: aws
+    url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/users"
+    wait_for: { role: heading, name: "Users" }   # Active key age column
+    mask:
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
 
 - id: AWS-05
   title: Every S3 bucket blocks public access
@@ -47,6 +76,13 @@
   collector: aws.s3_public_access
   params: {}
   check: { field: buckets_fully_blocked, op: all_true }
+  screenshot:   # the test bucket only; the API checks every bucket
+    site: aws
+    url: "https://{region}.console.aws.amazon.com/s3/buckets/{bucket}?region={region}&tab=permissions"
+    vars: { bucket: compliancelens-test-sjsu-2026 }
+    wait_for: { text: "Block public access (bucket settings)" }
+    mask:
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
 
 - id: AWS-06
   title: Every S3 bucket has versioning on
@@ -54,6 +90,15 @@
   collector: aws.s3_versioning
   params: {}
   check: { field: versioning_enabled, op: all_true }
+  screenshot:   # the test bucket only; the API checks every bucket
+    site: aws
+    url: "https://{region}.console.aws.amazon.com/s3/buckets/{bucket}?region={region}&tab=properties"
+    vars: { bucket: compliancelens-test-sjsu-2026 }
+    wait_for: { text: "Bucket Versioning" }
+    steps:
+      - scroll_to: { text: "Bucket Versioning" }
+    mask:
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
 
 - id: AWS-07
   title: At least one CloudTrail trail is logging
@@ -62,6 +107,12 @@
   collector: aws.cloudtrail_logging
   params: {}
   check: { field: logging_count, op: ">=", value: 1 }
+  screenshot:
+    site: aws
+    url: "https://{region}.console.aws.amazon.com/cloudtrailv2/home?region={region}#/trails"
+    wait_for: { role: heading, name: "Trails" }   # Status: Logging
+    mask:
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
 
 - id: AWS-08
   title: No IAM user has been inactive for more than 90 days
@@ -70,6 +121,12 @@
   collector: aws.unused_users
   params: { max_inactive_days: 90 }
   check: { field: count, op: "==", value: 0 }
+  screenshot:
+    site: aws
+    url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/users"
+    wait_for: { role: heading, name: "Users" }   # Last activity column
+    mask:
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
 
 # --- GitHub ------------------------------------------------------------------
 
@@ -80,6 +137,14 @@
   collector: github.branch_protection
   params: { repo: "compliancelens-lab-sjsu/compliancelens-test", branch: main }
   check: { field: required_approving_review_count, op: ">=", value: 1 }
+  screenshot:
+    site: github
+    url: "https://github.com/{repo}/settings/branches"
+    wait_for: { role: heading, name: "Branch protection rules" }
+    steps:
+      - click: { role: link, name: "Edit" }   # opens the classic rule for main
+      - wait_for: { text: "Require a pull request before merging" }
+    capture: { full_page: true }
 
 - id: GH-02
   title: Force pushes to main are blocked
@@ -87,6 +152,15 @@
   collector: github.force_push_protection
   params: { repo: "compliancelens-lab-sjsu/compliancelens-test", branch: main }
   check: { field: allow_force_pushes, op: "==", value: false }
+  screenshot:
+    site: github
+    url: "https://github.com/{repo}/settings/branches"
+    wait_for: { role: heading, name: "Branch protection rules" }
+    steps:
+      - click: { role: link, name: "Edit" }   # opens the classic rule for main
+      - wait_for: { text: "Require a pull request before merging" }
+      - scroll_to: { text: "Allow force pushes" }
+    capture: { full_page: true }
 
 - id: GH-03
   title: Secret scanning is enabled
@@ -94,6 +168,11 @@
   collector: github.secret_scanning
   params: { repo: "compliancelens-lab-sjsu/compliancelens-test" }
   check: { field: secret_scanning, op: in, value: [enabled] }
+  screenshot:
+    site: github
+    url: "https://github.com/{repo}/settings/security_analysis"
+    wait_for: { text: "Secret Protection" }
+    capture: { full_page: true }
 
 - id: GH-04
   title: Dependabot alerts are enabled
@@ -101,6 +180,11 @@
   collector: github.dependabot_alerts
   params: { repo: "compliancelens-lab-sjsu/compliancelens-test" }
   check: { field: dependabot_alerts, op: "==", value: true }
+  screenshot:
+    site: github
+    url: "https://github.com/{repo}/settings/security_analysis"
+    wait_for: { text: "Dependabot alerts" }
+    capture: { full_page: true }
 
 - id: GH-05
   title: Every organization member has 2FA
@@ -108,6 +192,32 @@
   collector: github.org_members_without_2fa
   params: {}
   check: { field: count, op: "==", value: 0 }
+  screenshot:
+    site: github
+    url: "https://github.com/orgs/{org}/people?query=two-factor%3Adisabled"
+    wait_for: { text: "Members" }
+
+# Screenshot-only rules (V3): no collector and no check. Code can't judge them, so they
+# are NEEDS REVIEW with the screenshot attached; V4 adds AI checks. Both settings are on
+# the organization's Member privileges page (only organization owners can open it).
+
+- id: GH-06
+  title: Organization base repository permission is Read or None
+  severity: medium
+  screenshot:
+    site: github
+    url: "https://github.com/organizations/{org}/settings/member_privileges"
+    wait_for: { role: heading, name: "Base permissions" }
+
+- id: GH-07
+  title: Members cannot create public repositories
+  severity: medium
+  screenshot:
+    site: github
+    url: "https://github.com/organizations/{org}/settings/member_privileges"
+    wait_for: { role: heading, name: "Repository creation" }
+    steps:
+      - scroll_to: { role: heading, name: "Repository creation" }
 
 # --- HR ----------------------------------------------------------------------
 

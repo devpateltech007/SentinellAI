@@ -1,6 +1,6 @@
 # compliancelens/connectors/ — evidence collectors
 
-**Version:** V1 (AWS, GitHub), V2 (more AWS and GitHub, HR). V3 adds `browser.py`, V4 adds `files.py`.
+**Version:** V1 (AWS, GitHub), V2 (more AWS and GitHub, HR), V3 (`browser.py`). V4 adds `files.py`.
 
 **Purpose:** code that *collects* evidence from one system. Connectors never judge
 PASS or FAIL; the engine does that.
@@ -23,7 +23,7 @@ Nothing else needs to change.
 | `aws.py` | V1, V2 | IAM (password policy, MFA, root MFA, access keys, credential report), S3 (Block Public Access, versioning), CloudTrail |
 | `github.py` | V1, V2 | GitHub REST API (branch protection, force pushes, secret scanning, Dependabot, org 2FA) |
 | `hr.py` | V2 | `data/employees.csv` compared with IAM users and GitHub org members |
-| `browser.py` | V3 | Playwright screenshots |
+| `browser.py` | V3 | Saved logins and page screenshots (Playwright, Chromium); not a collector, see below |
 | `files.py` | V4 | Local policy documents |
 
 ## Collectors
@@ -66,3 +66,47 @@ Nothing else needs to change.
 | --- | --- |
 | AWS | `SecurityAudit` managed policy (IAM, S3, CloudTrail reads + `GenerateCredentialReport`) |
 | GitHub | Fine-grained token owned by the organization: Administration (read), Metadata (read), Members (read). GH-05 also needs the token owner to be an **organization owner**. |
+
+## The browser connector (V3)
+
+`browser.py` is different from the other connectors: a rule card can't name it as a
+collector (it is not in `engine.COLLECTORS`). The runner calls it for every rule with a
+`screenshot:` block, after the API check, and it never decides PASS or FAIL.
+
+**Sites.** Only the sites in `SITES` exist: `github` (hosts `github.com`) and `aws`
+(`console.aws.amazon.com` and its subdomains). Each has its session file, the sign-in
+page patterns, the "logged in" signal (GitHub: the `user-login` tag of every page) and the
+words of its MFA and "no permission" pages. The site name is never used as a file path.
+
+**Logins.** `login(site)` opens a visible Chromium window, waits for Enter, checks the page
+is really logged in, then saves Playwright's storage state (cookies + local storage) to
+`sessions/<site>.json` as a `0600` file. See [`../../sessions/README.md`](../../sessions/README.md).
+
+**One audit.** `Screenshotter` starts Chromium only for the first rule that needs it and
+only when that site has a session file. One browser, one context per site (its saved
+login), a fresh page per rule, everything closed at the end. The browser is the same on
+every machine: 1440×900, scale 1, `en-US`, UTC, light theme, no animations, no text cursor.
+
+**One capture:** fill in the URL → check it is https on the site's hosts → open it → is it
+a sign-in, MFA, error or "no access" page? → wait for `wait_for` → run the `steps` (wait,
+scroll, click a link or tab only) → check again → mask → take the PNG in memory.
+
+| Status | Means | Fix |
+| --- | --- | --- |
+| `captured` | The picture was taken | |
+| `skipped` | `run --no-screenshots` | |
+| `session_missing` | No session file, or it is damaged | `python audit.py login <site>` |
+| `session_expired` | The site sent the page to sign-in, or it isn't logged in | `python audit.py login <site>` |
+| `auth_challenge` | MFA, "Confirm access" or similar | `python audit.py login <site>` |
+| `access_denied` | HTTP 401/403/404, or "you don't have permission" | Check the account's role and the URL |
+| `navigation_error` | The page didn't load, gave HTTP 5xx, or left the site | Check the URL; try again |
+| `selector_timeout` | `wait_for` or a step's element never appeared | The page changed: update the rule card |
+| `config_error` | The URL can't be built (e.g. `GITHUB_ORG` missing) or isn't allowed | Fix `.env` or the rule card |
+| `capture_error` | Chromium missing or crashed, or the picture can't be used | `python -m playwright install chromium` |
+
+A sign-in page, an MFA prompt or an error page is never saved as proof. Every status has
+a reason, and none of them stops the audit. URLs in banners and records are cleaned
+(no passwords, no token-like query values, no AWS account ID).
+
+**Tests** never use the real `sessions/` folder and the browser may only reach 127.0.0.1
+(`COMPLIANCELENS_BROWSER_LOCAL_ONLY`), so no test can open GitHub or AWS.

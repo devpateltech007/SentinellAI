@@ -378,3 +378,59 @@ def test_select_rules():
 def test_select_unknown_rule_is_an_error():
     with pytest.raises(engine.RulebookError, match="no rule with id NOPE"):
         engine.select_rules([valid()], ["NOPE"])
+
+
+# --- screenshot rules (V3) -----------------------------------------------------------
+
+SCREENSHOT = {"site": "github", "url": "https://github.com/org/repo", "wait_for": {"text": "x"}}
+
+
+def screenshot_only(**changes):
+    return {"id": "GH-06", "title": "base permission", "screenshot": SCREENSHOT, **changes}
+
+
+def test_screenshot_only_rule_needs_review():
+    result = engine.run_rule(screenshot_only())
+    assert result["verdict"] == engine.NEEDS_REVIEW
+    assert result["method"] == engine.SCREENSHOT
+    assert result["confidence"] == engine.LOW
+    assert result["evidence"] == {"screenshot_only": True}
+    assert "until AI checks are added (V4)" in result["reason"]
+
+
+def test_which_rules_are_screenshot_only():
+    assert engine.is_screenshot_only(screenshot_only())
+    assert not engine.is_screenshot_only(valid())
+    assert not engine.is_screenshot_only(valid(screenshot=SCREENSHOT))
+    assert not engine.is_screenshot_only({"id": "X", "title": "no evidence at all"})
+
+
+def test_api_rule_with_a_screenshot_is_still_judged_by_code(fake):
+    result = engine.run_rule(rule(screenshot=SCREENSHOT))
+    assert (result["verdict"], result["method"]) == (engine.PASS, engine.CODE)
+
+
+def test_valid_screenshot_rules_have_no_problems():
+    rules = [screenshot_only(), valid(id="A-02", screenshot=SCREENSHOT)]
+    assert engine.validate_rules(rules) == []
+
+
+@pytest.mark.parametrize(
+    ("bad", "problem"),
+    [
+        (screenshot_only(screenshot={**SCREENSHOT, "site": "gitlab"}), "screenshot: unknown site"),
+        (valid(screenshot={**SCREENSHOT, "wait_for": "x"}), "screenshot: wait_for:"),
+        (valid(screenshot="https://github.com"), "screenshot: screenshot must be a mapping"),
+        (screenshot_only(collector="aws.password_policy"), "check must be a mapping"),
+        (screenshot_only(check={"field": "x", "op": "==", "value": 1}), "unknown collector"),
+    ],
+)
+def test_validate_screenshot_rules(bad, problem):
+    [found] = engine.validate_rules([bad])
+    assert problem in found
+
+
+def test_rule_with_no_evidence_at_all_is_a_problem():
+    problems = engine.validate_rules([{"id": "X-01", "title": "nothing"}])
+    assert any("unknown collector" in p for p in problems)
+    assert any("check must be a mapping" in p for p in problems)

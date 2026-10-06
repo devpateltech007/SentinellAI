@@ -3,14 +3,18 @@
 Rules use a fake "fake" system, so every verdict is known in advance.
 """
 
+import io
 import json
 import sys
 import types
+from pathlib import Path
 
 import pytest
+from PIL import Image
 from typer.testing import CliRunner
 
-from compliancelens import cli, engine, evidence, runner
+from compliancelens import __version__, cli, engine, evidence, runner
+from compliancelens.connectors import browser
 from compliancelens.storage import db
 
 RULES = """
@@ -68,7 +72,7 @@ def stored(run_id):
 
 def test_run_prints_results(rules):
     out = audit(rules).output
-    assert out.startswith("ComplianceLens v0.2.0 audit")
+    assert out.startswith(f"ComplianceLens v{__version__} audit")
     assert "[PASS] AWS-01  Passwords\n       value = 14 (expected >= 12)" in out
     assert "[FAIL] AWS-02  MFA\n       count = 1 (expected == 0)  users: ['intern-bob']" in out
     assert "[NEEDS REVIEW] GH-01   Reviews" in out
@@ -178,15 +182,28 @@ def test_existing_run_folder_is_not_overwritten(rules, temp_storage):
 
 
 def test_real_rulebook_without_credentials_needs_review(monkeypatch):
-    # No GITHUB_TOKEN, no GITHUB_ORG, no employee list and an AWS profile that doesn't
-    # exist: nothing may crash or PASS. Plain `python audit.py` means `run`.
+    # No GITHUB_TOKEN, no GITHUB_ORG, no employee list, an AWS profile that doesn't
+    # exist and no saved browser logins: nothing may crash or PASS, and Chromium is
+    # never started. Plain `python audit.py` means `run`.
     monkeypatch.setenv("AWS_PROFILE", "compliancelens-test-missing-profile")
+
+    def start():
+        raise AssertionError("Chromium started without a saved login")
+
+    monkeypatch.setattr(browser, "_start_playwright", start)
     result = invoke()
     assert result.exit_code == 0, result.output
-    assert "0 PASS  0 FAIL  14 NEEDS REVIEW" in result.output
+    assert "0 PASS  0 FAIL  16 NEEDS REVIEW" in result.output
+    assert "Screenshots: 0 of 15 saved." in result.output
+    assert "AWS: 8 not saved (session missing). Fix: python audit.py login aws" in result.output
+    assert "GitHub: 4 not saved (session missing). Fix: python audit.py login github" in (
+        result.output
+    )
+    assert "GitHub: 3 not saved (config error)" in result.output  # GITHUB_ORG not set
     run, results = stored(1)
     assert run["status"] == "complete"
-    assert len(results) == 14
+    assert len(results) == 16
+    assert {r["screenshot_status"] for r in results} == {"session_missing", "config_error", None}
 
 
 # --- history -----------------------------------------------------------------------
@@ -221,6 +238,263 @@ def test_history_limit(rules):
     for _ in range(3):
         audit(rules)
     assert len(invoke("history", "--limit", "2").output.splitlines()) == 3  # header + 2
+
+
+# --- screenshots (V3) ----------------------------------------------------------------
+
+SCREENSHOT_RULES = """
+- id: GH-01
+  title: Reviews
+  collector: fake.ok
+  check: {field: value, op: '>=', value: 12}
+  screenshot: {site: github, url: "https://github.com/a/b", wait_for: {text: Branches}}
+- id: GH-06
+  title: Base permission
+  screenshot: {site: github, url: "https://github.com/orgs/a", wait_for: {text: Base}}
+- id: AWS-02
+  title: MFA
+  collector: fake.users
+  check: {field: count, op: '==', value: 0}
+  screenshot: {site: aws, url: "https://console.aws.amazon.com/iam", wait_for: {text: Users}}
+- id: HR-01
+  title: Employees
+  collector: fake.ok
+  check: {field: value, op: '>=', value: 1}
+"""
+
+
+def make_png():
+    out = io.BytesIO()
+    Image.new("RGB", (300, 200), "white").save(out, format="PNG")
+    return out.getvalue()
+
+
+PNG = make_png()
+
+
+class FakeShooter:
+    """Stands in for browser.Screenshotter: GitHub pages work, the AWS login has expired."""
+
+    made = []
+    png = PNG
+
+    def __init__(self):
+        self.closed = False
+        FakeShooter.made.append(self)
+
+    def capture(self, rule):
+        shot = rule["screenshot"]
+        if shot["site"] == "aws":
+            reason = "AWS login expired (the page went to sign-in) (run: python audit.py login aws)"
+            return browser.Capture(
+                browser.SESSION_EXPIRED,
+                reason,
+                "aws",
+                requested_url=shot["url"],
+                final_url="https://signin.aws.amazon.com/signin?token=abc",
+            )
+        return browser.Capture(
+            browser.CAPTURED,
+            "captured",
+            "github",
+            png=self.png,
+            requested_url=shot["url"],
+            final_url=shot["url"] + "?token=secret",
+            captured_at="2026-10-29T14:02:05+00:00",
+        )
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def screenshot_rules(tmp_path, fake, monkeypatch):
+    FakeShooter.made = []
+    monkeypatch.setattr(browser, "Screenshotter", FakeShooter)
+    path = tmp_path / "rules.yaml"
+    path.write_text(SCREENSHOT_RULES)
+    return path
+
+
+def rows_by_rule(run_id=1):
+    _, results = stored(run_id)
+    return {r["rule_id"]: r for r in results}
+
+
+def test_run_saves_stamped_screenshots(screenshot_rules, temp_storage):
+    out = audit(screenshot_rules).output
+    assert "2 PASS  1 FAIL  1 NEEDS REVIEW" in out
+    assert "Screenshots: 2 of 3 saved." in out
+    assert "  AWS: 1 not saved (session expired). Fix: python audit.py login aws" in out
+    assert "[FAIL] AWS-02  MFA\n       count = 1" in out
+    assert "\n       screenshot not saved: AWS login expired" in out  # verdict kept (D1)
+    assert "[NEEDS REVIEW] GH-06   Base permission\n       screenshot captured; needs human" in out
+    assert FakeShooter.made[0].closed
+
+    rows = rows_by_rule()
+    folder = run_dir(temp_storage)
+    assert sorted(p.name for p in folder.glob("*.png")) == ["GH-01.png", "GH-06.png"]
+    gh = rows["GH-01"]
+    assert gh["screenshot_status"] == "captured"
+    assert gh["screenshot_sha256"] == evidence.sha256_file(folder / "GH-01.png")
+    assert gh["screenshot_raw_sha256"] == evidence.sha256_bytes(PNG)
+    assert gh["screenshot_url"] == "https://github.com/a/b?token=REDACTED"
+    assert gh["screenshot_captured_at"] == "2026-10-29T14:02:05+00:00"
+    assert gh["screenshot_path"].endswith("run-0001/GH-01.png")
+    aws = rows["AWS-02"]
+    assert (aws["verdict"], aws["screenshot_status"]) == ("FAIL", "session_expired")
+    assert aws["screenshot_path"] is None
+    assert aws["screenshot_url"] == "https://signin.aws.amazon.com/signin?token=REDACTED"
+    assert rows["HR-01"]["screenshot_status"] is None
+    assert rows["GH-06"]["method"] == "screenshot"
+
+    meta = json.loads((folder / "GH-01.meta.json").read_text())["screenshot"]
+    assert meta["raw_sha256"] == evidence.sha256_bytes(PNG)
+    assert meta["stamped_sha256"] == gh["screenshot_sha256"]
+    assert (meta["width"], meta["height"], meta["banner_height"]) == (300, 200, 32)
+    assert meta["requested_url"] == "https://github.com/a/b"
+    assert json.loads((folder / "GH-06.json").read_text()) == {"screenshot_only": True}
+    manifest = json.loads((folder / "manifest.json").read_text())
+    assert [f["path"] for f in manifest["files"]][:3] == [
+        "GH-01.json",
+        "GH-01.meta.json",
+        "GH-01.png",
+    ]
+
+    result = invoke("verify", "run-0001")
+    assert result.exit_code == 0, result.output
+    assert "OK: 10 files match" in result.output  # 4 JSON + 4 meta + 2 PNG
+
+
+def test_verify_catches_edited_screenshot(screenshot_rules, temp_storage):
+    audit(screenshot_rules)
+    png = run_dir(temp_storage) / "GH-01.png"
+    png.write_bytes(png.read_bytes()[:-10])
+    result = invoke("verify", "run-0001")
+    assert result.exit_code == 1
+    assert "GH-01.png was changed (hash does not match manifest.json)" in result.output
+    assert "GH-01.png was changed (hash does not match the database)" in result.output
+
+
+def test_verify_catches_deleted_screenshot(screenshot_rules, temp_storage):
+    audit(screenshot_rules)
+    (run_dir(temp_storage) / "GH-06.png").unlink()
+    result = invoke("verify", "run-0001")
+    assert result.exit_code == 1
+    assert "GH-06.png is missing" in result.output
+
+
+def test_no_screenshots_option(screenshot_rules, temp_storage):
+    out = audit(screenshot_rules, "--no-screenshots").output
+    assert FakeShooter.made == []  # no browser at all
+    assert "Screenshots: turned off (3 rule(s) have one)." in out
+    assert "screenshot not saved" not in out
+    assert "screenshot not captured: screenshots turned off (--no-screenshots)" in out
+    rows = rows_by_rule()
+    assert rows["GH-01"]["screenshot_status"] == "skipped"
+    assert rows["GH-01"]["verdict"] == "PASS"
+    assert list(run_dir(temp_storage).glob("*.png")) == []
+    assert invoke("verify", "run-0001").exit_code == 0
+
+
+def test_unusable_picture_does_not_stop_the_audit(screenshot_rules, monkeypatch):
+    monkeypatch.setattr(FakeShooter, "png", b"not a picture")
+    out = audit(screenshot_rules).output
+    assert "screenshot not saved: screenshot could not be stamped" in out
+    assert rows_by_rule()["GH-01"]["screenshot_status"] == "capture_error"
+    assert stored(1)[0]["status"] == "complete"
+
+
+def test_screenshot_that_cannot_be_written_fails_the_run(screenshot_rules, monkeypatch):
+    def disk_full(*args):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr(evidence, "write_screenshot", disk_full)
+    result = invoke("run", "--rules-file", screenshot_rules)
+    assert result.exit_code == 1
+    assert "No space left on device" in result.output
+    assert stored(1)[0]["status"] == "failed"
+    assert FakeShooter.made[0].closed
+
+
+def test_screenshot_only_rule_without_a_login(tmp_path):
+    # The real Screenshotter, and nobody has run `login`.
+    path = tmp_path / "rules.yaml"
+    path.write_text(
+        "- id: GH-06\n"
+        "  title: Base permission\n"
+        '  screenshot: {site: github, url: "https://github.com/orgs/a", wait_for: {text: Base}}\n'
+    )
+    out = audit(path).output
+    assert "screenshot not captured: no saved GitHub login" in out
+    assert "(run: python audit.py login github)" in out
+    assert "GitHub: 1 not saved (session missing). Fix: python audit.py login github" in out
+
+
+def test_screenshot_summary_without_screenshots():
+    summary = runner.RunSummary(1, Path("."), "full", [{"verdict": "PASS"}])
+    assert cli.format_screenshots(summary) == []
+
+
+def test_screenshot_summary_with_an_unknown_site():
+    shots = [{"verdict": "NEEDS REVIEW", "screenshot": {"status": "config_error", "site": None}}]
+    summary = runner.RunSummary(1, Path("."), "full", shots)
+    assert cli.format_screenshots(summary) == [
+        "Screenshots: 0 of 1 saved.",
+        "  ?: 1 not saved (config error)",
+    ]
+
+
+# --- login ---------------------------------------------------------------------------
+
+
+def test_login_saves_the_session(monkeypatch, temp_storage):
+    calls = []
+
+    def login(site, wait):
+        calls.append((site, wait))
+        return temp_storage / "sessions" / "github.json"
+
+    monkeypatch.setattr(browser, "login", login)
+    result = invoke("login", "github")
+    assert result.exit_code == 0, result.output
+    assert calls == [("github", cli._wait_for_enter)]
+    assert "Opening a browser window for GitHub. Log in as the account" in result.output
+    assert "Saved the GitHub login to" in result.output
+    assert "revoke the session in GitHub" in result.output
+
+
+def test_login_unknown_site():
+    result = invoke("login", "gitlab")
+    assert result.exit_code == 2
+    assert "unknown site 'gitlab' (choose from: aws, github)" in result.output
+
+
+def test_login_without_chromium(monkeypatch):
+    def login(site, wait):
+        raise browser.BrowserUnavailable("Chromium is not installed (run: x)")
+
+    monkeypatch.setattr(browser, "login", login)
+    result = invoke("login", "aws")
+    assert result.exit_code == 2
+    assert "Chromium is not installed" in result.output
+
+
+def test_login_not_confirmed(monkeypatch):
+    def login(site, wait):
+        raise browser.LoginError("you don't look logged in to AWS yet")
+
+    monkeypatch.setattr(browser, "login", login)
+    result = invoke("login", "aws")
+    assert result.exit_code == 1
+    assert "Login not saved: you don't look logged in to AWS yet" in result.output
+
+
+def test_wait_for_enter_asks_in_the_terminal(monkeypatch):
+    asked = []
+    monkeypatch.setattr(cli.typer, "prompt", lambda text, **kwargs: asked.append(text))
+    cli._wait_for_enter(browser.SITES["aws"])
+    assert asked == ["When the window shows you logged in to AWS, press Enter here"]
 
 
 # --- verify --------------------------------------------------------------------------
@@ -304,7 +578,7 @@ def test_verify_unknown_run(name, message):
 def test_help_lists_commands():
     result = invoke("--help")
     assert result.exit_code == 0
-    for command in ("run", "history", "verify"):
+    for command in ("run", "history", "verify", "login"):
         assert command in result.output
 
 

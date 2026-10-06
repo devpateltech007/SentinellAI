@@ -7,9 +7,10 @@ defaults to PASS: any error or unclear result becomes NEEDS REVIEW.
 
 This is a 15-week semester project. The full plan is in
 [`../ComplianceLens Project Plan.md`](../ComplianceLens%20Project%20Plan.md).
-**Current version: V2 (Rules and evidence store)**: 14 rules across AWS, GitHub and an
-HR employee list. Every run is saved as hashed evidence files plus a SQLite history,
-and `verify` reports any evidence file changed after the audit.
+**Current version: V3 (Screenshots)**: 16 rules across AWS, GitHub and an HR employee
+list. Every run is saved as hashed evidence files plus a SQLite history, and `verify`
+reports any evidence file changed after the audit. Rules with a web page also get a
+screenshot with a banner (rule, UTC time, URL), taken with a login you save once by hand.
 
 ---
 
@@ -17,16 +18,19 @@ and `verify` reports any evidence file changed after the audit.
 
 ```bash
 cd compliance-lens
-make setup                # creates .venv, installs everything, turns on git hooks
+make setup                # creates .venv, installs everything + Chromium, turns on git hooks
 cp .env.example .env      # then fill it in (see "Account setup")
 make test                 # run the tests (no real accounts needed)
+make login SITE=github    # log in by hand once, for screenshots (V3)
+make login SITE=aws       # the same for AWS (needed again after 12 hours)
 make audit                # run a real audit
 make history              # list past runs
 make verify RUN=run-0001  # check a run's evidence was not changed
 ```
 
 Without any accounts set up, `make audit` still runs: every rule shows NEEDS REVIEW
-with the reason (for example "GITHUB_TOKEN not set"). It never crashes.
+with the reason (for example "GITHUB_TOKEN not set"). It never crashes. Without saved
+logins it simply takes no screenshots and says how to fix that.
 
 ## Prerequisites
 
@@ -34,6 +38,8 @@ with the reason (for example "GITHUB_TOKEN not set"). It never crashes.
   On macOS: `brew install python@3.11`. To use another version: `make setup PYTHON=python3.12`.
 - **git**
 - **AWS CLI v2**, recent enough to have `aws login`: `brew install awscli`
+- **Chromium for Playwright** (V3, about 150 MB): `make setup` installs it. To install it
+  again: `.venv/bin/python -m playwright install chromium`.
 
 ## Account setup
 
@@ -105,6 +111,24 @@ GH-05 lists members without two-factor authentication; GitHub only shows this to
     employee to their AWS user and GitHub login (see [`data/README.md`](data/README.md)).
     The real file is gitignored.
 
+### Browser logins for screenshots (V3)
+
+14. **The two screenshot-only rules.** Organization → Settings → Member privileges:
+    base permission **Read** (GH-06), and under "Repository creation" leave **Public**
+    unticked (GH-07).
+15. **Save the GitHub login:** `make login SITE=github`. A browser window opens; log in as
+    the organization owner (with 2FA), wait until you see GitHub logged in, then press
+    Enter in the terminal. The login is saved to `sessions/github.json`.
+16. **Save the AWS login:** `make login SITE=aws`. Sign in as the IAM user
+    **`compliancelens-audit`** (never root), with MFA, then press Enter. AWS console logins
+    end after **12 hours**: run this again before an audit after that.
+
+Use an authenticator-app code for MFA if you can: Playwright's Chromium may not offer a
+passkey stored in iCloud Keychain.
+
+A saved login is as powerful as a password; see **Security** below. A run with an
+expired login keeps every API verdict and lists the missing screenshots with the fix.
+
 Defaults used in this repo: AWS region `us-east-1`, AWS profile `compliancelens`.
 
 ## Running
@@ -116,48 +140,54 @@ Defaults used in this repo: AWS region `us-east-1`, AWS profile `compliancelens`
 | `make audit` | Run all rules and save the run (`python audit.py run`) |
 | `make history` | Past runs, newest first, with PASS / FAIL / NEEDS REVIEW totals |
 | `make verify RUN=run-0007` | Re-hash a run's files and report anything changed or missing |
+| `make login SITE=github` | Log in by hand and save the login for screenshots (`SITE=aws` too) |
 | `make test` | Run tests with a coverage report (must stay ≥ 70%) |
 | `make lint` | Check code style with ruff (changes nothing) |
 | `make format` | Fix code style automatically |
-| `make clean` | Delete `.venv` and caches (keeps evidence and the database) |
+| `make clean` | Delete `.venv` and caches (keeps evidence, the database and logins) |
 
 More options:
 
 ```bash
 python audit.py                     # same as `run`
 python audit.py run --rule AWS-02   # one rule (repeat --rule for more); marked "partial"
+python audit.py run --no-screenshots   # API checks only: no browser, no screenshots
 python audit.py history --limit 5
 python audit.py --help
 ```
 
-Exit codes: `0` done (FAIL verdicts are results, not errors), `1` verify found a problem
-or the run could not be saved, `2` a configuration or usage error (broken rulebook,
-unknown rule or run).
+Exit codes: `0` done (FAIL verdicts are results, not errors), `1` verify found a problem,
+the run could not be saved or a login was not saved, `2` a configuration or usage error
+(broken rulebook, unknown rule, run or site, Chromium not installed).
 
 Example run (shortened):
 
 ```
-ComplianceLens v0.2.0 audit  2026-10-29 14:02 UTC
+ComplianceLens v0.3.0 audit  2026-10-29 14:02 UTC
 [PASS] AWS-01  Password policy requires 12+ characters
        MinimumPasswordLength = 14 (expected >= 12)
 [FAIL] AWS-02  Every IAM user with a console password has MFA
        count = 1 (expected == 0)  users: ['intern-bob']
 ...
+[NEEDS REVIEW] GH-06   Organization base repository permission is Read or None
+       screenshot captured; needs human review until AI checks (V4)
+...
 [PASS] HR-01   Every AWS and GitHub account belongs to an active employee
        every AWS and GitHub account belongs to an active employee
-13 PASS  1 FAIL  0 NEEDS REVIEW   run-0007 saved to evidence/2026-10-29/run-0007/
+13 PASS  1 FAIL  2 NEEDS REVIEW   run-0007 saved to evidence/2026-10-29/run-0007/
+Screenshots: 15 of 15 saved.
 Check the evidence later with:  python audit.py verify run-0007
 ```
 
 ```
 $ python audit.py history
 Run        Started (UTC)     Status    Scope    PASS  FAIL  REVIEW
-run-0007   2026-10-29 14:02  complete  full       13     1       0
+run-0007   2026-10-29 14:02  complete  full       13     1       2
 run-0006   2026-10-29 13:40  complete  partial     0     1       0
 
 $ python audit.py verify run-0007
 Verifying run-0007 (evidence/2026-10-29/run-0007/)
-OK: 28 files match their recorded SHA-256 hashes.
+OK: 47 files match their recorded SHA-256 hashes.
 ```
 
 To check that a verdict really flips, follow the break-and-fix steps in
@@ -167,16 +197,25 @@ To check that a verdict really flips, follow the break-and-fix steps in
 
 ```
 rules/*.yaml → engine → connectors (AWS, GitHub, HR) → check → verdict
-                                                              ↓
-                       evidence/<date>/run-NNNN/*.json + manifest.json  +  compliance.db
+                  ↓                                               ↓
+            browser (V3) → screenshot + banner → evidence/<date>/run-NNNN/
+                                       *.json, *.meta.json, *.png, manifest.json  +  compliance.db
 ```
 
 1. `engine.py` loads and checks the rulebook.
 2. For each rule it calls the rule's collector in `connectors/` (e.g. `aws.users_without_mfa`).
 3. It applies the rule's `check` (an operator such as `>=`, `in`, `all_true`, or a named
    custom check) and builds a verdict with a reason and a confidence.
-4. `runner.py` saves the raw evidence and a meta file per rule, a manifest of every
-   file with its SHA-256, and a row per result in SQLite (`compliance.db`).
+4. If the rule has a `screenshot:` block, `connectors/browser.py` opens the page with the
+   saved login and takes a picture. A sign-in page, an MFA prompt, an error page or a
+   page without the expected text is never saved as proof; it becomes a screenshot
+   status with a reason. The screenshot never changes an API rule's verdict: the API
+   data is the proof, the picture is for people.
+5. `runner.py` adds the banner, saves the PNG, the raw evidence and a meta file per rule,
+   a manifest of every file with its SHA-256, and a row per result in SQLite (`compliance.db`).
+
+**Screenshot-only rules** (GH-06, GH-07) have a screenshot but no API check. Code can't
+judge them, so they are NEEDS REVIEW with the picture attached until V4 adds AI checks.
 
 **Tamper detection.** `verify` re-hashes every file and compares it with the manifest,
 and the manifest and evidence hashes with the database. Editing, deleting or adding a
@@ -193,24 +232,24 @@ empty placeholders until that version.
 
 | Path | Version | What it is for |
 | --- | --- | --- |
-| `audit.py` | V1 | Entry point: `python audit.py run / history / verify` |
+| `audit.py` | V1 | Entry point: `python audit.py run / history / verify / login` |
 | `compliancelens/` | V1 | The Python package: all the code |
 | `compliancelens/cli.py` | V2 | The commands and their output |
 | `compliancelens/runner.py` | V2 | Runs an audit and saves it; verifies saved runs |
 | `compliancelens/engine.py` | V1 | Loads rules, calls collectors, applies checks |
 | `compliancelens/evidence.py` | V2 | Evidence files, meta files, manifest, hash checks |
-| `compliancelens/connectors/` | V1 | Collects evidence: `aws.py`, `github.py`, `hr.py` (later `browser.py`, `files.py`) |
+| `compliancelens/connectors/` | V1 | Collects evidence: `aws.py`, `github.py`, `hr.py`, `browser.py` (V3; later `files.py`) |
 | `compliancelens/storage/` | V2 | SQLite results database (`db.py`) |
 | `compliancelens/evaluator/` | V4 *later* | AI checks for screenshots and documents |
 | `compliancelens/dashboard/` | V5 *later* | Web dashboard with human review |
 | `compliancelens/reporting/` | V6 *later* | HTML/PDF report templates |
 | `rules/` | V1 | The rulebook: one YAML card per rule |
 | `data/` | V2 | Local employee list for HR-01 (**gitignored** except the example) |
-| `tests/` | V1 | pytest tests; `fixtures/` holds recorded API replies |
+| `tests/` | V1 | pytest tests; `fixtures/` holds recorded API replies and a fake website |
 | `config/` | V6 *later* | Settings file (repo names, region, enabled rules) |
 | `evidence/` | V1 | Output of every run (**gitignored**) |
-| `compliance.db` | V2 | Run history (**gitignored**, created on first run) |
-| `sessions/` | V3 *later* | Saved browser logins (**gitignored**) |
+| `compliance.db` | V2 | Run history (**gitignored**, created on first run; upgraded by V3, copy kept as `compliance-v1-backup.db`) |
+| `sessions/` | V3 | Saved browser logins (**gitignored**, private files) |
 | `reports/` | V6 *later* | Generated reports (**gitignored**) |
 | `policies/` | V4 *later* | Sample policy documents for DOC rules |
 | `experiment/` | V4–V6 *later* | AI vs code accuracy research |
@@ -246,3 +285,36 @@ something that looks like a secret.
 - `.env`, `evidence/`, `sessions/`, `reports/`, `data/employees.csv` and `*.db` are gitignored.
 - Evidence can contain user names, account IDs and settings: keep it local. HR-01's
   evidence holds account names only, never employee names or emails.
+
+**Saved browser logins (V3).** `sessions/github.json` and `sessions/aws.json` work like
+passwords: anyone with the file is logged in.
+
+- `sessions/github.json` is a full login to **your own GitHub account**, which owns the
+  test organization **and all your personal repos**. GitHub has no read-only role that
+  can see the settings pages, so this login is stronger than the read-only token.
+- `sessions/aws.json` is the read-only `compliancelens-audit` user (SecurityAudit). AWS
+  ends it after 12 hours.
+- The files are created readable only by you (`0600`, folder `0700`), are gitignored, and
+  their contents are never printed, logged, put in evidence or the database, or used in CI.
+- The browser only opens pages on the site's own hosts and can only wait, scroll and
+  click links or tabs. Rule cards can't type, tick, save or run scripts.
+- **To remove a login:** delete the file **and** sign the session out on the website
+  (GitHub: Settings → Sessions). Deleting the file alone does not log you out there.
+  If the laptop is lost or shared, revoke all GitHub sessions.
+- Screenshots can show names and account details. AWS screenshots mask the account menu
+  (`mask:` in a rule card hides other parts). Keep evidence local; blur before presenting.
+
+## Screenshot troubleshooting
+
+| You see | It usually means | Fix |
+| --- | --- | --- |
+| `Chromium is not installed` | Playwright is there, the browser isn't | `.venv/bin/python -m playwright install chromium` |
+| `no saved GitHub login` / `no saved AWS login` | `login` never ran (or `sessions/` was emptied) | `make login SITE=github` / `SITE=aws` |
+| `AWS login expired` | More than 12 hours since `login aws` | `make login SITE=aws` |
+| `GitHub login expired` / `not logged in to GitHub` | GitHub signed the session out | `make login SITE=github` |
+| `asked to confirm the login (MFA or similar)` | GitHub "Confirm access" or a new MFA prompt | `make login SITE=github` again |
+| `HTTP 404: no access to the page` | The login can't see the page (not an owner/admin), or the URL is wrong | Check the account's role and the rule's `url` |
+| `... did not appear within 20 s (has the page changed?)` | GitHub or AWS changed the page | Update the rule's `wait_for` / `steps` (see `rules/README.md`) |
+| `GITHUB_ORG not set` (config error) | The URL needs `{org}` | Add `GITHUB_ORG` to `.env` |
+| A screenshot shows something private | Not masked yet | Add a `mask:` locator to the rule card |
+| You need an audit now but logins expired | | `python audit.py run --no-screenshots` |
