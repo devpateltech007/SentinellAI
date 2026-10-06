@@ -114,8 +114,8 @@ GH-05 lists members without two-factor authentication; GitHub only shows this to
 ### Browser logins for screenshots (V3)
 
 14. **The two screenshot-only rules.** Organization → Settings → Member privileges:
-    base permission **Read** (GH-06), and under "Repository creation" leave **Public**
-    unticked (GH-07).
+    base permission **Read** (GH-06), and under "Repository deletion and transfer" untick
+    **Allow members to delete or transfer repositories** → Save (GH-07).
 15. **Save the GitHub login:** `make login SITE=github`. A browser window opens; log in as
     the organization owner (with 2FA), wait until you see GitHub logged in, then press
     Enter in the terminal. The login is saved to `sessions/github.json`.
