@@ -90,6 +90,8 @@ every machine: 1440×900, scale 1, `en-US`, UTC, light theme, no animations, no 
 **One capture:** fill in the URL → check it is https on the site's hosts → open it → is it
 a sign-in, MFA, error or "no access" page? → wait for `wait_for` → run the `steps` (wait,
 scroll, click a link or tab only) → check again → mask → take the PNG in memory.
+`wait_for`, steps and `capture.target` use the first **visible** match (pages often hold
+hidden copies of the same text); masks cover every match, visible or not.
 
 | Status | Means | Fix |
 | --- | --- | --- |

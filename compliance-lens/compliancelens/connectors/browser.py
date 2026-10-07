@@ -221,6 +221,8 @@ SENSITIVE_QUERY = re.compile(
 )
 # Multi-session AWS console hosts start with the account ID: 123456789012-abcd.us-east-1...
 AWS_ACCOUNT_HOST = re.compile(r"^\d{12}(?:-[a-z0-9]+)?\.")
+# ...and an AWS account ID anywhere else in the URL, e.g. an ARN in a console route.
+ACCOUNT_ID = re.compile(r"(?<![0-9])[0-9]{12}(?![0-9])")
 
 
 def _value(rule: dict, name: str) -> str:
@@ -250,7 +252,8 @@ def resolve_url(rule: dict) -> str:
 def clean_url(url: str | None) -> str:
     """The URL as recorded in banners, meta files and the database.
 
-    No user name or password, no secret-looking query values, no AWS account ID.
+    No user name or password, no secret-looking query values, no AWS account ID
+    (no 12-digit number at all).
     """
     if not url:
         return ""
@@ -264,12 +267,13 @@ def clean_url(url: str | None) -> str:
     pairs = parse_qsl(query, keep_blank_values=True)
     if any(SENSITIVE_QUERY.search(key) for key, _ in pairs):
         query = urlencode([(k, "REDACTED" if SENSITIVE_QUERY.search(k) else v) for k, v in pairs])
-    return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
+    cleaned = urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
+    return ACCOUNT_ID.sub("ACCOUNT", cleaned)
 
 
 # ------------------------------------------------------- rule card checks ----
 
-LOCATOR_KINDS = ("role", "label", "text", "css")
+LOCATOR_KINDS = ("role", "label", "text", "pattern", "css")
 STEP_ACTIONS = ("wait_for", "scroll_to", "click")
 CLICK_ROLES = ("link", "tab")
 # A click may open a page or a tab; never anything whose name sounds like a change.
@@ -288,7 +292,7 @@ def locator_problem(spec) -> str | None:
         return "a locator must be a mapping, e.g. {role: heading, name: Users}"
     kinds = [kind for kind in LOCATOR_KINDS if kind in spec]
     if len(kinds) != 1:
-        return "a locator needs exactly one of role, label, text or css"
+        return "a locator needs exactly one of role, label, text, pattern or css"
     unknown = set(spec) - {*LOCATOR_KINDS, "name", "exact"}
     if unknown:
         return f"unknown locator key(s) {sorted(unknown)}"
@@ -299,6 +303,13 @@ def locator_problem(spec) -> str | None:
             return f"{key} must be text"
     if not isinstance(spec.get("exact", False), bool):
         return "exact must be true or false"
+    if "pattern" in spec:
+        if "exact" in spec:
+            return "exact does not go with pattern"
+        try:
+            re.compile(spec["pattern"])
+        except re.error as e:
+            return f"pattern is not a valid regular expression ({e})"
     return None
 
 
@@ -449,6 +460,7 @@ def _new_context(browser, **options):
 
 
 def _locate(page, spec: dict):
+    """Every element that matches the locator (masks cover them all)."""
     exact = spec.get("exact", False)
     if "role" in spec:
         return page.get_by_role(spec["role"], name=spec.get("name"), exact=exact)
@@ -456,7 +468,15 @@ def _locate(page, spec: dict):
         return page.get_by_label(spec["label"], exact=exact)
     if "text" in spec:
         return page.get_by_text(spec["text"], exact=exact)
+    if "pattern" in spec:
+        return page.get_by_text(re.compile(spec["pattern"]))
     return page.locator(spec["css"])
+
+
+def _visible(page, spec: dict):
+    """The first VISIBLE match. Pages often hold hidden copies of the same text (menus,
+    tooltips, mobile layouts); waiting for the first match could wait for a hidden one."""
+    return _locate(page, spec).filter(visible=True).first
 
 
 def _page_problem(page, site: Site, response=None) -> tuple[str, str] | None:
@@ -667,11 +687,11 @@ class Screenshotter:
 
         waited_for = describe(shot["wait_for"])
         try:
-            _locate(page, shot["wait_for"]).first.wait_for(state="visible", timeout=timeout)
+            _visible(page, shot["wait_for"]).wait_for(state="visible", timeout=timeout)
             for step in shot.get("steps") or []:
                 ((action, spec),) = step.items()
                 waited_for = describe(spec)
-                target = _locate(page, spec).first
+                target = _visible(page, spec)
                 if action == "click":
                     target.click(timeout=timeout)
                     page.wait_for_load_state("domcontentloaded", timeout=timeout)
@@ -693,7 +713,7 @@ class Screenshotter:
             "mask": [_locate(page, spec) for spec in shot.get("mask") or []],
         }
         if "target" in capture:
-            png = _locate(page, capture["target"]).first.screenshot(**options)
+            png = _visible(page, capture["target"]).screenshot(**options)
         else:
             png = page.screenshot(full_page=full_page, **options)
         return Capture(

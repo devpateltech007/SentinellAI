@@ -315,6 +315,8 @@ passwords: anyone with the file is logged in.
 | `asked to confirm the login (MFA or similar)` | GitHub "Confirm access" or a new MFA prompt | `make login SITE=github` again |
 | `HTTP 404: no access to the page` | The login can't see the page (not an owner/admin), or the URL is wrong | Check the account's role and the rule's `url` |
 | `... did not appear within 20 s (has the page changed?)` | GitHub or AWS changed the page | Update the rule's `wait_for` / `steps` (see `rules/README.md`) |
+| GH-01/GH-02 screenshot says `HTTP 404` | The `main` branch rule was deleted and re-created, so it has a new number | Copy the new number into `vars.rule` (see `scripts/README.md`, GH-02) |
+| A screenshot shows loading spinners | It waits for a heading, not for the data | Wait for something only shown with the data (see `rules/README.md`) |
 | `GITHUB_ORG not set` (config error) | The URL needs `{org}` | Add `GITHUB_ORG` to `.env` |
 | A screenshot shows something private | Not masked yet | Add a `mask:` locator to the rule card |
 | You need an audit now but logins expired | | `python audit.py run --no-screenshots` |
