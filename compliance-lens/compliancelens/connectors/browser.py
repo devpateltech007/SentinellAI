@@ -732,7 +732,12 @@ def login(site_name: str, wait: Callable[[Site], None], headless: bool = False) 
             raise LoginError(f"could not open {site.login_url}: {_short(e)}")
         wait(site)
         try:
+            # Playwright's sync API only hears from the browser during a call. While we
+            # waited for Enter, page.url and context.pages kept the sign-in page; one call
+            # (here: read the cookies) brings them up to date.
+            context.cookies()
             page = context.pages[-1]  # the newest tab, in case the login opened one
+            page.wait_for_load_state("domcontentloaded")  # a page still loading finishes
             problem = _page_problem(page, site)
             state = None if problem else context.storage_state()
         except Exception as e:

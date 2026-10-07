@@ -12,6 +12,7 @@ import os
 import stat
 import sys
 import threading
+import time
 import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -50,6 +51,8 @@ class FakeSite(BaseHTTPRequestHandler):
         url = urlsplit(self.path)
         if url.path == "/login" and url.query == "auto=1":  # "logs in" straight away
             return self._redirect("/home", cookie=COOKIE)
+        if url.path == "/login" and url.query == "later=1":  # logs in by itself after 0.3 s
+            return self._page("login-later.html")
         if url.path == "/challenge":
             return self._redirect("/sessions/confirm")
         if url.path == "/leave":
@@ -770,6 +773,22 @@ def test_login_saves_a_login_that_a_new_browser_can_use(chromium, site, server):
     assert result.status == browser.CAPTURED, result.reason
 
 
+def test_login_while_python_waits_for_enter(chromium, site, server, monkeypatch):
+    # The real case: the person logs in while the terminal waits for Enter, so the
+    # browser changes page without any Playwright call. That login must be seen.
+    # The local-only guard is off here: it intercepts every request and, in the sync
+    # API, only answers during a call, so the page couldn't move on while we wait.
+    # These two pages (login-later.html, home.html) load nothing from outside.
+    monkeypatch.delenv(browser.LOCAL_ONLY_ENV)
+    later = dataclasses.replace(site, login_url=f"{server}/login?later=1")
+    monkeypatch.setitem(browser.SITES, "test", later)
+    path = browser.login("test", lambda s: time.sleep(1.5), headless=True)
+    assert "session" in [c["name"] for c in json.loads(path.read_text())["cookies"]]
+    monkeypatch.setenv(browser.LOCAL_ONLY_ENV, "1")
+    [result] = capture(rule("/evidence", server))  # a fresh browser with the saved login
+    assert result.status == browser.CAPTURED, result.reason
+
+
 def test_login_that_did_not_happen_keeps_the_old_file(chromium, site, server, monkeypatch):
     old = save_login("old")
     monkeypatch.setitem(
@@ -790,7 +809,9 @@ def test_login_page_that_does_not_open(chromium, site, monkeypatch):
 
 def test_login_window_closed_early(monkeypatch):
     page = types.SimpleNamespace(goto=lambda url, **kwargs: None)
-    context = types.SimpleNamespace(pages=[], new_page=lambda: page, route=lambda *a: None)
+    context = types.SimpleNamespace(
+        pages=[], new_page=lambda: page, route=lambda *a: None, cookies=lambda: []
+    )
     fake_browser = types.SimpleNamespace(new_context=lambda **options: context)
     playwright, stopped = fake_playwright(lambda headless: fake_browser)
     monkeypatch.setattr(browser, "_start_playwright", lambda: playwright)
