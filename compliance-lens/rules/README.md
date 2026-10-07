@@ -99,7 +99,8 @@ duplicate IDs, a missing title, an unknown collector, operator or custom check.
 
 Screenshots: AWS-01 (IAM account settings), AWS-02/04/08 (IAM users list), AWS-03 (IAM
 dashboard), AWS-05/06 (the test bucket's Permissions/Properties), AWS-07 (CloudTrail
-trails), GH-01/02 (the `main` branch protection rule), GH-03/04 (Code security), GH-05
+trails, scrolled to the Status column), GH-01/02 (the `main` branch protection rule, opened
+directly by its number `vars.rule`), GH-03/04 (Advanced Security), GH-05
 (People, 2FA filter), GH-06/07 (Member privileges). GH-06's setting is also in GitHub's
 API; it is screenshot-only on purpose, so V4 can score the AI against the true answer.
 GH-07 was first "members cannot create public repositories", but only GitHub Enterprise
@@ -142,11 +143,18 @@ never changes an API rule's verdict. HR-01 has none (it checks a local CSV).
 | `wait_for` | Something that appears **only** when the evidence has loaded. Not `{role: main}`: a sign-in page has one too. |
 | `steps` | Only `wait_for`, `scroll_to` and `click`. A click must be a **link or tab** with a name, and names like Delete, Save, Disable, Confirm are refused. Nothing can type, tick or select. |
 | `capture` | `full_page: true` for the whole page, `target: <locator>` for one element. |
-| `mask` | Locators covered with a solid block before the picture is taken. |
+| `mask` | Locators covered with a solid block before the picture is taken. Every AWS screenshot masks the account menu and `{ pattern: "[0-9]{12}" }` (account IDs in ARNs, bucket names and URLs); every GitHub screenshot masks your avatar. |
 
-**Locators** are one of `role` (+ optional `name`), `label`, `text` or `css`, plus optional
-`exact: true`. Prefer `role` + `name` or `text`: they survive design changes best. Text
-matches the English page (the browser always uses `en-US`).
+**Locators** are one of `role` (+ optional `name`), `label`, `text`, `pattern` (a regular
+expression, e.g. `"[0-9]{12}"`) or `css`, plus optional `exact: true` (not with `pattern`).
+Prefer `role` + `name` or `text`: they survive design changes best. Text matches the
+English page (the browser always uses `en-US`). `wait_for`, steps and `capture.target`
+use the first **visible** match: pages often hold hidden copies of the same text.
+
+**Wait for the data, not the heading.** AWS draws a page's headings first and fills in
+the data a second or two later. Wait for something that only exists once the data is
+there (`"Password minimum length"`, a user row `a[href*='users/details']`), or the picture
+shows loading spinners.
 
 **When a page changes** (GitHub and AWS redesign often), the rule shows
 `selector_timeout: ... did not appear`. Open the page, find a heading or label that

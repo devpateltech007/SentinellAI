@@ -57,6 +57,15 @@ def test_screenshot_block_is_valid(rule):
 
 
 @pytest.mark.parametrize("rule", SCREENSHOT_RULES, ids=lambda r: r.get("id", "?"))
+def test_screenshots_hide_private_details(rule):
+    masks = rule["screenshot"].get("mask", [])
+    if rule["screenshot"]["site"] == "aws":
+        assert {"pattern": "[0-9]{12}"} in masks  # account IDs in ARNs, bucket names, URLs
+    else:
+        assert {"role": "button", "name": "Open user navigation menu"} in masks  # your avatar
+
+
+@pytest.mark.parametrize("rule", SCREENSHOT_RULES, ids=lambda r: r.get("id", "?"))
 def test_screenshot_urls_resolve_with_the_usual_settings(rule, monkeypatch):
     monkeypatch.setenv("GITHUB_ORG", "compliancelens-lab-sjsu")
     url = browser.resolve_url(rule)

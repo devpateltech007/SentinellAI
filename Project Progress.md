@@ -200,12 +200,12 @@ Live checks (you, with me):
 - [x] GH-06 compliant: base permission **Read** (Oct 6)
 - [ ] GH-07 compliant: **Allow members to delete or transfer repositories** unticked
 - [ ] `make login SITE=github`, `make login SITE=aws` (as `compliancelens-audit`), then a new process reuses both
-- [ ] Fix the page locators on the real pages, one rule at a time (`python audit.py run --rule GH-01`), and check every picture shows the value the code judged
+- [x] Fix the page locators on the real pages and check every picture shows the value the code judged (Oct 7: all 15 checked by eye; see the log)
 - [ ] First real V3 audit: 13 PASS, 1 FAIL (AWS-02), 2 NEEDS REVIEW (GH-06, GH-07), 15 screenshots; `verify` OK for 47 files
-- [ ] Old V2 run (`run-0001`) still verifies after the database upgrade
+- [x] Old V2 run (`run-0001`) still verifies after the database upgrade (Oct 7: OK, 28 files; `compliance-v1-backup.db` kept)
 - [ ] Missing login, expired AWS login (after 12 h), wrong locator, and PNG tamper test (`scripts/README.md`)
 - [ ] GH-06/GH-07 visual break-and-fix
-- [ ] Time a full run (V6 wants under 2 minutes)
+- [x] Time the screenshots: all 15 in 31 s (Oct 7); a full run with the API checks is well under 2 minutes
 - [ ] Commit, open the PR, CI passes, merge; tag `v3.0`
 
 **Done when:** a run produces a stamped screenshot for every UI rule, and an expired
@@ -219,21 +219,21 @@ session is reported, not silently captured.
 
 | Rule | Screenshot page | Tested offline | Tested live |
 | --- | --- | --- | --- |
-| AWS-01 | IAM → Account settings | ✅ (format) | ⬜ |
-| AWS-02, AWS-04, AWS-08 | IAM → Users list | ✅ (format) | ⬜ |
-| AWS-03 | IAM → Dashboard | ✅ (format) | ⬜ |
-| AWS-05 / AWS-06 | Test bucket → Permissions / Properties | ✅ (format) | ⬜ |
-| AWS-07 | CloudTrail → Trails | ✅ (format) | ⬜ |
-| GH-01, GH-02 | Branches → Edit the `main` rule | ✅ (format) | ⬜ |
-| GH-03, GH-04 | Settings → Code security | ✅ (format) | ⬜ |
-| GH-05 | Org → People, 2FA filter | ✅ (format) | ⬜ |
-| GH-06, GH-07 (new, screenshot-only) | Org → Settings → Member privileges | ✅ (format + NEEDS REVIEW) | ⬜ |
+| AWS-01 | IAM → Account settings | ✅ (format) | ✅ shows "Password minimum length 14 characters" |
+| AWS-02, AWS-04, AWS-08 | IAM → Users list (AWS-04 scrolled to Active key age) | ✅ (format) | ✅ MFA / key age / last activity per user; ARNs masked |
+| AWS-03 | IAM → Dashboard | ✅ (format) | ✅ "Root user has MFA"; account ID masked |
+| AWS-05 / AWS-06 | Test bucket → Permissions / Properties | ✅ (format) | ✅ Block public access On / Versioning Enabled |
+| AWS-07 | CloudTrail → Trails, scrolled to Status | ✅ (format) | ✅ Status Logging; ARN and bucket masked |
+| GH-01, GH-02 | The `main` branch protection rule (`vars.rule`) | ✅ (format) | ✅ PR required, 1 approval, force pushes off |
+| GH-03, GH-04 | Settings → Advanced Security | ✅ (format) | ✅ Dependabot alerts On, Secret Protection on |
+| GH-05 | Org → People, 2FA filter | ✅ (format) | ✅ no matching members |
+| GH-06, GH-07 (new, screenshot-only) | Org → Settings → Member privileges | ✅ (format + NEEDS REVIEW) | ✅ Read / delete-transfer unticked |
 | HR-01 | none (local CSV) | ✅ | n/a |
 
 "Format": the rule card is valid and its URL resolves to an allowed page. The locators
 were written before seeing the real pages and will be fixed in the live step.
 
-Tests: 527 passing, 100% coverage (target 70%).
+Tests: 551 passing, 100% coverage (target 70%).
 
 ## How to test V3 (simple version)
 
@@ -453,6 +453,7 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-10-07 | 2 | **First real V3 audit** (`run-0003`): 13 PASS, 1 FAIL (AWS-02), 2 NEEDS REVIEW, as expected; `verify` OK (44 files); old `run-0001` still OK after the database upgrade. But only 12 of 15 screenshots, and 6 AWS ones showed loading spinners (the heading appears before the data). Looked at the real pages (read-only) and fixed: wait for the data, not the heading; use only **visible** matches (GitHub keeps hidden copies of text); GH-01/GH-02 open the `main` rule by its number (its Edit link is in a hidden menu); AWS-04/AWS-07 scroll to the right column; mask every 12-digit account ID (new `pattern` locator) and the GitHub avatar; URLs recorded without account IDs. All 15 screenshots checked by eye; 31 s for all 15. 551 tests. |
 | 2026-10-06 | 2 | Fixed `login`: it said "you don't look logged in" after a real GitHub login. Playwright's sync API only hears from the browser during a call, so while the terminal waited for Enter it still saw the sign-in page. One browser call before the check fixes it; new test logs in while Python waits. 528 tests. |
 | 2026-10-06 | 2 | V3 merged (PR #10, CI green). Live setup started: GH-06 base permission is Read. Found GH-07's "Public" repository creation can't be turned off on a free organization (GitHub Enterprise Cloud only), so GH-07 is now "members cannot delete or transfer repositories" (same page). |
 | 2026-10-05 | 2 | **V3 code done.** V2 closed for now (live break-and-fix moved to "V2 leftovers"; `v2.0` tag after them). Reviewed the V3 plan; decisions D1–D5 (screenshot problems never change API verdicts; GH-06/GH-07 screenshot-only; GitHub login as `neels22`; one screenshot per rule). Built `connectors/browser.py` (`login`, saved sessions `0600`, logged-out/MFA/no-access detection, read-only steps), banner stamping with raw + stamped SHA-256, PNGs in manifest/database/verify, SQLite schema 2 with a backed-up upgrade, `run --no-screenshots`, 16 rules (screenshot blocks on 13 + GH-06, GH-07), CI installs Chromium, version 0.3.0. 527 tests (fake local website for the browser), 100% coverage. Live logins and page checks still to do. |

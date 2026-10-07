@@ -129,6 +129,12 @@ or present it as a second planned failure.
 
 Deleting the whole rule also gives FAIL (an unprotected branch allows force pushes).
 
+**Screenshot of GH-01/GH-02:** the rule's own page, `.../settings/branch_protection_rules/<number>`
+(`vars.rule` in the rule card). Editing the rule keeps the number. If you **delete and
+re-create** the rule, the screenshot says `HTTP 404`: open Settings → Branches, the `main`
+rule's menu → Edit, and copy the new number from the address bar into `vars.rule` of GH-01
+and GH-02.
+
 ## GH-03: Secret scanning is enabled
 
 | Step | Do this | Expected verdict |

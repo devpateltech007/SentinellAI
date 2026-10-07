@@ -23,9 +23,10 @@
   screenshot:
     site: aws
     url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/account_settings"
-    wait_for: { text: "Password policy" }
-    mask:
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
+    wait_for: { text: "Password minimum length" }   # shown once the policy has loaded
+    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
+      - { pattern: "[0-9]{12}" }
 
 - id: AWS-02
   title: Every IAM user with a console password has MFA
@@ -37,9 +38,10 @@
   screenshot:
     site: aws
     url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/users"
-    wait_for: { role: heading, name: "Users" }   # MFA column
-    mask:
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
+    wait_for: { css: "a[href*='users/details']" }   # a user row has loaded; MFA column
+    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
+      - { pattern: "[0-9]{12}" }
 
 - id: AWS-03
   title: Root account has MFA
@@ -51,9 +53,10 @@
   screenshot:
     site: aws
     url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/home"
-    wait_for: { text: "Security recommendations" }   # "Root user has MFA"
-    mask:
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
+    wait_for: { text: "Root user has MFA" }
+    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
+      - { pattern: "[0-9]{12}" }
 
 - id: AWS-04
   title: No active access key is older than 90 days
@@ -65,9 +68,12 @@
   screenshot:
     site: aws
     url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/users"
-    wait_for: { role: heading, name: "Users" }   # Active key age column
-    mask:
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
+    wait_for: { css: "a[href*='users/details']" }   # a user row has loaded
+    steps:
+      - scroll_to: { role: columnheader, name: "Active key age" }
+    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
+      - { pattern: "[0-9]{12}" }
 
 - id: AWS-05
   title: Every S3 bucket blocks public access
@@ -81,8 +87,9 @@
     url: "https://{region}.console.aws.amazon.com/s3/buckets/{bucket}?region={region}&tab=permissions"
     vars: { bucket: compliancelens-test-sjsu-2026 }
     wait_for: { text: "Block public access (bucket settings)" }
-    mask:
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
+    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
+      - { pattern: "[0-9]{12}" }
 
 - id: AWS-06
   title: Every S3 bucket has versioning on
@@ -97,8 +104,9 @@
     wait_for: { text: "Bucket Versioning" }
     steps:
       - scroll_to: { text: "Bucket Versioning" }
-    mask:
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
+    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
+      - { pattern: "[0-9]{12}" }
 
 - id: AWS-07
   title: At least one CloudTrail trail is logging
@@ -110,9 +118,12 @@
   screenshot:
     site: aws
     url: "https://{region}.console.aws.amazon.com/cloudtrailv2/home?region={region}#/trails"
-    wait_for: { role: heading, name: "Trails" }   # Status: Logging
-    mask:
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
+    wait_for: { css: "a[href*='trails/arn']" }   # a trail row has loaded
+    steps:
+      - scroll_to: { role: columnheader, name: "Status" }   # Logging
+    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
+      - { pattern: "[0-9]{12}" }
 
 - id: AWS-08
   title: No IAM user has been inactive for more than 90 days
@@ -124,9 +135,10 @@
   screenshot:
     site: aws
     url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/users"
-    wait_for: { role: heading, name: "Users" }   # Last activity column
-    mask:
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }   # account name/ID
+    wait_for: { css: "a[href*='users/details']" }   # a user row has loaded; Last activity column
+    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
+      - { pattern: "[0-9]{12}" }
 
 # --- GitHub ------------------------------------------------------------------
 
@@ -137,14 +149,14 @@
   collector: github.branch_protection
   params: { repo: "compliancelens-lab-sjsu/compliancelens-test", branch: main }
   check: { field: required_approving_review_count, op: ">=", value: 1 }
-  screenshot:
+  screenshot:   # the classic rule for main; its number is in the rule's Edit link
     site: github
-    url: "https://github.com/{repo}/settings/branches"
-    wait_for: { role: heading, name: "Branch protection rules" }
-    steps:
-      - click: { role: link, name: "Edit" }   # opens the classic rule for main
-      - wait_for: { text: "Require a pull request before merging" }
+    url: "https://github.com/{repo}/settings/branch_protection_rules/{rule}"
+    vars: { rule: 84086322 }
+    wait_for: { text: "Require a pull request before merging" }
     capture: { full_page: true }
+    mask:
+      - { role: button, name: "Open user navigation menu" }   # your avatar
 
 - id: GH-02
   title: Force pushes to main are blocked
@@ -152,15 +164,14 @@
   collector: github.force_push_protection
   params: { repo: "compliancelens-lab-sjsu/compliancelens-test", branch: main }
   check: { field: allow_force_pushes, op: "==", value: false }
-  screenshot:
+  screenshot:   # the classic rule for main; its number is in the rule's Edit link
     site: github
-    url: "https://github.com/{repo}/settings/branches"
-    wait_for: { role: heading, name: "Branch protection rules" }
-    steps:
-      - click: { role: link, name: "Edit" }   # opens the classic rule for main
-      - wait_for: { text: "Require a pull request before merging" }
-      - scroll_to: { text: "Allow force pushes" }
+    url: "https://github.com/{repo}/settings/branch_protection_rules/{rule}"
+    vars: { rule: 84086322 }
+    wait_for: { text: "Require a pull request before merging" }
     capture: { full_page: true }
+    mask:
+      - { role: button, name: "Open user navigation menu" }   # your avatar
 
 - id: GH-03
   title: Secret scanning is enabled
@@ -173,6 +184,8 @@
     url: "https://github.com/{repo}/settings/security_analysis"
     wait_for: { text: "Secret Protection" }
     capture: { full_page: true }
+    mask:
+      - { role: button, name: "Open user navigation menu" }   # your avatar
 
 - id: GH-04
   title: Dependabot alerts are enabled
@@ -185,6 +198,8 @@
     url: "https://github.com/{repo}/settings/security_analysis"
     wait_for: { text: "Dependabot alerts" }
     capture: { full_page: true }
+    mask:
+      - { role: button, name: "Open user navigation menu" }   # your avatar
 
 - id: GH-05
   title: Every organization member has 2FA
@@ -196,6 +211,8 @@
     site: github
     url: "https://github.com/orgs/{org}/people?query=two-factor%3Adisabled"
     wait_for: { text: "Members" }
+    mask:
+      - { role: button, name: "Open user navigation menu" }   # your avatar
 
 # Screenshot-only rules (V3): no collector and no check. Code can't judge them, so they
 # are NEEDS REVIEW with the screenshot attached; V4 adds AI checks. Both settings are on
@@ -208,6 +225,8 @@
     site: github
     url: "https://github.com/organizations/{org}/settings/member_privileges"
     wait_for: { role: heading, name: "Base permissions" }
+    mask:
+      - { role: button, name: "Open user navigation menu" }   # your avatar
 
 - id: GH-07
   title: Members cannot delete or transfer repositories
@@ -218,6 +237,8 @@
     wait_for: { text: "Repository deletion and transfer" }
     steps:
       - scroll_to: { text: "Repository deletion and transfer" }
+    mask:
+      - { role: button, name: "Open user navigation menu" }   # your avatar
 
 # --- HR ----------------------------------------------------------------------
 

@@ -323,6 +323,14 @@ def test_aws_sign_in_is_not_a_console_page():
             "https://ACCOUNT.us-east-1.console.aws.amazon.com/iam/home#/users",
         ),
         ("http://127.0.0.1:8000/home", "http://127.0.0.1:8000/home"),
+        (
+            "https://us-east-1.console.aws.amazon.com/cloudtrailv2/home#/trails/arn:aws:cloudtrail:us-east-1:123456789012:trail/t",
+            "https://us-east-1.console.aws.amazon.com/cloudtrailv2/home#/trails/arn:aws:cloudtrail:us-east-1:ACCOUNT:trail/t",
+        ),
+        (
+            "https://github.com/o/r/settings/branch_protection_rules/84086322",
+            "https://github.com/o/r/settings/branch_protection_rules/84086322",
+        ),
         (None, ""),
         ("http://127.0.0.1:99999999/", ""),
     ],
@@ -419,6 +427,10 @@ def test_screenshot_block_needs_wait_for():
         ({"role": 3}, "role must be text"),
         ({"role": "link", "name": " "}, "name must be text"),
         ({"label": "x", "exact": "yes"}, "exact must be true or false"),
+        ({"pattern": "[0-9]{12}"}, None),
+        ({"pattern": "[0-9"}, "pattern is not a valid regular expression"),
+        ({"pattern": "x", "exact": True}, "exact does not go with pattern"),
+        ({"pattern": ""}, "pattern must be text"),
     ],
 )
 def test_locator_problem(spec, problem):
@@ -430,6 +442,7 @@ def test_describe_locators():
     assert browser.describe({"role": "heading", "name": "Users"}) == "heading 'Users'"
     assert browser.describe({"role": "main"}) == "main"
     assert browser.describe({"css": "#x"}) == "css '#x'"
+    assert browser.describe({"pattern": "[0-9]+"}) == "pattern '[0-9]+'"
 
 
 # --- capture without a browser ---------------------------------------------------
@@ -651,6 +664,27 @@ def test_mask_hides_private_text(logged_in, server):
     assert dark_pixels(masked.png) == 0  # covered by Playwright's mask colour
     with Image.open(io.BytesIO(masked.png)) as image:
         assert (255, 0, 255) in {colour for _, colour in image.convert("RGB").getcolors(100_000)}
+
+
+def test_hidden_copies_are_skipped(logged_in, server):
+    # GitHub pages hold hidden copies of text (menus, tooltips). The first match here
+    # is hidden; waiting for it would time out. Only visible matches count.
+    [result] = capture(
+        rule("/evidence", server, wait_for={"text": "Require reviews"}, timeout_ms=2000)
+    )
+    assert result.status == browser.CAPTURED, result.reason
+
+
+def test_pattern_mask_hides_matching_text(logged_in, server):
+    # Like the account-ID mask on AWS pages: { pattern: "[0-9]{12}" }.
+    r = rule(
+        "/evidence",
+        server,
+        capture={"target": {"css": "#secret"}},
+        mask=[{"pattern": "[a-z]+@example\\.com"}],
+    )
+    [result] = capture(r)
+    assert dark_pixels(result.png) == 0
 
 
 def test_slow_evidence_is_awaited(logged_in, server):
