@@ -20,6 +20,10 @@ dependencies = { file = ["requirements.txt"] }
 [tool.setuptools.packages.find]
 include = ["compliancelens*"]
 
+# Non-Python files the package needs at run time (V4: the AI prompt, schema and model list).
+[tool.setuptools.package-data]
+"compliancelens.evaluator" = ["models.json", "prompts/*.txt", "prompts/*.json"]
+
 # ---------------------------------------------------------------- ruff ----
 [tool.ruff]
 target-version = "py311"

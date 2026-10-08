@@ -9,8 +9,11 @@ served from this computer (`fixtures/browser/`).
 
 | File | Tests |
 | --- | --- |
-| `conftest.py` | Shared setup for every test: fake AWS credentials, no real tokens, a temporary database, evidence and **sessions** folder, **real network blocked** (the browser may only reach 127.0.0.1), no real sleeping |
-| `test_package.py` | The package imports and has a version |
+| `conftest.py` | Shared setup for every test: fake AWS credentials, no real tokens or AI keys, a temporary database, evidence and **sessions** folder, **real network blocked** (the browser may only reach 127.0.0.1; the AI SDKs' `httpx2` too), no real sleeping |
+| `test_package.py` | The package imports, has a version and carries the AI prompt, schema and model list |
+| `test_ai_settings.py` | Choosing the AI model in `.env`: provider prefixes, keys (never shown, never sent to the wrong provider), addresses, known vs unknown models, overrides, bad values |
+| `test_providers.py` | Both AI adapters against fake HTTP replies: request shape, stop reasons, errors (and no SDK retries), Claude fallbacks, local servers |
+| `test_prompt.py` | The frozen v1 prompt and schema, escaping of documents, the strict answer parser, `ai-test`'s checks |
 | `test_aws.py` | AWS-01 to AWS-08: both verdict states, pagination, missing settings, errors, old keys and inactive users (with a fake clock) |
 | `test_github.py` | GH-01 to GH-05: each state, unclear 404s, missing token/org, pagination, rate-limit retries and giving up |
 | `test_hr.py` | HR-01: matching, allowlists, terminated employees, missing or broken CSV, partial data |
@@ -19,7 +22,7 @@ served from this computer (`fixtures/browser/`).
 | `test_browser.py` | Sites, session files (`0600`), URL placeholders and cleaning, rule card checks, and real Chromium against the fake website: capture, full page, one element, steps, masks, expired login, MFA and "no access" pages, timeouts, `login` save and reuse, a whole audit that verifies |
 | `test_storage.py` | Database schema, foreign keys, run lifecycle, history order, run names, screenshot columns, upgrading a V2 (schema 1) database and rolling back a failed upgrade |
 | `test_rules_file.py` | The real rulebook: the 16 rules, 15 screenshot blocks, valid, sensible value types, no secrets |
-| `test_cli.py` | `run`, `run --rule`, `run --no-screenshots`, `history`, `verify`, `login` end to end, exit codes, failures |
+| `test_cli.py` | `run`, `run --rule`, `run --no-screenshots`, `history`, `verify`, `login`, `ai-test` (with a fake AI) end to end, exit codes, failures |
 | `fixtures/` | Recorded API replies and the fake website |
 
 **What is mocked instead of done live:** root MFA on (AWS-03), keys older than 90 days

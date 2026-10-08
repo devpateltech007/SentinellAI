@@ -6,7 +6,7 @@ VENV   := .venv
 BIN    := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format audit history verify login clean
+.PHONY: help setup test lint format audit history verify login aitest clean
 
 help:  ## Show this list
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
@@ -45,6 +45,9 @@ verify:  ## Check a run's evidence: make verify RUN=run-0007
 login:  ## Save a login for screenshots: make login SITE=github (or aws)
 	@if [ -z "$(SITE)" ]; then echo "Usage: make login SITE=github   (or SITE=aws)"; exit 2; fi
 	$(BIN)/python audit.py login $(SITE)
+
+aitest:  ## Check the AI model set in .env (one text and one image call)
+	$(BIN)/python audit.py ai-test
 
 clean:  ## Delete caches and the virtual environment (keeps evidence and logins)
 	rm -rf $(VENV) .pytest_cache .ruff_cache .coverage htmlcov build dist *.egg-info

@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "observed": {"type": "string"},
+    "quote": {"type": "string"},
+    "evidence_found": {"type": "boolean"},
+    "verdict": {"type": "string", "enum": ["PASS", "FAIL", "UNSURE"]},
+    "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+    "reason": {"type": "string"}
+  },
+  "required": ["observed", "quote", "evidence_found", "verdict", "confidence", "reason"],
+  "additionalProperties": false
+}

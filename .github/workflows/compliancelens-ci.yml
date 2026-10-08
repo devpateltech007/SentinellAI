@@ -54,3 +54,12 @@ jobs:
 
       - name: Tests with coverage (must stay >= 70%)
         run: pytest --cov
+
+      # The installed package must carry the AI prompt, schema and model list. The
+      # editable install above reads them from this folder, so it would hide a missing file.
+      - name: Packaged files (wheel in a clean environment)
+        run: |
+          python -m build --wheel --outdir dist
+          python -m venv /tmp/wheel-check
+          /tmp/wheel-check/bin/pip install --no-deps dist/*.whl
+          cd /tmp && /tmp/wheel-check/bin/python -c "from compliancelens.evaluator import prompt, settings; prompt.system_prompt(); prompt.answer_schema(); settings.catalog(); print('packaged files OK')"
