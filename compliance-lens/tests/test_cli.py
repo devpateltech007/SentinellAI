@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from compliancelens import __version__, cli, engine, evidence, runner
 from compliancelens.connectors import browser
+from compliancelens.evaluator.providers import base as provider_base
 from compliancelens.storage import db
 
 RULES = """
@@ -578,7 +579,7 @@ def test_verify_unknown_run(name, message):
 def test_help_lists_commands():
     result = invoke("--help")
     assert result.exit_code == 0
-    for command in ("run", "history", "verify", "login"):
+    for command in ("run", "history", "verify", "login", "ai-test"):
         assert command in result.output
 
 
@@ -596,3 +597,150 @@ def test_display_path_outside_project_is_unchanged(tmp_path):
 
 def test_display_path_inside_project_is_relative():
     assert cli.display_path(cli.RULES_FILE) == "rules/starter_rules.yaml"
+
+
+# --- ai-test ----------------------------------------------------------------------------
+
+SECRET_KEY = "test-secret-key-987"
+POLICY_QUOTE = "All user passwords must contain at least 14 characters."
+
+
+def ai_reply(verdict="PASS", quote=POLICY_QUOTE, stop=provider_base.COMPLETE, text=None,
+             model="claude-opus-5-5", tokens=(1000, 100)):  # fmt: skip
+    body = {
+        "observed": "14 characters",
+        "quote": quote,
+        "evidence_found": True,
+        "verdict": verdict,
+        "confidence": "high",
+        "reason": "The policy states the minimum length.",
+    }
+    return provider_base.AIReply(
+        text=json.dumps(body) if text is None else text,
+        stop=stop,
+        served_model=model,
+        input_tokens=tokens[0],
+        output_tokens=tokens[1],
+        raw={},
+        elapsed_ms=1500,
+    )
+
+
+class FakeAI:
+    """Stands in for the AI provider: hands out prepared replies (or raises errors)."""
+
+    def __init__(self, *outcomes):
+        self.outcomes = list(outcomes)
+        self.requests = []
+
+    def send(self, request):
+        self.requests.append(request)
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+@pytest.fixture
+def fake_ai(monkeypatch):
+    """Use the fake provider; returns a function that loads its replies."""
+    monkeypatch.setenv("COMPLIANCELENS_AI_API_KEY", SECRET_KEY)
+    provider = FakeAI()
+
+    def load(*outcomes):
+        provider.outcomes = list(outcomes)
+        return provider
+
+    monkeypatch.setattr(cli.providers, "get_provider", lambda settings: provider)
+    return load
+
+
+def test_ai_test_passes(fake_ai):
+    provider = fake_ai(ai_reply(), ai_reply(quote="Base permissions: Read"))
+    result = invoke("ai-test")
+    assert result.exit_code == 0, result.output
+    assert "AI model:  anthropic / claude-opus-5-5   (key: set (COMPLIANCELENS_AI_API_KEY))" in (
+        result.output
+    )
+    assert "Text check: PASS (as expected) · high confidence · observed '14 characters'" in (
+        result.output
+    )
+    assert "quote found in the text" in result.output
+    assert "1,100 tokens · $0.0060 · 1.5 s" in result.output  # (1000 x $4 + 100 x $20) / 1M
+    assert "Image check: PASS (as expected)" in result.output
+    assert "Both checks passed: anthropic/claude-opus-5-5 works." in result.output
+    assert SECRET_KEY not in result.output
+    assert len(provider.requests) == 2 and all(r.fallbacks for r in provider.requests)
+
+
+@pytest.mark.parametrize(
+    "outcome, words",
+    [
+        (provider_base.PermanentError("HTTP 401: invalid x-api-key", 401), "FAILED, HTTP 401"),
+        (ai_reply(text="I think it passes."), "FAILED, not a valid answer: the reply is not JSON"),
+        (ai_reply(stop=provider_base.REFUSAL), "FAILED, the model stopped early (refusal)"),
+        (ai_reply(verdict="FAIL"), "FAIL (expected PASS)"),
+        (ai_reply(quote="Passwords must be 8 characters."), "quote NOT in the text"),
+    ],
+)
+def test_ai_test_reports_a_failed_check(fake_ai, outcome, words):
+    fake_ai(outcome, ai_reply(quote="Base permissions: Read"))
+    result = invoke("ai-test")
+    assert result.exit_code == 1, result.output
+    assert words in result.output
+    assert "1 of 2 checks failed" in result.output
+
+
+def test_ai_test_shows_another_answering_model_and_unknown_usage(fake_ai):
+    fake_ai(ai_reply(model="claude-opus-5"), ai_reply(tokens=(None, None)))
+    result = invoke("ai-test")
+    assert result.exit_code == 0, result.output
+    assert "answered by claude-opus-5" in result.output
+    assert "tokens unknown · cost unknown" in result.output
+
+
+def test_ai_test_needs_a_key(monkeypatch):
+    result = invoke("ai-test")
+    assert result.exit_code == 2
+    assert "key: NOT SET" in result.output
+    assert "No API key for anthropic/claude-opus-5-5" in result.output
+
+
+def test_ai_test_bad_settings(monkeypatch):
+    monkeypatch.setenv("COMPLIANCELENS_AI_MODEL", "acme/model")
+    result = invoke("ai-test")
+    assert result.exit_code == 2
+    assert "The AI settings in .env have problems:" in result.output
+    assert "unknown provider 'acme'" in result.output
+
+
+def test_ai_test_with_a_local_model_from_the_command_line(fake_ai):
+    fake_ai(ai_reply(model="llava"), ai_reply(model="llava", quote="Base permissions: Read"))
+    result = invoke("ai-test", "--ai-model", "ollama/llava")
+    assert result.exit_code == 0, result.output
+    assert "AI model:  ollama / llava   (key: not needed)" in result.output
+    assert "Address:   http://127.0.0.1:11434/v1" in result.output
+    assert "$0.0000" in result.output
+    assert "warning: ollama/llava is not in the built-in list" in result.output
+
+
+def test_ai_test_local_server_not_running(fake_ai):
+    down = provider_base.TransientError("could not connect: Connection error.")
+    fake_ai(down, down)
+    result = invoke("ai-test", "--ai-model", "lmstudio/qwen-vl")
+    assert result.exit_code == 1
+    assert "could not connect: Connection error. (is lmstudio running on this computer?)" in (
+        result.output
+    )
+
+
+def test_ai_test_missing_sdk(monkeypatch):
+    monkeypatch.setenv("COMPLIANCELENS_AI_API_KEY", SECRET_KEY)
+
+    def missing(settings):
+        raise provider_base.NotInstalled("the anthropic package is not installed (run: make setup)")
+
+    monkeypatch.setattr(cli.providers, "get_provider", missing)
+    result = invoke("ai-test")
+    assert result.exit_code == 2
+    assert "not installed" in result.output

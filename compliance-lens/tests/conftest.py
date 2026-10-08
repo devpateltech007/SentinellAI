@@ -1,10 +1,13 @@
 """Shared test setup. Runs automatically before every test.
 
-Makes sure no test can ever touch a real AWS or GitHub account, the real
-compliance.db, evidence/ or sessions/ folder, and that no test really sleeps.
+Makes sure no test can ever touch a real AWS or GitHub account or AI provider, the
+real compliance.db, evidence/ or sessions/ folder, and that no test really sleeps.
 """
 
+import os
+
 import botocore.httpsession
+import httpx2
 import pytest
 import requests.adapters
 
@@ -25,6 +28,10 @@ def fake_credentials(monkeypatch):
     # Tests that need a GitHub token or organization set their own fake ones.
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_ORG", raising=False)
+    # No real AI key, model or address from your shell: tests set their own.
+    for name in list(os.environ):
+        if name.startswith(("COMPLIANCELENS_AI_", "ANTHROPIC_", "OPENAI_")):
+            monkeypatch.delenv(name)
 
 
 @pytest.fixture(autouse=True)
@@ -46,7 +53,8 @@ def no_network(monkeypatch):
 
     moto and `responses` replace these same functions while they are active,
     so faked AWS and GitHub calls still work. Chromium has its own network code,
-    so the browser connector is told to block everything except 127.0.0.1.
+    so the browser connector is told to block everything except 127.0.0.1. The AI
+    SDKs (anthropic, openai) use httpx2; AI tests give them a fake transport instead.
     """
     monkeypatch.setenv(browser.LOCAL_ONLY_ENV, "1")
 
@@ -55,6 +63,8 @@ def no_network(monkeypatch):
 
     monkeypatch.setattr(requests.adapters.HTTPAdapter, "send", blocked)
     monkeypatch.setattr(botocore.httpsession.URLLib3Session, "send", blocked)
+    monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", blocked)
+    monkeypatch.setattr(httpx2.AsyncHTTPTransport, "handle_async_request", blocked)
 
 
 @pytest.fixture(autouse=True)

@@ -1,0 +1,31 @@
+{
+  "checked": "2026-10-06",
+  "price_source": "https://claude.com/pricing",
+  "models": {
+    "anthropic/claude-opus-5-5": {
+      "price_per_mtok": {"input": 4.0, "output": 20.0},
+      "image": {"max_edge": 2576, "max_visual_tokens": 4784, "patch_px": 28, "max_bytes": 10000000},
+      "json": "schema",
+      "temperature": false,
+      "effort": "medium",
+      "fallbacks": true
+    },
+    "anthropic/claude-sonnet-5-5": {
+      "price_per_mtok": {"input": 2.0, "output": 10.0},
+      "image": {"max_edge": 2576, "max_visual_tokens": 4784, "patch_px": 28, "max_bytes": 10000000},
+      "json": "schema",
+      "temperature": false,
+      "effort": "medium",
+      "fallbacks": true
+    },
+    "anthropic/claude-haiku-5-5": {
+      "price_per_mtok": {"input": 0.1, "output": 0.5},
+      "price_note": "for prompts up to 100K tokens",
+      "image": {"max_edge": 2576, "max_visual_tokens": 4784, "patch_px": 28, "max_bytes": 10000000},
+      "json": "schema",
+      "temperature": false,
+      "effort": "medium",
+      "fallbacks": false
+    }
+  }
+}

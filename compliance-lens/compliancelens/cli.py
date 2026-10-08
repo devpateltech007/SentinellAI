@@ -7,10 +7,11 @@
     python audit.py history             past runs and their scores
     python audit.py verify run-0007     re-hash a run's files and report any change
     python audit.py login github        log in by hand once, for screenshots (or: aws)
+    python audit.py ai-test             check the AI model set in .env (one text, one image)
 
 Exit codes: 0 done (FAIL verdicts are results, not errors), 1 verify found a
-problem, the run could not be saved or a login was not saved, 2 a configuration
-or usage error.
+problem, the run could not be saved, a login was not saved or an AI check failed,
+2 a configuration or usage error.
 """
 
 import datetime
@@ -23,6 +24,9 @@ from dotenv import load_dotenv
 
 from compliancelens import __version__, engine, evidence, runner
 from compliancelens.connectors import browser
+from compliancelens.evaluator import answer, prompt, providers, smoke
+from compliancelens.evaluator import settings as ai_settings
+from compliancelens.evaluator.providers import base as provider_base
 from compliancelens.storage import db
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -214,6 +218,96 @@ def login(
         raise typer.Exit(1)
     typer.echo(f"Saved the {target.label} login to {display_path(path)} (only you can read it).")
     typer.echo(target.login_note)
+
+
+def _usage(reply: provider_base.AIReply, settings: ai_settings.AISettings) -> str:
+    """Tokens, cost and time of one AI call."""
+    if reply.input_tokens is None or reply.output_tokens is None:
+        tokens = "tokens unknown"
+    else:
+        tokens = f"{reply.input_tokens + reply.output_tokens:,} tokens"
+    cost = settings.cost(reply.input_tokens, reply.output_tokens)
+    money = "cost unknown" if cost is None else f"${cost:.4f}"
+    return f"{tokens} · {money} · {reply.elapsed_ms / 1000:.1f} s"
+
+
+def _smoke_result(check: smoke.SmokeCheck, provider, settings, schema) -> tuple[bool, str]:
+    """(passed, the line to print) for one ai-test check."""
+    label = f"{check.label}:"
+    try:
+        reply = provider.send(check.request)
+    except provider_base.ProviderError as e:
+        hint = ""
+        if settings.local and str(e).startswith("could not connect"):
+            hint = f" (is {settings.provider} running on this computer?)"
+        return False, f"{label} FAILED, {e}{hint}"
+    usage = _usage(reply, settings)
+    if reply.stop != provider_base.COMPLETE:
+        return False, f"{label} FAILED, the model stopped early ({reply.stop}) · {usage}"
+    try:
+        result = answer.parse_answer(reply.text, schema)
+    except answer.AnswerError as e:
+        return False, f"{label} FAILED, not a valid answer: {e} · {usage}"
+    passed = result["verdict"] == check.expected
+    expected = "as expected" if passed else f"expected {check.expected}"
+    parts = [
+        f"{result['verdict']} ({expected})",
+        f"{result['confidence']} confidence",
+        f"observed {result['observed']!r}",
+    ]
+    if check.document_text is not None:
+        found = smoke.quote_found(result["quote"], check.document_text)
+        passed = passed and found
+        parts.append(
+            "quote found in the text" if found else f"quote NOT in the text: {result['quote']!r}"
+        )
+    parts.append(usage)
+    if reply.served_model and reply.served_model != settings.model:
+        parts.append(f"answered by {reply.served_model}")
+    return passed, f"{label} {' · '.join(parts)}"
+
+
+@app.command("ai-test")
+def ai_test(
+    ai_model: Annotated[
+        str | None,
+        typer.Option(
+            "--ai-model",
+            help="Try this model instead of COMPLIANCELENS_AI_MODEL, e.g. ollama/<name>.",
+        ),
+    ] = None,
+) -> None:
+    """Check the AI model set in .env: one small text check and one image check."""
+    typer.echo(f"ComplianceLens v{__version__} AI test")
+    try:
+        settings = ai_settings.resolve(model=ai_model)
+    except ai_settings.AISettingsError as e:
+        typer.echo("The AI settings in .env have problems:")
+        for problem in e.problems:
+            typer.echo(f"  - {problem}")
+        raise typer.Exit(2)
+    for line in settings.describe():
+        typer.echo(line)
+    for warning in settings.warnings:
+        typer.echo(f"  warning: {warning}")
+    if not settings.configured:
+        typer.echo(f"No API key for {settings.name}: add COMPLIANCELENS_AI_API_KEY to .env.")
+        raise typer.Exit(2)
+    try:
+        provider = providers.get_provider(settings)
+    except provider_base.NotInstalled as e:
+        typer.echo(str(e))
+        raise typer.Exit(2)
+
+    schema = prompt.answer_schema()
+    results = [_smoke_result(check, provider, settings, schema) for check in smoke.checks(settings)]
+    for _, line in results:
+        typer.echo(line)
+    failed = sum(not passed for passed, _ in results)
+    if failed:
+        typer.echo(f"{failed} of {len(results)} checks failed: see above.")
+        raise typer.Exit(1)
+    typer.echo(f"Both checks passed: {settings.name} works.")
 
 
 def main() -> None:
