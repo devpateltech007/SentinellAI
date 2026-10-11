@@ -429,3 +429,151 @@ def test_malformed_screenshot_block_is_reported(tmp_path, shot, problem):
     [found] = evidence.verify_run_dir(run_dir, sha, {}).problems
     assert found.startswith("AWS-02.meta.json is malformed: ")
     assert problem in found
+
+
+# --- policy documents and other linked files (V4) -----------------------------------
+
+POLICY = b"%PDF-1.4 Passwords must be at least 14 characters long."
+
+
+def document_result(data: bytes = POLICY, **changes) -> dict:
+    """A document rule's result after the runner saved its file (see runner._save_source)."""
+    digest = evidence.sha256_bytes(data)
+    return {
+        **RESULT,
+        "id": "DOC-01",
+        "method": "ai-text",
+        "verdict": "NEEDS REVIEW",
+        "evidence": {"status": "ok", "path": "password-policy.pdf", "sha256": digest},
+        "source": {"file": "DOC-01.source.pdf", "sha256": digest, "path": "password-policy.pdf"},
+        **changes,
+    }
+
+
+@pytest.fixture
+def run_with_document(tmp_path):
+    """A saved run with one document rule. Returns (run folder, manifest sha, db hashes)."""
+    run_dir = evidence.create_run_dir(tmp_path, DAY, 12)
+    files = [evidence.write_source(run_dir, "DOC-01", POLICY, "password-policy.pdf")]
+    files += evidence.save_result(run_dir, document_result(), "0.4.0")
+    sha = evidence.write_manifest(run_dir, {"run_id": "run-0012"}, files)
+    return run_dir, sha, {f["path"]: f["sha256"] for f in files}
+
+
+@pytest.mark.parametrize(
+    ("name", "file"),
+    [
+        ("policy.PDF", "DOC_1.source.pdf"),
+        ("a/b.md", "DOC_1.source.md"),
+        ("p.txt", "DOC_1.source.txt"),
+    ],
+)
+def test_write_source_keeps_the_documents_type(tmp_path, name, file):
+    entry = evidence.write_source(tmp_path, "DOC/1", b"text", name)
+    assert entry == {"path": file, "sha256": evidence.sha256_bytes(b"text"), "size": 4}
+    assert (tmp_path / file).read_bytes() == b"text"
+
+
+def test_write_source_refuses_other_types(tmp_path):
+    with pytest.raises(ValueError, match="not a policy document type"):
+        evidence.write_source(tmp_path, "DOC-01", b"x", "policy.docx")
+
+
+def test_meta_records_the_document(run_with_document):
+    run_dir, _, _ = run_with_document
+    meta = json.loads((run_dir / "DOC-01.meta.json").read_text())
+    assert meta["source"]["file"] == "DOC-01.source.pdf"
+    assert meta["source"]["sha256"] == evidence.sha256_file(run_dir / "DOC-01.source.pdf")
+
+
+def test_run_with_document_verifies(run_with_document):
+    report = evidence.verify_run_dir(*run_with_document)
+    assert report.ok, report.problems
+    assert report.files_checked == 3
+
+
+def test_edited_document_is_caught(run_with_document):
+    run_dir, _, _ = run_with_document
+    (run_dir / "DOC-01.source.pdf").write_bytes(POLICY.replace(b"14", b"08"))
+    assert evidence.verify_run_dir(*run_with_document).problems == [
+        "DOC-01.source.pdf was changed (hash does not match manifest.json)",
+        "DOC-01.source.pdf was changed (hash does not match the database)",
+        "DOC-01.source.pdf does not match the hash in DOC-01.meta.json",
+    ]
+
+
+def test_a_document_that_is_not_the_one_described_is_caught(tmp_path):
+    """Files, meta, manifest and database agree, but the evidence describes another file."""
+    run_dir = evidence.create_run_dir(tmp_path, DAY, 13)
+    other = b"%PDF-1.4 a different policy"
+    result = document_result(
+        source={"file": "DOC-01.source.pdf", "sha256": evidence.sha256_bytes(other)}
+    )
+    files = [evidence.write_source(run_dir, "DOC-01", other, "password-policy.pdf")]
+    files += evidence.save_result(run_dir, result, "0.4.0")
+    sha = evidence.write_manifest(run_dir, {}, files)
+    report = evidence.verify_run_dir(run_dir, sha, {f["path"]: f["sha256"] for f in files})
+    assert report.problems == ["DOC-01.source.pdf is not the document described in DOC-01.json"]
+
+
+def test_a_missing_evidence_file_is_reported_once(run_with_document):
+    run_dir, _, _ = run_with_document
+    (run_dir / "DOC-01.json").unlink()
+    assert evidence.verify_run_dir(*run_with_document).problems == ["DOC-01.json is missing"]
+
+
+def test_evidence_that_is_not_json_does_not_describe_the_document(tmp_path):
+    run_dir = evidence.create_run_dir(tmp_path, DAY, 14)
+    files = [evidence.write_source(run_dir, "DOC-01", POLICY, "password-policy.pdf")]
+    files += evidence.save_result(run_dir, document_result(evidence=["not", "a", "dict"]), "0.4.0")
+    sha = evidence.write_manifest(run_dir, {}, files)
+    report = evidence.verify_run_dir(run_dir, sha, {f["path"]: f["sha256"] for f in files})
+    assert report.problems == ["DOC-01.source.pdf is not the document described in DOC-01.json"]
+
+
+def test_ai_and_crosscheck_files_are_linked_too(tmp_path):
+    """Stage 3 writes these; verify already checks every file a meta file names."""
+    run_dir = evidence.create_run_dir(tmp_path, DAY, 15)
+    replies = evidence._write_file(run_dir, "GH-06.ai.json", b"[]\n")
+    picture = evidence._write_file(run_dir, "GH-06.ai-input.png", make_png())
+    result = {
+        **RESULT,
+        "id": "GH-06",
+        "ai": {
+            "replies_file": replies["path"],
+            "replies_sha256": replies["sha256"],
+            "input_file": picture["path"],
+            "input_sha256": "0" * 64,  # not the file's hash
+        },
+        "crosscheck": {"file": "GH-06.crosscheck.json", "sha256": "1" * 64},  # never written
+    }
+    files = [replies, picture, *evidence.save_result(run_dir, result, "0.4.0")]
+    sha = evidence.write_manifest(run_dir, {}, files)
+    report = evidence.verify_run_dir(run_dir, sha, {f["path"]: f["sha256"] for f in files})
+    assert report.problems == [
+        "GH-06.ai-input.png does not match the hash in GH-06.meta.json",
+        "GH-06.meta.json names GH-06.crosscheck.json, which is not part of the run",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("block", "value", "problem"),
+    [
+        ("source", "DOC-01.source.pdf", "source is not a mapping"),
+        ("source", {"file": "../x.pdf", "sha256": "a"}, "source needs a plain file name"),
+        ("source", {"file": "DOC-01.source.pdf"}, "plain file name and its sha256"),
+        ("ai", {"replies_file": "x.json", "replies_sha256": 5}, "and its replies_sha256"),
+        ("crosscheck", {"file": "", "sha256": "a"}, "crosscheck needs a plain file name"),
+    ],
+)
+def test_malformed_linked_files_are_reported(tmp_path, block, value, problem):
+    run_dir = evidence.create_run_dir(tmp_path, DAY, 16)
+    raw = {**json.loads(evidence.to_json_bytes({"rule_id": "X", "verdict": "PASS"})), block: value}
+    raw["evidence_sha256"] = "a" * 64
+    data = evidence.to_json_bytes(raw)
+    evidence.write_atomic(run_dir / "X.meta.json", data)
+    files = [{"path": "X.meta.json", "sha256": evidence.sha256_bytes(data), "size": len(data)}]
+    sha = evidence.write_manifest(run_dir, {}, files)
+    [found] = evidence.verify_run_dir(run_dir, sha, {}).problems
+    assert found.startswith("X.meta.json is malformed: ")
+    assert problem in found

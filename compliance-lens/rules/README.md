@@ -28,10 +28,49 @@ collector for it exists in `compliancelens/connectors/`).
 | `check` | yes* | How to judge the collected data (see below) |
 | `framework_ref` | no | Matching CIS / SOC 2 control, e.g. `CIS AWS 1.10` |
 | `screenshot` | V3 | The web page to screenshot for people (see "Screenshots" below) |
-| `ai_check` | V4 | What the AI should look for when there is no code check |
+| `ai_check` | V4 | What the AI checks: a document, a screenshot, or (cross-check) a code rule's screenshot |
 
 \* Not for a **screenshot-only** rule: one with a `screenshot` and neither `collector`
-nor `check`. Having only one of the two is an error.
+nor `check`. Having only one of the two is an error. A **document** rule has a
+`files.read_document` collector but no `check`.
+
+## Rule kinds (V4)
+
+What a rule card has decides who judges it. A card that fits none of these is refused
+before the run (exit code 2).
+
+| Kind | The card has | Judged by | `method` |
+| --- | --- | --- | --- |
+| code | `collector` + `check` (+ optional `screenshot`, and an optional `ai_check` that only cross-checks the screenshot) | code | `code` |
+| document | `collector: files.read_document` + `params.path` + `ai_check`; no `check`, no `screenshot` | the AI, reading the document | `ai-text` |
+| vision | `screenshot` + `ai_check`; no `collector`, no `check` | the AI, reading the screenshot | `ai-vision` |
+| screenshot-only | `screenshot` only | nobody: NEEDS REVIEW | `screenshot` |
+
+`ai_check` keys:
+
+| Key | For | Meaning |
+| --- | --- | --- |
+| `expect` | all, required | The requirement in plain words |
+| `pass_if`, `fail_if`, `review_if` | all, optional | Lists of conditions in words for each answer |
+| `missing_means` | documents | `fail` or `review` (default): what a policy that never states the requirement is |
+| `comparable` | code rules | `false` when the screenshot can't show everything the code checks (e.g. one bucket of many) |
+
+A document `path` is relative to the policies folder (`COMPLIANCELENS_POLICIES_DIR`,
+default `policies/examples/compliant`), with no `..`, and ends in `.pdf`, `.md` or `.txt`.
+
+```yaml
+- id: DOC-01
+  title: Password policy requires 12+ characters
+  severity: medium
+  collector: files.read_document
+  params: { path: password-policy.pdf }
+  ai_check:
+    expect: "Passwords must be at least 12 characters long"
+    missing_means: fail
+```
+
+The AI checks themselves arrive in later V4 stages; until then document and vision rules
+are NEEDS REVIEW with the reason why, and the document is already saved with the run.
 
 ## Checks
 

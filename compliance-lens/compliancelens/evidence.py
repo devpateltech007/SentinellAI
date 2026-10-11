@@ -4,6 +4,7 @@
         AWS-02.json        raw evidence, exactly what the collector returned
         AWS-02.meta.json   verdict, reason, timestamp, collector, tool version, sha256
         AWS-02.png         V3: the page screenshot with a banner (rule, UTC time, URL)
+        DOC-01.source.pdf  V4: the exact policy document a document rule read
         manifest.json      every file of the run with its sha256
 
 Every hash is the SHA-256 of the exact bytes written to disk. The manifest's own
@@ -11,8 +12,11 @@ hash, and each evidence, meta and screenshot hash, are also stored in the SQLite
 database, so `verify` can tell when a file was changed after the audit.
 
 A screenshot has a second hash, `raw_sha256`, of the browser's picture before the
-banner was added. The raw picture is not kept, so that hash can't be re-checked;
-it is a cache key for the AI checks in V4, not proof.
+banner was added. The raw picture is not kept, so that hash can't be re-checked:
+it is a record, not proof (and not the AI cache key, see evaluator/README.md).
+
+A meta file names the other files of its rule (screenshot, document, AI replies)
+with their hashes; `verify` checks each one is the file really saved with it.
 
 This is tamper-evident, not tamper-proof: someone who can rewrite the files,
 the manifest and the database together can hide a change.
@@ -46,6 +50,17 @@ BANNER_BACKGROUND = (17, 24, 39)
 BANNER_TEXT = (255, 255, 255)
 # Refuse a giant capture (about 1440 x 20,000 pixels) rather than fill the memory.
 MAX_SCREENSHOT_PIXELS = 30_000_000
+# Policy documents (V4) are saved with the type they were read as.
+SOURCE_SUFFIXES = (".pdf", ".md", ".txt")
+
+# The files a meta file names, each with the hash it recorded: (block, file key, hash key).
+LINKS = (
+    ("screenshot", "file", "stamped_sha256"),
+    ("source", "file", "sha256"),
+    ("ai", "replies_file", "replies_sha256"),
+    ("ai", "input_file", "input_sha256"),
+    ("crosscheck", "file", "sha256"),
+)
 
 
 def evidence_root() -> Path:
@@ -145,6 +160,9 @@ def save_result(run_dir: Path, result: dict, tool_version: str) -> list[dict]:
     }
     if result.get("screenshot"):  # V3: what happened to the rule's screenshot
         meta["screenshot"] = result["screenshot"]
+    for block in ("source", "ai", "crosscheck"):  # V4: the document, the AI's replies
+        if result.get(block):
+            meta[block] = result[block]
     meta_bytes = to_json_bytes(meta)
     meta_file = f"{name}.meta.json"
     write_atomic(run_dir / meta_file, meta_bytes)
@@ -193,11 +211,25 @@ def stamp_screenshot(png: bytes, text: str) -> tuple[bytes, dict]:
     return out.getvalue(), {"width": width, "height": height, "banner_height": BANNER_HEIGHT}
 
 
+def _write_file(run_dir: Path, name: str, data: bytes) -> dict:
+    write_atomic(Path(run_dir) / name, data)
+    return {"path": name, "sha256": sha256_bytes(data), "size": len(data)}
+
+
 def write_screenshot(run_dir: Path, rule_id: str, png: bytes) -> dict:
     """Write <ID>.png (the stamped screenshot). Returns its manifest entry."""
-    name = f"{safe_name(rule_id)}.png"
-    write_atomic(Path(run_dir) / name, png)
-    return {"path": name, "sha256": sha256_bytes(png), "size": len(png)}
+    return _write_file(run_dir, f"{safe_name(rule_id)}.png", png)
+
+
+def write_source(run_dir: Path, rule_id: str, data: bytes, document_name: str) -> dict:
+    """Write <ID>.source.<pdf|md|txt>: the exact bytes of the document a rule read.
+
+    Returns its manifest entry. Raises ValueError for any other type of file.
+    """
+    suffix = Path(document_name).suffix.lower()
+    if suffix not in SOURCE_SUFFIXES:
+        raise ValueError(f"not a policy document type: {document_name!r}")
+    return _write_file(run_dir, f"{safe_name(rule_id)}.source{suffix}", data)
 
 
 def write_manifest(run_dir: Path, run_info: dict, files: list[dict]) -> str:
@@ -243,6 +275,10 @@ def _manifest_files(data: bytes) -> dict[str, str]:
     return files
 
 
+def _plain_name(name) -> bool:
+    return isinstance(name, str) and Path(name).name == name and name not in ("", ".", "..")
+
+
 def _read_meta(data: bytes) -> tuple[dict | None, str | None]:
     """(meta, None) for a well-formed meta file, else (None, what is wrong with it)."""
     try:
@@ -252,18 +288,42 @@ def _read_meta(data: bytes) -> tuple[dict | None, str | None]:
     if not isinstance(meta, dict) or not {"rule_id", "verdict", "evidence_sha256"} <= meta.keys():
         return None, "missing rule_id, verdict or evidence_sha256"
     shot = meta.get("screenshot")
-    if shot is None:
-        return meta, None
-    if not isinstance(shot, dict) or not isinstance(shot.get("status"), str):
+    if shot is not None and (not isinstance(shot, dict) or not isinstance(shot.get("status"), str)):
         return None, "screenshot is not a mapping with a status"
-    file = shot.get("file")
-    if file is not None and (
-        not isinstance(file, str)
-        or Path(file).name != file
-        or not isinstance(shot.get("stamped_sha256"), str)
-    ):
-        return None, "screenshot needs a plain file name and its stamped_sha256"
+    for block, file_key, hash_key in LINKS:
+        if meta.get(block) is None:
+            continue
+        if not isinstance(meta[block], dict):
+            return None, f"{block} is not a mapping"
+        file = meta[block].get(file_key)
+        if file is not None and (
+            not _plain_name(file) or not isinstance(meta[block].get(hash_key), str)
+        ):
+            return None, f"{block} needs a plain file name and its {hash_key}"
     return meta, None
+
+
+def _links(meta: dict) -> list[tuple[str, str]]:
+    """(file, recorded sha256) for every file a well-formed meta file names."""
+    return [
+        (meta[block][file_key], meta[block][hash_key])
+        for block, file_key, hash_key in LINKS
+        if isinstance(meta.get(block), dict) and meta[block].get(file_key) is not None
+    ]
+
+
+def _source_problem(meta_name: str, meta: dict, contents: dict[str, bytes]) -> str | None:
+    """A saved document must be the one its evidence file describes (same sha256)."""
+    evidence_file = meta.get("evidence_file")
+    if evidence_file not in contents:
+        return None  # already reported as missing
+    try:
+        described = json.loads(contents[evidence_file]).get("sha256")
+    except (ValueError, AttributeError):
+        described = None
+    if described != meta["source"]["sha256"]:
+        return f"{meta['source']['file']} is not the document described in {evidence_file}"
+    return None
 
 
 def verify_run_dir(run_dir: Path, manifest_sha256: str, db_files: dict[str, str]) -> VerifyReport:
@@ -292,13 +352,13 @@ def verify_run_dir(run_dir: Path, manifest_sha256: str, db_files: dict[str, str]
         report.problems.append(f"{MANIFEST} is malformed: {e}")
         listed = {}
 
-    hashes, screenshots = {}, {}  # {file: actual sha256}, {meta file: its screenshot block}
+    hashes, contents, metas = {}, {}, {}  # {file: sha256}, {file: bytes}, {meta file: meta}
     for name in sorted(listed.keys() | db_files.keys()):
         path = run_dir / name
         if not path.is_file():
             report.problems.append(f"{name} is missing")
             continue
-        data = path.read_bytes()
+        data = contents[name] = path.read_bytes()
         actual = hashes[name] = sha256_bytes(data)
         report.files_checked += 1
         if name not in listed:
@@ -311,17 +371,23 @@ def verify_run_dir(run_dir: Path, manifest_sha256: str, db_files: dict[str, str]
             meta, problem = _read_meta(data)
             if problem:
                 report.problems.append(f"{name} is malformed: {problem}")
-            elif (meta.get("screenshot") or {}).get("file"):
-                screenshots[name] = meta["screenshot"]
+            else:
+                metas[name] = meta
 
-    # Each meta file must point at the screenshot that was really saved with it.
-    for meta_name, shot in screenshots.items():
-        file = shot["file"]
-        if file not in hashes:
-            if file not in listed and file not in db_files:  # else: already reported missing
-                report.problems.append(f"{meta_name} names {file}, which is not part of the run")
-        elif hashes[file] != shot["stamped_sha256"]:
-            report.problems.append(f"{file} does not match the hash in {meta_name}")
+    # Each meta file must point at the files that were really saved with it.
+    for meta_name, meta in metas.items():
+        for file, recorded in _links(meta):
+            if file not in hashes:
+                if file not in listed and file not in db_files:  # else: reported missing
+                    report.problems.append(
+                        f"{meta_name} names {file}, which is not part of the run"
+                    )
+            elif hashes[file] != recorded:
+                report.problems.append(f"{file} does not match the hash in {meta_name}")
+        if (meta.get("source") or {}).get("file"):
+            problem = _source_problem(meta_name, meta, contents)
+            if problem:
+                report.problems.append(problem)
 
     expected = listed.keys() | db_files.keys() | {MANIFEST} | IGNORED_FILES
     for path in sorted(run_dir.iterdir()):

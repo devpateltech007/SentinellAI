@@ -7,6 +7,7 @@ boto3[crt]==1.43.106   # [crt] is needed for `aws login` credentials
 openai==3.18.0         # OpenAI and OpenAI-compatible models, incl. local ones (V4)
 pillow==12.3.0         # stamps the banner on screenshots (V3)
 playwright==1.63.0     # browser screenshots (V3); also run: python -m playwright install chromium
+pypdf==6.19.0          # reads PDF policy documents (V4); imported only when one is read
 python-dotenv==1.2.3
 pyyaml==6.0.3
 requests==2.34.2

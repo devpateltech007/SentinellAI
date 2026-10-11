@@ -6,7 +6,9 @@ strings. Evidence paths are relative to the evidence folder.
 
 The schema is created on first use. PRAGMA user_version records its version, so
 later versions can upgrade it: schema 1 (V2) gains the screenshot columns in
-schema 2 (V3). A copy of the old file is kept before an upgrade.
+schema 2 (V3), and schema 3 (V4) adds the AI tables, the runs' AI totals and the
+results' document columns. A copy of the old file is kept before an upgrade. A new
+database and an upgraded one end up with exactly the same tables and columns.
 """
 
 import os
@@ -16,7 +18,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_VAR = "COMPLIANCELENS_DB"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 RUNNING, COMPLETE, FAILED = "running", "complete", "failed"
 FULL, PARTIAL = "full", "partial"
@@ -46,12 +48,92 @@ SCREENSHOT_COLUMNS = f"""
     screenshot_url          TEXT,
     screenshot_captured_at  TEXT"""
 
+# V4 document columns: the saved copy of the policy document a document rule read.
+SOURCE_COLUMNS = """
+    source_path             TEXT,
+    source_sha256           TEXT"""
+
+# V4 run totals of the AI calls (0 for runs without any). ai_cost_usd is NULL when a
+# price was unknown; ai_settings is the JSON of the model settings that were used.
+RUN_AI_COLUMNS = """
+    ai_calls          INTEGER NOT NULL DEFAULT 0,
+    ai_cache_hits     INTEGER NOT NULL DEFAULT 0,
+    ai_input_tokens   INTEGER NOT NULL DEFAULT 0,
+    ai_output_tokens  INTEGER NOT NULL DEFAULT 0,
+    ai_cost_usd       REAL DEFAULT 0,
+    ai_settings       TEXT"""
+
+# V4 tables. Statuses are checked in code (evaluator/), so a new status needs no upgrade.
+AI_TABLES = """
+-- Every AI evaluation of a result. 'primary' gave the verdict of a document or vision
+-- rule; 'cross_check' only compared a code verdict with what the screenshot shows.
+CREATE TABLE ai_evaluations (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    result_id         INTEGER NOT NULL REFERENCES results(id),
+    role              TEXT NOT NULL CHECK (role IN ('primary', 'cross_check')),
+    method            TEXT NOT NULL CHECK (method IN ('ai-text', 'ai-vision')),
+    status            TEXT NOT NULL,
+    verdict           TEXT CHECK (verdict IS NULL OR verdict IN ('PASS', 'FAIL', 'NEEDS REVIEW')),
+    model_verdict     TEXT CHECK (model_verdict IS NULL
+                                  OR model_verdict IN ('PASS', 'FAIL', 'UNSURE')),
+    confidence        TEXT CHECK (confidence IS NULL OR confidence IN ('high', 'medium', 'low')),
+    reason            TEXT,
+    quote             TEXT,
+    observed          TEXT,
+    comparison        TEXT,
+    provider          TEXT,
+    base_url_host     TEXT,
+    model             TEXT,
+    served_model      TEXT,
+    json_mode         TEXT,
+    prompt_version    TEXT,
+    schema_version    TEXT,
+    prep_version      TEXT,
+    settings_json     TEXT,
+    evidence_sha256   TEXT,
+    ai_input_sha256   TEXT,
+    cache_key         TEXT,
+    from_cache        INTEGER NOT NULL DEFAULT 0 CHECK (from_cache IN (0, 1)),
+    cache_source      TEXT,
+    attempts          INTEGER NOT NULL DEFAULT 0,
+    input_tokens      INTEGER,
+    output_tokens     INTEGER,
+    cost_usd          REAL,
+    elapsed_ms        INTEGER,
+    replies_path      TEXT,
+    replies_sha256    TEXT,
+    input_path        TEXT,
+    created_at        TEXT NOT NULL,
+    UNIQUE (result_id, role)
+);
+
+-- Accepted AI answers, reused when the same evidence is judged the same way again.
+CREATE TABLE ai_cache (
+    cache_key         TEXT PRIMARY KEY,
+    kind              TEXT NOT NULL CHECK (kind IN ('document', 'screenshot')),
+    rule_id           TEXT NOT NULL,
+    answer_json       TEXT NOT NULL,
+    replies_json      TEXT NOT NULL,
+    provider          TEXT NOT NULL,
+    model             TEXT NOT NULL,
+    served_model      TEXT,
+    source_result_id  INTEGER REFERENCES results(id),
+    created_at        TEXT NOT NULL
+);
+
+CREATE INDEX idx_ai_evaluations_status ON ai_evaluations(status);
+"""
+
+
+def _add_columns(table: str, columns: str) -> str:
+    return "".join(f"ALTER TABLE {table} ADD COLUMN {c.strip()};\n" for c in columns.split(",\n"))
+
+
 # Upgrades from each older schema version to the next one, run in one transaction.
+# ALTER TABLE adds a column at the end, so SCHEMA below lists them in the same order.
 MIGRATIONS = {
-    1: "".join(
-        f"ALTER TABLE results ADD COLUMN {column.strip()};\n"
-        for column in SCREENSHOT_COLUMNS.split(",\n")
-    ),
+    1: _add_columns("results", SCREENSHOT_COLUMNS),
+    2: _add_columns("runs", RUN_AI_COLUMNS) + _add_columns("results", SOURCE_COLUMNS) + AI_TABLES,
 }
 
 SCHEMA = f"""
@@ -70,7 +152,7 @@ CREATE TABLE runs (
     pass_count        INTEGER NOT NULL DEFAULT 0,
     fail_count        INTEGER NOT NULL DEFAULT 0,
     review_count      INTEGER NOT NULL DEFAULT 0,
-    error             TEXT
+    error             TEXT,{RUN_AI_COLUMNS}
 );
 
 CREATE TABLE results (
@@ -88,7 +170,7 @@ CREATE TABLE results (
     evidence_path     TEXT NOT NULL,
     sha256            TEXT NOT NULL,
     meta_path         TEXT NOT NULL,
-    meta_sha256       TEXT NOT NULL,{SCREENSHOT_COLUMNS},
+    meta_sha256       TEXT NOT NULL,{SCREENSHOT_COLUMNS},{SOURCE_COLUMNS},
     UNIQUE (run_id, rule_id)          -- also serves as the index on run_id
 );
 
@@ -105,7 +187,7 @@ CREATE TABLE overrides (
 CREATE INDEX idx_results_rule_id ON results(rule_id);
 CREATE INDEX idx_results_verdict ON results(verdict);
 CREATE INDEX idx_overrides_result_id ON overrides(result_id);
-"""
+{AI_TABLES}"""
 
 
 def db_path() -> Path:
@@ -187,21 +269,31 @@ def set_run_dir(conn, run_id: int, run_dir: str) -> None:
 
 
 def add_result(
-    conn, run_id: int, result: dict, evidence: dict, meta: dict, screenshot: dict | None = None
-) -> None:
-    """Save one rule result. `evidence`/`meta` are {"path", "sha256"} of its two files.
+    conn,
+    run_id: int,
+    result: dict,
+    evidence: dict,
+    meta: dict,
+    screenshot: dict | None = None,
+    source: dict | None = None,
+) -> int:
+    """Save one rule result and return its row ID. `evidence`/`meta` are {"path", "sha256"}
+    of its two files.
 
     `screenshot` (V3, rules with a screenshot block only) has a `status` and, when
     a picture was saved, its `path`, `sha256`, `raw_sha256`, `url` and `captured_at`.
+    `source` (V4, document rules whose file was read) is {"path", "sha256"} of the
+    saved copy of the document.
     """
-    shot = screenshot or {}
+    shot, document = screenshot or {}, source or {}
     with conn:
-        conn.execute(
+        cursor = conn.execute(
             "INSERT INTO results (run_id, rule_id, rule_title, severity, collector, verdict,"
             " method, reason, confidence, collected_at, evidence_path, sha256, meta_path,"
             " meta_sha256, screenshot_status, screenshot_path, screenshot_sha256,"
-            " screenshot_raw_sha256, screenshot_url, screenshot_captured_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " screenshot_raw_sha256, screenshot_url, screenshot_captured_at, source_path,"
+            " source_sha256)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 run_id,
                 result["id"],
@@ -223,8 +315,11 @@ def add_result(
                 shot.get("raw_sha256"),
                 shot.get("url"),
                 shot.get("captured_at"),
+                document.get("path"),
+                document.get("sha256"),
             ),
         )
+    return cursor.lastrowid
 
 
 def finish_run(

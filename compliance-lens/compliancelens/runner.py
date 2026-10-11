@@ -3,8 +3,9 @@
 Order of a run:
  1. Load and check the rulebook (a broken rulebook stops here, before any record).
  2. Record the run in SQLite as 'running' and make its evidence folder.
- 3. For each rule: collect + judge; if it has a screenshot block, take, stamp and
-    save the screenshot; write the evidence and meta files; record the result.
+ 3. For each rule: collect + judge; save the policy document it read (V4); if it
+    has a screenshot block, take, stamp and save the screenshot; write the evidence
+    and meta files; record the result.
  4. Write the manifest, then mark the run 'complete' with its totals.
 If saving fails part-way, the run is marked 'failed' so it never looks finished.
 
@@ -12,6 +13,9 @@ A screenshot problem (no login, expired login, a changed page) never changes an
 API rule's verdict: the API data is the proof and the screenshot supports it. The
 problem is recorded with the result and printed with the fix. A screenshot-only
 rule is NEEDS REVIEW either way; its reason says whether the picture was taken.
+
+A document rule's file is saved as <ID>.source.<ext> from the very bytes that were
+read and hashed, so the saved copy is exactly what was judged.
 """
 
 import contextlib
@@ -21,7 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from compliancelens import __version__, engine, evidence
-from compliancelens.connectors import browser
+from compliancelens.connectors import browser, files
 from compliancelens.storage import db
 
 
@@ -92,6 +96,27 @@ def _save_screenshot(run_dir: Path, rule: dict, capture: browser.Capture):
     return shot, entry
 
 
+def _save_source(run_dir: Path, result: dict) -> dict | None:
+    """Save the document a rule read as <ID>.source.<ext>. Returns its manifest entry.
+
+    The bytes travel from the files connector under a private key, which is removed
+    here so they never end up inside the evidence JSON.
+    """
+    document = result.get("evidence")
+    snapshot = document.pop(files.SNAPSHOT, None) if isinstance(document, dict) else None
+    if snapshot is None:
+        return None
+    entry = evidence.write_source(run_dir, result["id"], snapshot, document.get("path", ""))
+    result["source"] = {
+        "file": entry["path"],
+        "sha256": entry["sha256"],
+        "size": entry["size"],
+        "path": document.get("path"),
+        "media_type": document.get("media_type"),
+    }
+    return entry
+
+
 def _screenshot_row(shot: dict, run_dir: Path, root: Path) -> dict:
     """The screenshot fields for the database."""
     return {
@@ -142,17 +167,23 @@ def run_audit(
         try:
             run_dir = evidence.create_run_dir(root, started.date(), run_id)
             db.set_run_dir(conn, run_id, _relative(run_dir, root))
-            results, files = [], []
+            results, saved = [], []  # the results, and every file written for them
             for rule in selected:
                 result = engine.run_rule(rule)
+                source = _save_source(run_dir, result)
                 png, screenshot_row = None, None
                 if rule.get("screenshot") is not None:
                     capture = shooter.capture(rule) if shooter else browser.skipped(rule)
                     shot, png = _save_screenshot(run_dir, rule, capture)
                     result["screenshot"] = shot
                     if engine.is_screenshot_only(rule):
+                        waiting = (
+                            "AI check not connected yet (V4 in progress)"
+                            if engine.rule_kind(rule) == engine.KIND_VISION
+                            else "needs human review until AI checks (V4)"
+                        )
                         result["reason"] = (
-                            "screenshot captured; needs human review until AI checks (V4)"
+                            f"screenshot captured; {waiting}"
                             if shot["status"] == browser.CAPTURED
                             else f"screenshot not captured: {shot['reason']}"
                         )
@@ -165,9 +196,14 @@ def run_audit(
                     {"path": _relative(run_dir / raw["path"], root), "sha256": raw["sha256"]},
                     {"path": _relative(run_dir / meta["path"], root), "sha256": meta["sha256"]},
                     screenshot_row,
+                    source
+                    and {
+                        "path": _relative(run_dir / source["path"], root),
+                        "sha256": source["sha256"],
+                    },
                 )
                 results.append(result)
-                files += [raw, meta] + ([png] if png else [])
+                saved += [raw, meta] + [entry for entry in (png, source) if entry]
                 if on_result:
                     on_result(result)
             finished = _now().isoformat()
@@ -178,7 +214,7 @@ def run_audit(
                 "finished_at": finished,
                 "tool_version": __version__,
             }
-            manifest_sha256 = evidence.write_manifest(run_dir, run_info, files)
+            manifest_sha256 = evidence.write_manifest(run_dir, run_info, saved)
             db.finish_run(
                 conn,
                 run_id,
@@ -234,5 +270,7 @@ def verify(name: str) -> tuple[dict, evidence.VerifyReport]:
         db_files[Path(row["meta_path"]).name] = row["meta_sha256"]
         if row["screenshot_path"]:  # V3; empty for V2 runs and rules without a screenshot
             db_files[Path(row["screenshot_path"]).name] = row["screenshot_sha256"]
+        if row["source_path"]:  # V4; only document rules whose file was read
+            db_files[Path(row["source_path"]).name] = row["source_sha256"]
     run_dir = evidence.evidence_root() / run["run_dir"]
     return run, evidence.verify_run_dir(run_dir, run["manifest_sha256"], db_files)

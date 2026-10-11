@@ -1,7 +1,7 @@
 # evidence/ — collected proof (generated, not committed)
 
 **Version:** V1 (JSON per rule per day). V2: one folder per run, meta files, manifest, hashes.
-V3: stamped screenshots.
+V3: stamped screenshots. V4: the policy documents that document rules read.
 
 **Purpose:** every audit run writes the raw evidence here so each verdict can be traced.
 Override the location with `COMPLIANCELENS_EVIDENCE_DIR`.
@@ -17,6 +17,7 @@ evidence/
       AWS-02.meta.json   rule, verdict, reason, method, confidence, collector,
                          timestamp, tool version, evidence file name + sha256
       AWS-02.png         V3: the page screenshot with a banner on top
+      DOC-01.source.pdf  V4: the exact policy document a document rule read
       manifest.json      run ID, start/finish times, tool version, every file + sha256 + size
 ```
 
@@ -32,7 +33,7 @@ no token-like query values, no AWS account ID. The meta file's `screenshot` bloc
 | --- | --- |
 | `status`, `reason` | `captured`, or why not (e.g. `session_expired`) |
 | `file`, `stamped_sha256` | The PNG on disk and its hash (checked by `verify`) |
-| `raw_sha256` | Hash of the browser's picture **before** the banner. The raw picture is not kept, so this can't be re-checked; V4 uses it as the AI cache key |
+| `raw_sha256` | Hash of the browser's picture **before** the banner. The raw picture is not kept, so this can't be re-checked. It is not the AI cache key either (see `compliancelens/evaluator/README.md`) |
 | `captured_at`, `requested_url`, `final_url` | When, and which page (cleaned) |
 | `width`, `height`, `banner_height`, `full_page` | Picture size; V4 cuts `banner_height` off to get the raw picture back |
 
@@ -42,13 +43,21 @@ the database. A screenshot-only rule's `<ID>.json` is `{"screenshot_only": true}
 For AWS-05 and AWS-06 the screenshot shows the test bucket only; the JSON covers every
 bucket and stays the real proof.
 
+**Policy documents (V4).** A document rule's file is saved as `<ID>.source.<pdf|md|txt>`
+from the very bytes that were read and hashed. `<ID>.json` holds its status, hash and
+text by page; the meta file's `source` block holds `file`, `sha256`, `size`, `path` (in
+the policies folder) and `media_type`. A document that couldn't be read (e.g. not found)
+saves no copy; its reason is in the JSON.
+
 **Checking a run:** `python audit.py verify run-0007` (or `make verify RUN=run-0007`):
 
 1. The manifest's hash must match the one in the database.
 2. Every file in the manifest must exist and match its hash.
-3. Every raw evidence, meta and PNG file must also match the hash in the database.
-4. Every meta file's `stamped_sha256` must match its PNG.
-5. Extra files are reported as warnings (`.DS_Store` is ignored).
+3. Every raw evidence, meta, PNG and document file must also match the hash in the database.
+4. Every file a meta file names (screenshot, document, later the AI's replies) must
+   exist in the run and match the hash the meta file recorded.
+5. A saved document must be the one its `<ID>.json` describes (same sha256).
+6. Extra files are reported as warnings (`.DS_Store` is ignored).
 
 Any problem gives exit code 1. **Limit:** this is tamper-*evident*, not tamper-proof.
 It catches files changed after the audit, but someone who rewrites the files, the

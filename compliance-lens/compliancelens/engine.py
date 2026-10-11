@@ -3,9 +3,17 @@
 Verdicts are PASS, FAIL or NEEDS REVIEW. Any error or unclear data becomes
 NEEDS REVIEW with a reason. Nothing ever defaults to PASS.
 
-A screenshot-only rule (V3) has a `screenshot` block but no collector and no
-check. Code can't judge it, so it is NEEDS REVIEW until the AI checks of V4.
-The screenshots themselves are taken by the runner (see connectors/browser.py).
+Rule kinds (V4), told apart by what the rule card has:
+
+    code      collector + check: code judges the API data. May also have a
+              `screenshot`, and an `ai_check` that only cross-checks the screenshot.
+    document  a files.* collector + ai_check: the AI judges a policy document.
+    vision    screenshot + ai_check, no collector: the AI judges the screenshot.
+    legacy    screenshot only (V3): nobody can judge it, so it is NEEDS REVIEW.
+
+The screenshots themselves are taken by the runner (see connectors/browser.py), and
+the AI checks run there too (see evaluator/). Until they do, document and vision
+rules are NEEDS REVIEW with the reason why.
 """
 
 import datetime
@@ -15,18 +23,28 @@ from pathlib import Path
 
 import yaml
 
-from compliancelens.connectors import aws, browser, github, hr
+from compliancelens.connectors import aws, browser, files, github, hr
 
 PASS, FAIL, NEEDS_REVIEW = "PASS", "FAIL", "NEEDS REVIEW"
-HIGH, LOW = "high", "low"
-# How a verdict was reached. V4 adds "ai-text" and "ai-vision"; human decisions are
-# overrides (V5). "screenshot" means: a screenshot was the only evidence, nobody judged it.
-CODE, SCREENSHOT = "code", "screenshot"
+HIGH, MEDIUM, LOW = "high", "medium", "low"
+# How a verdict was reached; human decisions are overrides (V5). "screenshot" means: a
+# screenshot was the only evidence and nobody judged it.
+CODE, SCREENSHOT, AI_TEXT, AI_VISION = "code", "screenshot", "ai-text", "ai-vision"
+
+KIND_CODE, KIND_DOCUMENT, KIND_VISION, KIND_LEGACY = "code", "document", "vision", "legacy"
+METHODS = {KIND_CODE: CODE, KIND_DOCUMENT: AI_TEXT, KIND_VISION: AI_VISION, KIND_LEGACY: SCREENSHOT}
+
+# What a rule card's `ai_check` may hold. `expect` is the requirement in words; the
+# *_if lists are the conditions for each answer; `missing_means` (documents) says what a
+# policy that never states the requirement is; `comparable` (cross-checks) says whether
+# the screenshot shows everything the code checks.
+AI_CHECK_KEYS = {"expect", "pass_if", "fail_if", "review_if", "missing_means", "comparable"}
+MISSING_MEANS = ("fail", "review")
 
 # Rule cards name a collector as "<system>.<function>", e.g. "aws.users_without_mfa".
 # To add a system: write connectors/<system>.py and register it here.
 # The browser connector is deliberately not here: rule cards can't call it.
-COLLECTORS = {"aws": aws, "github": github, "hr": hr}
+COLLECTORS = {"aws": aws, "files": files, "github": github, "hr": hr}
 
 # Rule IDs become evidence file names, so keep them to safe characters.
 RULE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -127,11 +145,14 @@ CUSTOM_CHECKS = {"no_unmatched_accounts": _no_unmatched_accounts}
 # ---------------------------------------------------------------- engine ----
 
 
-def result(rule: dict, verdict: str, reason: str, data, method: str = CODE) -> dict:
+def result(
+    rule: dict, verdict: str, reason: str, data, method: str = CODE, confidence: str | None = None
+) -> dict:
     """Build one result. Every result, including errors, gets a timestamp.
 
-    Confidence is high for an exact code check and low when the data was unclear.
-    The evidence file's SHA-256 is added when it is saved (see evidence.py).
+    Confidence is high for an exact code check and low when the data was unclear,
+    unless given (an AI answer brings its own). The evidence file's SHA-256 is added
+    when it is saved (see evidence.py).
     """
     return {
         "id": rule.get("id", "?"),
@@ -140,7 +161,7 @@ def result(rule: dict, verdict: str, reason: str, data, method: str = CODE) -> d
         "collector": rule.get("collector"),
         "verdict": verdict,
         "method": method,
-        "confidence": HIGH if verdict in (PASS, FAIL) else LOW,
+        "confidence": confidence or (HIGH if verdict in (PASS, FAIL) else LOW),
         "reason": reason,
         "evidence": data,
         "collected_at": datetime.datetime.now(datetime.UTC).isoformat(),
@@ -221,7 +242,7 @@ def _judge(rule: dict, data: dict) -> dict:
 
 
 def is_screenshot_only(rule: dict) -> bool:
-    """A rule judged only from its screenshot: no collector, no check (V3)."""
+    """The screenshot is the rule's only evidence: no collector, no check (vision, legacy)."""
     return (
         rule.get("collector") is None
         and rule.get("check") is None
@@ -229,16 +250,51 @@ def is_screenshot_only(rule: dict) -> bool:
     )
 
 
-def run_rule(rule: dict) -> dict:
-    """Collect evidence for one rule and judge it. Never raises."""
+def rule_kind(rule: dict) -> str:
+    """code, document, vision or legacy (see the top of this file)."""
+    collector = rule.get("collector")
+    if isinstance(collector, str) and collector.partition(".")[0] == "files":
+        return KIND_DOCUMENT
     if is_screenshot_only(rule):
+        return KIND_VISION if rule.get("ai_check") is not None else KIND_LEGACY
+    return KIND_CODE
+
+
+def _document_result(rule: dict, data: dict) -> dict:
+    """A document rule before its AI check: what was read, or why it could not be."""
+    name = data.get("path", "?")
+    if data.get("status") != files.OK:
+        reason = f"policy document {name}: {data.get('reason') or data.get('status')}"
+    else:
+        reason = (
+            f"policy document {name} read ({len(data['pages'])} page(s), {data['chars']:,}"
+            " characters); AI check not connected yet (V4 in progress)"
+        )
+    return result(rule, NEEDS_REVIEW, reason, data, method=AI_TEXT)
+
+
+def run_rule(rule: dict) -> dict:
+    """Collect evidence for one rule and judge it. Never raises.
+
+    Document and vision rules come back NEEDS REVIEW here; the AI check that judges
+    them runs afterwards (it needs the run's saved screenshot or document).
+    """
+    kind = rule_kind(rule)
+    if kind == KIND_LEGACY:
         reason = "screenshot-only rule: needs human review until AI checks are added (V4)"
         return result(rule, NEEDS_REVIEW, reason, {"screenshot_only": True}, method=SCREENSHOT)
+    if kind == KIND_VISION:
+        reason = "screenshot rule: AI check not connected yet (V4 in progress)"
+        return result(rule, NEEDS_REVIEW, reason, {"screenshot_only": True}, method=AI_VISION)
     try:
         data, error = _collect(rule)
-        return error or _judge(rule, data)
+        if error:
+            error["method"] = METHODS[kind]
+            return error
+        return _document_result(rule, data) if kind == KIND_DOCUMENT else _judge(rule, data)
     except Exception as e:  # last safety net: a bug must not crash the audit
-        return result(rule, NEEDS_REVIEW, f"engine error: {e}", {"error": str(e)})
+        reason = f"engine error: {e}"
+        return result(rule, NEEDS_REVIEW, reason, {"error": str(e)}, method=METHODS[kind])
 
 
 # -------------------------------------------------------------- rulebook ----
@@ -276,6 +332,52 @@ def _check_problem(check) -> str | None:
     return None
 
 
+def _ai_check_problems(ai_check, kind: str) -> list[str]:
+    """What is wrong with one rule's `ai_check` (empty list if it is valid)."""
+    if not isinstance(ai_check, dict):
+        return ["ai_check must be a mapping"]
+    problems = []
+    unknown = sorted(set(ai_check) - AI_CHECK_KEYS)
+    if unknown:
+        problems.append(f"ai_check has unknown keys {unknown}")
+    expect = ai_check.get("expect")
+    if not isinstance(expect, str) or not expect.strip():
+        problems.append("ai_check needs expect: the requirement in words")
+    for key in ("pass_if", "fail_if", "review_if"):
+        conditions = ai_check.get(key, [])
+        if not isinstance(conditions, list) or not all(
+            isinstance(c, str) and c.strip() for c in conditions
+        ):
+            problems.append(f"ai_check {key} must be a list of conditions in words")
+    if "missing_means" in ai_check:
+        if kind != KIND_DOCUMENT:
+            problems.append("ai_check missing_means is only for document rules")
+        elif ai_check["missing_means"] not in MISSING_MEANS:
+            problems.append("ai_check missing_means must be fail or review")
+    if "comparable" in ai_check:
+        if kind != KIND_CODE:
+            problems.append("ai_check comparable is only for code rules (a cross-check)")
+        elif not isinstance(ai_check["comparable"], bool):
+            problems.append("ai_check comparable must be true or false")
+    return problems
+
+
+def _document_problems(rule: dict) -> list[str]:
+    """What is wrong with a document rule's shape (the ai_check itself is checked apart)."""
+    problems = []
+    if rule.get("collector") != files.COLLECTOR:
+        problems.append(f"unknown collector {rule.get('collector')!r} (use {files.COLLECTOR})")
+    if rule.get("check") is not None or rule.get("screenshot") is not None:
+        problems.append("a document rule has no check or screenshot: the AI judges the document")
+    if rule.get("ai_check") is None:
+        problems.append("a document rule needs ai_check: only the AI can judge a document")
+    params = rule.get("params") or {}
+    problem = files.path_problem(params.get("path") if isinstance(params, dict) else None)
+    if problem:
+        problems.append(problem)
+    return problems
+
+
 def validate_rules(rules: list[dict]) -> list[str]:
     """Problems that make the rulebook unusable (empty list if it is fine).
 
@@ -295,7 +397,10 @@ def validate_rules(rules: list[dict]) -> list[str]:
             problems.append(f"{where}: missing title")
         if not isinstance(rule.get("params", {}), dict):
             problems.append(f"{where}: params must be a mapping")
-        if not is_screenshot_only(rule):  # an API rule: needs both a collector and a check
+        kind = rule_kind(rule)
+        if kind == KIND_DOCUMENT:
+            problems += [f"{where}: {p}" for p in _document_problems(rule)]
+        elif kind == KIND_CODE:  # an API rule: needs both a collector and a check
             try:
                 get_collector(rule.get("collector"))
             except ValueError as e:
@@ -303,6 +408,10 @@ def validate_rules(rules: list[dict]) -> list[str]:
             problem = _check_problem(rule.get("check"))
             if problem:
                 problems.append(f"{where}: {problem}")
+            if rule.get("ai_check") is not None and rule.get("screenshot") is None:
+                problems.append(f"{where}: ai_check has nothing to read: add a screenshot")
+        if rule.get("ai_check") is not None:
+            problems += [f"{where}: {p}" for p in _ai_check_problems(rule["ai_check"], kind)]
         if rule.get("screenshot") is not None:
             problems += [f"{where}: screenshot: {p}" for p in browser.screenshot_problems(rule)]
     return problems

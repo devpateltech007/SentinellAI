@@ -744,3 +744,98 @@ def test_ai_test_missing_sdk(monkeypatch):
     result = invoke("ai-test")
     assert result.exit_code == 2
     assert "not installed" in result.output
+
+
+# --- policy documents (V4) -------------------------------------------------------------
+
+DOCUMENT_RULES = """
+- id: DOC-01
+  title: Password policy requires 12+ characters
+  collector: files.read_document
+  params: {path: password-policy.pdf}
+  ai_check: {expect: Passwords must be at least 12 characters, missing_means: fail}
+- id: DOC-03
+  title: Offboarding removes access within 24 hours
+  collector: files.read_document
+  params: {path: offboarding-policy.txt}
+  ai_check: {expect: AWS and GitHub access is removed within 24 hours}
+- id: DOC-09
+  title: A policy that is not there
+  collector: files.read_document
+  params: {path: missing-policy.md}
+  ai_check: {expect: Anything}
+- id: GH-06
+  title: Base permission
+  screenshot:
+    site: github
+    url: "https://github.com/organizations/{org}/settings"
+    wait_for: {text: Base}
+  ai_check: {expect: The base permission is Read or No permission}
+"""
+
+
+@pytest.fixture
+def document_rules(tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "COMPLIANCELENS_POLICIES_DIR", str(cli.PROJECT_ROOT / "policies/examples/compliant")
+    )
+    path = tmp_path / "rules.yaml"
+    path.write_text(DOCUMENT_RULES)
+    return path
+
+
+def test_document_rules_save_the_exact_document(document_rules, temp_storage):
+    out = audit(document_rules, "--no-screenshots").output
+    assert "[NEEDS REVIEW] DOC-01  Password policy requires 12+ characters\n" in out
+    assert "policy document password-policy.pdf read (1 page(s)," in out
+    assert "[NEEDS REVIEW] DOC-09  A policy that is not there\n       policy document" in out
+    assert "missing-policy.md not found in policies/examples/compliant" in out
+    assert "[NEEDS REVIEW] GH-06   Base permission\n       screenshot not captured:" in out
+
+    folder = run_dir(temp_storage)
+    policies = cli.PROJECT_ROOT / "policies/examples/compliant"
+    saved = folder / "DOC-01.source.pdf"
+    assert saved.read_bytes() == (policies / "password-policy.pdf").read_bytes()
+    assert (folder / "DOC-03.source.txt").read_bytes() == (
+        policies / "offboarding-policy.txt"
+    ).read_bytes()
+    assert not list(folder.glob("DOC-09.source.*"))  # nothing was read, nothing is saved
+
+    raw = json.loads((folder / "DOC-01.json").read_text())
+    assert "_snapshot" not in raw  # the bytes are in the source file, not in the JSON
+    assert raw["sha256"] == evidence.sha256_file(saved)
+    assert "at least 14 characters" in raw["pages"][0]["text"]
+    meta = json.loads((folder / "DOC-01.meta.json").read_text())
+    assert (meta["method"], meta["source"]["file"]) == ("ai-text", "DOC-01.source.pdf")
+    listed = {f["path"] for f in json.loads((folder / "manifest.json").read_text())["files"]}
+    assert {"DOC-01.source.pdf", "DOC-03.source.txt"} <= listed
+
+    _, rows = stored(1)
+    by_id = {row["rule_id"]: row for row in rows}
+    assert by_id["DOC-01"]["source_path"].endswith("run-0001/DOC-01.source.pdf")
+    assert by_id["DOC-01"]["source_sha256"] == raw["sha256"]
+    assert by_id["DOC-09"]["source_path"] is None
+    assert by_id["GH-06"]["method"] == "ai-vision"
+
+    result = invoke("verify", "run-0001")
+    assert result.exit_code == 0, result.output
+    assert "OK: 10 files match" in result.output  # 4 rules x 2 + 2 documents
+
+
+def test_verify_catches_an_edited_document(document_rules, temp_storage):
+    audit(document_rules, "--no-screenshots")
+    saved = run_dir(temp_storage) / "DOC-03.source.txt"
+    saved.write_text(saved.read_text().replace("24 hours", "5 business days"))
+    result = invoke("verify", "run-0001")
+    assert result.exit_code == 1
+    assert "DOC-03.source.txt was changed (hash does not match the database)" in result.output
+    assert "DOC-03.source.txt does not match the hash in DOC-03.meta.json" in result.output
+
+
+def test_a_bad_document_path_stops_the_run_before_it_starts(tmp_path):
+    path = tmp_path / "rules.yaml"
+    path.write_text(DOCUMENT_RULES.replace("missing-policy.md", "../../etc/passwd.txt"))
+    result = invoke("run", "--rules-file", path)
+    assert result.exit_code == 2
+    assert "rule DOC-09: params.path '../../etc/passwd.txt' must not contain '..'" in result.output
+    assert db.list_runs(db.connect()) == []

@@ -1,8 +1,10 @@
 # compliancelens/evaluator/ — AI evaluation
 
 **Version:** V4 (being built). Stage 1, done: choosing the model, the provider adapters,
-the prompt and answer format, and `python audit.py ai-test`. Still to come: documents,
-screenshot preparation, the full answer checks, the cache and the audit integration.
+the prompt and answer format, and `python audit.py ai-test`. Stage 2, done: documents are
+read by `connectors/files.py` and saved with the run; the database has the AI tables.
+Still to come: screenshot preparation, the full answer checks, the cache and the audit
+integration.
 
 **Purpose:** judge evidence that code cannot: screenshots and policy documents. Every AI
 verdict has a reason and a confidence; anything unclear becomes NEEDS REVIEW.

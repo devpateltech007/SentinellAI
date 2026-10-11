@@ -11,7 +11,11 @@ login (AWS console / GitHub website), never with the tool's SecurityAudit user.
 
 To check one rule quickly: `python audit.py run --rule AWS-05` (recorded as a partial run).
 
-**What goes here:** these notes now; later, small helper scripts (e.g. `break_aws_02.sh`).
+**What goes here:** these notes, and small helper scripts:
+
+| Script | Job |
+| --- | --- |
+| `make_sample_pdfs.py` | V4: writes `policies/examples/*/password-policy.pdf` from the text inside it (`--check`: compare with the committed PDFs) |
 
 **Never commit:** passwords, access keys or tokens inside a script.
 
@@ -201,6 +205,22 @@ Only the organization's members are affected; owners can always delete and trans
 
 Also FAIL: an IAM user or org member that isn't in the CSV and isn't in HR-01's
 `allow_aws` / `allow_github` lists.
+
+## DOC rules (V4): flip by folder, no account changes
+
+Document rules read their files from `COMPLIANCELENS_POLICIES_DIR`. To flip them, point
+it at another folder of `policies/examples/` (see `policies/README.md`). These verdicts
+need the AI checks, which V4 connects in a later stage:
+
+| Folder | Expected verdict |
+| --- | --- |
+| `compliant` (default) | PASS |
+| `noncompliant` | FAIL, quoting the sentence that fails |
+| `ambiguous` | NEEDS REVIEW (each document contradicts itself) |
+| `injection` | never PASS |
+| `silent` | FAIL (the requirement is never stated) |
+
+Rename one file in the folder: only that rule becomes NEEDS REVIEW ("not found").
 
 ## Checks that should give NEEDS REVIEW (never PASS)
 

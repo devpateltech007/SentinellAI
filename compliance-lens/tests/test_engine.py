@@ -5,6 +5,7 @@ import types
 import pytest
 
 from compliancelens import engine
+from compliancelens.connectors import files
 
 
 @pytest.fixture
@@ -434,3 +435,134 @@ def test_rule_with_no_evidence_at_all_is_a_problem():
     problems = engine.validate_rules([{"id": "X-01", "title": "nothing"}])
     assert any("unknown collector" in p for p in problems)
     assert any("check must be a mapping" in p for p in problems)
+
+
+# --- rule kinds and AI checks (V4) ---------------------------------------------------
+
+AI_CHECK = {"expect": "The base permission is Read or No permission"}
+DOC_CHECK = {"expect": "Passwords must be at least 12 characters", "missing_means": "fail"}
+
+
+def document(**changes):
+    return {
+        "id": "DOC-01",
+        "title": "password policy",
+        "collector": "files.read_document",
+        "params": {"path": "password-policy.pdf"},
+        "ai_check": DOC_CHECK,
+        **changes,
+    }
+
+
+def vision(**changes):
+    return screenshot_only(**{"ai_check": AI_CHECK, **changes})
+
+
+def test_rule_kinds():
+    assert engine.rule_kind(valid()) == engine.KIND_CODE
+    assert engine.rule_kind(valid(screenshot=SCREENSHOT, ai_check=AI_CHECK)) == engine.KIND_CODE
+    assert engine.rule_kind(document()) == engine.KIND_DOCUMENT
+    assert engine.rule_kind(vision()) == engine.KIND_VISION
+    assert engine.rule_kind(screenshot_only()) == engine.KIND_LEGACY
+
+
+def test_valid_v4_rules_have_no_problems():
+    conditions = {
+        "expect": "Every console user must use MFA",
+        "pass_if": ["the policy requires MFA for every console user"],
+        "fail_if": ["MFA is required only for some users"],
+        "review_if": ["the policy contradicts itself"],
+        "missing_means": "review",
+    }
+    rules = [
+        document(),
+        document(id="DOC-02", params={"path": "access-control-policy.md"}, ai_check=conditions),
+        vision(),
+        valid(id="A-02", screenshot=SCREENSHOT, ai_check={**AI_CHECK, "comparable": False}),
+    ]
+    assert engine.validate_rules(rules) == []
+
+
+@pytest.mark.parametrize(
+    ("bad", "problem"),
+    [
+        (document(collector="files.policies_dir"), "(use files.read_document)"),
+        (document(check={"field": "x", "op": "==", "value": 1}), "has no check or screenshot"),
+        (document(screenshot=SCREENSHOT), "has no check or screenshot"),
+        (document(ai_check=None), "a document rule needs ai_check"),
+        (document(params={"path": "../secret.txt"}), "must not contain '..'"),
+        (document(params={"path": "/etc/policy.txt"}), "must be relative"),
+        (document(params={}), "must name a file"),
+        (document(ai_check="be strict"), "ai_check must be a mapping"),
+        (document(ai_check={"expect": " "}), "ai_check needs expect"),
+        (document(ai_check={**DOC_CHECK, "hint": "x"}), "ai_check has unknown keys ['hint']"),
+        (document(ai_check={**DOC_CHECK, "pass_if": "long"}), "pass_if must be a list"),
+        (document(ai_check={**DOC_CHECK, "fail_if": ["", "x"]}), "fail_if must be a list"),
+        (document(ai_check={**DOC_CHECK, "missing_means": "pass"}), "must be fail or review"),
+        (document(ai_check={**DOC_CHECK, "comparable": True}), "comparable is only for code"),
+        (vision(ai_check={**AI_CHECK, "missing_means": "fail"}), "only for document rules"),
+        (
+            valid(screenshot=SCREENSHOT, ai_check={**AI_CHECK, "comparable": "no"}),
+            "comparable must be true or false",
+        ),
+        (valid(ai_check=AI_CHECK), "ai_check has nothing to read: add a screenshot"),
+    ],
+)
+def test_validate_v4_rules(bad, problem):
+    [found] = engine.validate_rules([bad])
+    assert problem in found
+
+
+def test_a_document_rule_reads_its_document(temp_storage):
+    folder = temp_storage / "policies"
+    folder.mkdir()
+    (folder / "p.txt").write_text("Passwords must be at least 14 characters long.")
+    result = engine.run_rule(document(params={"path": "p.txt"}))
+    assert (result["verdict"], result["method"], result["confidence"]) == (
+        engine.NEEDS_REVIEW,
+        engine.AI_TEXT,
+        engine.LOW,
+    )
+    assert result["reason"] == (
+        "policy document p.txt read (1 page(s), 46 characters);"
+        " AI check not connected yet (V4 in progress)"
+    )
+    assert result["evidence"]["status"] == files.OK
+    assert result["evidence"][files.SNAPSHOT].startswith(b"Passwords")  # the runner saves it
+
+
+def test_a_missing_document_says_why(temp_storage):
+    (temp_storage / "policies").mkdir()
+    result = engine.run_rule(document())
+    assert result["reason"].startswith(
+        "policy document password-policy.pdf: password-policy.pdf not found in "
+    )
+    assert (result["verdict"], result["method"]) == (engine.NEEDS_REVIEW, engine.AI_TEXT)
+
+
+def test_a_document_rule_with_a_bad_path_needs_review():
+    result = engine.run_rule(document(params={"path": "../x.txt"}))
+    assert (result["verdict"], result["method"]) == (engine.NEEDS_REVIEW, engine.AI_TEXT)
+    assert result["reason"].startswith("collection error: params.path")
+
+
+def test_a_vision_rule_waits_for_its_ai_check():
+    result = engine.run_rule(vision())
+    assert (result["verdict"], result["method"]) == (engine.NEEDS_REVIEW, engine.AI_VISION)
+    assert result["evidence"] == {"screenshot_only": True}
+    assert "AI check not connected yet" in result["reason"]
+
+
+def test_an_engine_error_keeps_the_rules_method(monkeypatch):
+    def broken(rule):
+        raise ZeroDivisionError("division by zero")
+
+    monkeypatch.setattr(engine, "_collect", broken)
+    result = engine.run_rule(document())
+    assert (result["reason"], result["method"]) == ("engine error: division by zero", "ai-text")
+
+
+def test_result_keeps_a_given_confidence():
+    given = engine.result({"id": "X"}, engine.PASS, "ok", {}, engine.AI_TEXT, engine.MEDIUM)
+    assert given["confidence"] == engine.MEDIUM
+    assert engine.result({"id": "X"}, engine.PASS, "ok", {})["confidence"] == engine.HIGH

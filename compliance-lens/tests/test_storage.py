@@ -188,6 +188,15 @@ SCREENSHOT_COLUMNS = [
     "screenshot_url",
     "screenshot_captured_at",
 ]
+SOURCE_COLUMNS = ["source_path", "source_sha256"]
+RUN_AI_COLUMNS = [
+    "ai_calls",
+    "ai_cache_hits",
+    "ai_input_tokens",
+    "ai_output_tokens",
+    "ai_cost_usd",
+    "ai_settings",
+]
 
 # The schema exactly as V2 shipped it (schema 1), to test the upgrade.
 V1_SCHEMA = """
@@ -248,9 +257,8 @@ def columns(conn, table="results"):
     return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
 
 
-def test_new_database_has_screenshot_columns(conn):
-    assert db.SCHEMA_VERSION == 2
-    assert columns(conn)[-6:] == SCREENSHOT_COLUMNS
+def test_new_database_has_screenshot_and_source_columns(conn):
+    assert columns(conn)[-8:] == SCREENSHOT_COLUMNS + SOURCE_COLUMNS
 
 
 def test_screenshot_statuses_match_the_browser_connector():
@@ -311,8 +319,8 @@ def test_v1_database_is_upgraded_and_keeps_its_history(temp_storage):
     make_v1_database(path)
     conn = db.connect(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
-        assert columns(conn)[-6:] == SCREENSHOT_COLUMNS
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
+        assert columns(conn)[-8:] == SCREENSHOT_COLUMNS + SOURCE_COLUMNS
         run = db.get_run(conn, 1)
         assert (run["status"], run["manifest_sha256"]) == ("complete", "d" * 64)
         [row] = db.get_results(conn, 1)
@@ -350,3 +358,185 @@ def test_failed_upgrade_changes_nothing(temp_storage, monkeypatch):
     assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
     assert "half_done" not in columns(conn)
     conn.close()
+
+
+# --- schema 3: AI tables and policy documents (V4) ---------------------------------
+
+# How V3 upgraded a V2 database to schema 2, to build a schema 2 database for the tests.
+V2_COLUMNS = """
+ALTER TABLE results ADD COLUMN screenshot_status TEXT CHECK (screenshot_status IS NULL
+    OR screenshot_status IN ('captured', 'skipped', 'session_missing', 'session_expired',
+    'auth_challenge', 'access_denied', 'navigation_error', 'selector_timeout', 'config_error',
+    'capture_error'));
+ALTER TABLE results ADD COLUMN screenshot_path TEXT;
+ALTER TABLE results ADD COLUMN screenshot_sha256 TEXT;
+ALTER TABLE results ADD COLUMN screenshot_raw_sha256 TEXT;
+ALTER TABLE results ADD COLUMN screenshot_url TEXT;
+ALTER TABLE results ADD COLUMN screenshot_captured_at TEXT;
+PRAGMA user_version = 2;
+"""
+
+
+def make_v2_database(path):
+    """A database as V3 left it: schema 2, with a V2 run's rows and a V3 screenshot."""
+    make_v1_database(path)
+    conn = sqlite3.connect(path)
+    conn.executescript(V2_COLUMNS)
+    with conn:
+        conn.execute(
+            "UPDATE results SET screenshot_status = 'captured', screenshot_sha256 = ?",
+            ("e" * 64,),
+        )
+    conn.close()
+
+
+def structure(conn) -> dict:
+    """Every table's columns (name, type, not null, default) and every index name."""
+    tables = [
+        row[0]
+        for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name != 'sqlite_sequence'"
+        )
+    ]
+    shape = {
+        t: [tuple(row)[1:5] for row in conn.execute(f"PRAGMA table_info({t})")] for t in tables
+    }
+    indexes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
+    return {"tables": dict(sorted(shape.items())), "indexes": indexes}
+
+
+def test_new_database_has_the_v4_tables_and_columns(conn):
+    assert db.SCHEMA_VERSION == 3
+    assert columns(conn, "runs")[-6:] == RUN_AI_COLUMNS
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert {"ai_evaluations", "ai_cache"} <= tables
+
+
+@pytest.mark.parametrize("make", [make_v1_database, make_v2_database])
+def test_an_upgraded_database_matches_a_new_one(conn, temp_storage, make):
+    path = temp_storage / "old.db"
+    make(path)
+    upgraded = db.connect(path)
+    try:
+        assert structure(upgraded) == structure(conn)
+    finally:
+        upgraded.close()
+
+
+def test_v2_database_is_upgraded_and_keeps_its_history(temp_storage):
+    path = temp_storage / "old.db"
+    make_v2_database(path)
+    conn = db.connect(path)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        [row] = db.get_results(conn, 1)
+        assert (row["rule_id"], row["screenshot_sha256"]) == ("AWS-02", "e" * 64)
+        assert (row["source_path"], row["source_sha256"]) == (None, None)
+        run = db.get_run(conn, 1)
+        assert [run[c] for c in RUN_AI_COLUMNS] == [0, 0, 0, 0, 0, None]  # old runs: no AI
+        assert conn.execute("SELECT note FROM overrides").fetchone()[0] == "checked"
+    finally:
+        conn.close()
+    backup = sqlite3.connect(temp_storage / "old-v2-backup.db")
+    assert backup.execute("PRAGMA user_version").fetchone()[0] == 2
+    backup.close()
+
+
+def test_failed_upgrade_from_v2_changes_nothing(temp_storage, monkeypatch):
+    path = temp_storage / "old.db"
+    make_v2_database(path)
+    broken = db.MIGRATIONS[2] + "SELECT * FROM no_such_table;\n"
+    monkeypatch.setitem(db.MIGRATIONS, 2, broken)
+    with pytest.raises(RuntimeError, match="could not upgrade old.db from schema 2"):
+        db.connect(path)
+    conn = sqlite3.connect(path)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
+    assert "source_path" not in columns(conn)
+    assert "ai_calls" not in columns(conn, "runs")
+    tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "ai_evaluations" not in tables
+    conn.close()
+
+
+def test_add_result_returns_its_id_and_saves_the_document(conn):
+    run_id = start(conn)
+    source = {"path": "2026-10-29/run-0001/DOC-01.source.pdf", "sha256": "9" * 64}
+    first = db.add_result(conn, run_id, RESULT, EVIDENCE, META)
+    second = db.add_result(conn, run_id, {**RESULT, "id": "DOC-01"}, EVIDENCE, META, None, source)
+    assert second == first + 1
+    rows = db.get_results(conn, run_id)
+    assert [(r["source_path"], r["source_sha256"]) for r in rows] == [
+        (None, None),
+        (source["path"], source["sha256"]),
+    ]
+
+
+def test_new_runs_start_with_no_ai_totals(conn):
+    run = db.get_run(conn, start(conn))
+    assert [run[c] for c in RUN_AI_COLUMNS] == [0, 0, 0, 0, 0, None]
+
+
+def evaluation(result_id, **values):
+    row = {
+        "result_id": result_id,
+        "role": "primary",
+        "method": "ai-text",
+        "status": "accepted",
+        "verdict": "PASS",
+        "model_verdict": "PASS",
+        "confidence": "high",
+        "created_at": "2026-10-29T14:02:00+00:00",
+        **values,
+    }
+    names = ", ".join(row)
+    return f"INSERT INTO ai_evaluations ({names}) VALUES ({', '.join('?' * len(row))})", tuple(
+        row.values()
+    )
+
+
+@pytest.fixture
+def result_id(conn):
+    return db.add_result(conn, start(conn), RESULT, EVIDENCE, META)
+
+
+def test_an_ai_evaluation_is_saved_once_per_role(conn, result_id):
+    with conn:
+        conn.execute(*evaluation(result_id))
+        conn.execute(*evaluation(result_id, role="cross_check", method="ai-vision"))
+    row = conn.execute("SELECT * FROM ai_evaluations WHERE role = 'primary'").fetchone()
+    assert (row["from_cache"], row["attempts"], row["cost_usd"]) == (0, 0, None)
+    with pytest.raises(sqlite3.IntegrityError), conn:
+        conn.execute(*evaluation(result_id))
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        {"role": "second_opinion"},
+        {"method": "code"},
+        {"verdict": "MAYBE"},
+        {"model_verdict": "NEEDS REVIEW"},
+        {"confidence": "certain"},
+        {"from_cache": 2},
+        {"result_id": 999},
+    ],
+)
+def test_ai_evaluation_values_are_checked(conn, result_id, values):
+    with pytest.raises(sqlite3.IntegrityError), conn:
+        conn.execute(*evaluation(**{"result_id": result_id, **values}))
+
+
+def test_the_ai_cache_keeps_one_answer_per_key(conn, result_id):
+    insert = (
+        "INSERT INTO ai_cache (cache_key, kind, rule_id, answer_json, replies_json, provider,"
+        " model, source_result_id, created_at) VALUES (?, ?, 'DOC-01', '{}', '[]', 'openai',"
+        " 'gpt-6-luna', ?, 'now')"
+    )
+    with conn:
+        conn.execute(insert, ("k1", "document", result_id))
+    with pytest.raises(sqlite3.IntegrityError), conn:
+        conn.execute(insert, ("k1", "document", result_id))
+    with pytest.raises(sqlite3.IntegrityError), conn:
+        conn.execute(insert, ("k2", "video", result_id))
+    with pytest.raises(sqlite3.IntegrityError), conn:
+        conn.execute(insert, ("k3", "document", 999))

@@ -1,7 +1,7 @@
 """Shared test setup. Runs automatically before every test.
 
 Makes sure no test can ever touch a real AWS or GitHub account or AI provider, the
-real compliance.db, evidence/ or sessions/ folder, and that no test really sleeps.
+real compliance.db, evidence/, sessions/ or policies folder, and that no test really sleeps.
 """
 
 import os
@@ -12,7 +12,7 @@ import pytest
 import requests.adapters
 
 from compliancelens import evidence
-from compliancelens.connectors import aws, browser, github
+from compliancelens.connectors import aws, browser, files, github
 from compliancelens.storage import db
 
 
@@ -36,14 +36,16 @@ def fake_credentials(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def temp_storage(tmp_path, monkeypatch):
-    """Every test gets its own empty database, evidence folder and sessions folder.
+    """Every test gets its own empty database, evidence, sessions and policies folders.
 
     The sessions folder matters most: with your real sessions/ a test could open
-    your real GitHub or AWS pages.
+    your real GitHub or AWS pages. Tests that read the sample policies point
+    COMPLIANCELENS_POLICIES_DIR at them themselves.
     """
     monkeypatch.setenv(evidence.ENV_VAR, str(tmp_path / "evidence"))
     monkeypatch.setenv(db.ENV_VAR, str(tmp_path / "compliance.db"))
     monkeypatch.setenv(browser.ENV_VAR, str(tmp_path / "sessions"))
+    monkeypatch.setenv(files.ENV_VAR, str(tmp_path / "policies"))
     return tmp_path
 
 
