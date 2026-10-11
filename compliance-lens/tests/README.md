@@ -12,7 +12,9 @@ served from this computer (`fixtures/browser/`).
 | `conftest.py` | Shared setup for every test: fake AWS credentials, no real tokens or AI keys, a temporary database, evidence, **sessions** and policies folder, **real network blocked** (the browser may only reach 127.0.0.1; the AI SDKs' `httpx2` too), no real sleeping |
 | `test_package.py` | The package imports, has a version and carries the AI prompt, schema and model list |
 | `test_ai_settings.py` | Choosing the AI model in `.env`: provider prefixes, keys (never shown, never sent to the wrong provider), addresses, known vs unknown models, overrides, bad values |
-| `test_providers.py` | Both AI adapters against fake HTTP replies: request shape, stop reasons, errors (and no SDK retries), Claude fallbacks, local servers |
+| `test_providers.py` | Both AI adapters against fake HTTP replies: request shape, stop reasons, errors (and no SDK retries; a 429 for no credit is permanent), Claude fallbacks, local servers |
+| `test_ai.py` | The judge with a fake model: every row of its table (no evidence, no key, budget, retries, refusals, invalid and cut-off answers, unsure, low confidence, FAIL when a policy never states the requirement, quotes not found), the record, costs, cross-check comparisons and the cache |
+| `test_images.py` | Screenshots for the AI: the same pixels live and from a saved run, fitting to each model's limits, refusing pictures that would shrink too much |
 | `test_prompt.py` | The frozen v1 prompt and schema, escaping of documents, the strict answer parser, `ai-test`'s checks |
 | `test_aws.py` | AWS-01 to AWS-08: both verdict states, pagination, missing settings, errors, old keys and inactive users (with a fake clock) |
 | `test_github.py` | GH-01 to GH-05: each state, unclear 404s, missing token/org, pagination, rate-limit retries and giving up |
