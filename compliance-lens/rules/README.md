@@ -1,7 +1,8 @@
 # rules/ — the rulebook
 
-**Version:** V2 (14 rules), V3 (16 rules: screenshots + 2 screenshot-only rules). V4 adds
-document rules (about 19 in total).
+**Version:** V2 (14 rules), V3 (16 rules: screenshots + 2 screenshot-only rules), V4 (19
+rules: GH-06/GH-07 judged by the AI from their screenshots, DOC-01 to DOC-03 from policy
+documents, and AI cross-checks on AWS-01, AWS-02, AWS-05 and GH-01).
 
 **Purpose:** every compliance rule is a small YAML "rule card". Rules are data, not
 code: adding a rule means adding a few lines here, not new Python (as long as a
@@ -69,8 +70,10 @@ default `policies/examples/compliant`), with no `..`, and ends in `.pdf`, `.md` 
     missing_means: fail
 ```
 
-The AI checks themselves arrive in later V4 stages; until then document and vision rules
-are NEEDS REVIEW with the reason why, and the document is already saved with the run.
+Write `expect` and the conditions the way you would brief a careful reviewer: what the
+selected value or the deciding sentence must say. The AI's answer is checked before it
+is used (see `compliancelens/evaluator/README.md`): unsure, low confidence or a quote
+that isn't in the document makes the rule NEEDS REVIEW, never PASS.
 
 ## Checks
 
@@ -129,12 +132,20 @@ duplicate IDs, a missing title, an unknown collector, operator or custom check.
 | GH-05 | Org members have 2FA | `github.org_members_without_2fa` | `count == 0` | PASS |
 | HR-01 | Accounts belong to active employees | `hr.unmatched_accounts` | `custom: no_unmatched_accounts` | no CSV → NEEDS REVIEW |
 
-## The V3 additions
+## The V3 and V4 additions
 
-| ID | Rule | Evidence | Verdict |
+| ID | Rule | Evidence | Judged by (V4) |
 | --- | --- | --- | --- |
-| GH-06 | Base repository permission is Read or None | Screenshot of Member privileges | Always NEEDS REVIEW until V4 |
-| GH-07 | Members cannot delete or transfer repositories | Screenshot of Member privileges | Always NEEDS REVIEW until V4 |
+| GH-06 | Base repository permission is Read or None | Screenshot of Member privileges | AI (`ai-vision`) |
+| GH-07 | Members cannot delete or transfer repositories | Screenshot of Member privileges | AI (`ai-vision`) |
+| DOC-01 | Password policy requires 12+ characters | `password-policy.pdf` | AI (`ai-text`) |
+| DOC-02 | Policy requires MFA for every AWS console user | `access-control-policy.md` | AI (`ai-text`) |
+| DOC-03 | Offboarding removes AWS and GitHub access within 24 hours | `offboarding-policy.txt` | AI (`ai-text`) |
+
+The DOC rules read from `COMPLIANCELENS_POLICIES_DIR` (see `policies/README.md`); a
+policy that never states the requirement is FAIL (`missing_means: fail`). AWS-01,
+AWS-02, AWS-05 and GH-01 also have an `ai_check` for `run --cross-check` only; AWS-05's is
+`comparable: false` because its picture shows one bucket and the API checks them all.
 
 Screenshots: AWS-01 (IAM account settings), AWS-02/04/08 (IAM users list), AWS-03 (IAM
 dashboard), AWS-05/06 (the test bucket's Permissions/Properties), AWS-07 (CloudTrail
@@ -203,7 +214,8 @@ header spinner is left (`:not(:has(thead [class*='circle-left']))`).
 proves the setting is shown, and update `wait_for`/`steps`. Then check the picture
 really shows the value the code judges (V4 and the research experiment rely on it).
 
-**Screenshot-only rules** have no `collector` and no `check`:
+**Screenshot-only rules** (V3; none left in the rulebook) have no `collector`, no
+`check` and no `ai_check`:
 
 ```yaml
 - id: GH-06
@@ -215,9 +227,9 @@ really shows the value the code judges (V4 and the research experiment rely on i
     wait_for: { role: heading, name: "Base permissions" }
 ```
 
-Code can't judge them, so they are always NEEDS REVIEW (method `screenshot`, confidence
-`low`) with the reason "screenshot captured; needs human review until AI checks (V4)",
-or why the screenshot is missing. V4 turns them into `ai_check` rules.
+Nobody judges them, so they are always NEEDS REVIEW (method `screenshot`, confidence
+`low`) with the reason "screenshot captured; needs human review (the rule has no
+ai_check)", or why the screenshot is missing. Add an `ai_check` to make it a vision rule.
 
 ## Example
 

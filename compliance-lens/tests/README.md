@@ -22,9 +22,10 @@ served from this computer (`fixtures/browser/`).
 | `test_hr.py` | HR-01: matching, allowlists, terminated employees, missing or broken CSV, partial data |
 | `test_engine.py` | Every verdict path, every operator (with empty and wrong inputs), custom checks, confidence, rulebook validation, rule kinds and `ai_check` (V4) |
 | `test_evidence.py` | Run folder layout, hashing, manifest, screenshot banners and hashes, saved documents, and `verify` catching edited, deleted and extra files (PNGs and documents too), a document that isn't the one described, broken links to AI files, and bad manifests |
-| `test_browser.py` | Sites, session files (`0600`), URL placeholders and cleaning, rule card checks, and real Chromium against the fake website: capture, full page, one element, steps, masks, expired login, MFA and "no access" pages, timeouts, `login` save and reuse, a whole audit that verifies |
+| `test_browser.py` | Sites, session files (`0600`), URL placeholders and cleaning, rule card checks, and real Chromium against the fake website: capture, full page, one element, steps, masks, waiting for spinners that appear late (and noting ones that never stop), expired login, MFA and "no access" pages, timeouts, `login` save and reuse, a whole audit that verifies |
 | `test_storage.py` | Database schema, foreign keys, run lifecycle, history order, run names, screenshot and document columns, the AI tables' rules, upgrading schema 1 and 2 databases (same tables as a new one) and rolling back a failed upgrade |
-| `test_rules_file.py` | The real rulebook: the 16 rules, 15 screenshot blocks, valid, sensible value types, no secrets |
+| `test_rules_file.py` | The real rulebook: the 19 rules (14 code, 2 vision, 3 document), 15 screenshot blocks, the cross-checks, every DOC rule reading every sample folder, valid, sensible value types, no secrets |
+| `test_audit_ai.py` | AI checks inside whole audits, with a fake model and browser: document and vision verdicts, the files saved and verified, the exact picture judged, the cache across runs, cross-checks, no key, `--no-ai`, budget, provider errors, bugs, flags that don't go together, bad AI settings |
 | `test_cli.py` | `run`, `run --rule`, `run --no-screenshots`, `history`, `verify`, `login`, `ai-test` (with a fake AI) end to end, document rules saving and verifying their files, exit codes, failures |
 | `fixtures/` | Recorded API replies and the fake website |
 

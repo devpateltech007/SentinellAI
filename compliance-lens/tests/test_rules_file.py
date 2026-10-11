@@ -6,15 +6,17 @@ from pathlib import Path
 import pytest
 
 from compliancelens import engine
-from compliancelens.connectors import browser
+from compliancelens.connectors import browser, files
 
 RULES_DIR = Path(__file__).parent.parent / "rules"
 RULE_FILES = sorted(RULES_DIR.glob("*.yaml"))
 ALL_RULES = [rule for path in RULE_FILES for rule in engine.load_rules(path)]
-API_RULES = [rule for rule in ALL_RULES if not engine.is_screenshot_only(rule)]
+API_RULES = [rule for rule in ALL_RULES if engine.rule_kind(rule) == engine.KIND_CODE]
+DOCUMENT_RULES = [rule for rule in ALL_RULES if engine.rule_kind(rule) == engine.KIND_DOCUMENT]
+EXAMPLES = Path(__file__).parent.parent / "policies" / "examples"
 SCREENSHOT_RULES = [rule for rule in ALL_RULES if "screenshot" in rule]
 REQUIRED_KEYS = {"id", "title", "severity"}
-API_KEYS = {"collector", "check"}  # every rule except screenshot-only ones
+API_KEYS = {"collector", "check"}  # every code rule
 
 # Token and key formats that must never appear in a rule card.
 SECRET_PATTERNS = [
@@ -26,24 +28,49 @@ SECRET_PATTERNS = [
 SECRET_KEYS = re.compile(r"token|password|secret|api_key|credential", re.IGNORECASE)
 
 
-def test_v3_rules_exist():
+def test_v4_rules_exist():
     ids = [r["id"] for r in engine.load_rules(RULES_DIR / "starter_rules.yaml")]
     assert ids == [
         "AWS-01", "AWS-02", "AWS-03", "AWS-04", "AWS-05", "AWS-06", "AWS-07", "AWS-08",
         "GH-01", "GH-02", "GH-03", "GH-04", "GH-05", "GH-06", "GH-07",
         "HR-01",
+        "DOC-01", "DOC-02", "DOC-03",
     ]  # fmt: skip
 
 
 def test_every_rule_with_a_web_page_has_a_screenshot():
-    # V3: 13 API rules + 2 screenshot-only rules. HR-01 checks a local CSV: no page.
-    assert [r["id"] for r in ALL_RULES if "screenshot" not in r] == ["HR-01"]
+    # 13 API rules + 2 vision rules. HR-01 checks a local CSV and DOC rules read files.
+    no_page = [r["id"] for r in ALL_RULES if "screenshot" not in r]
+    assert no_page == ["HR-01", "DOC-01", "DOC-02", "DOC-03"]
     assert len(SCREENSHOT_RULES) == 15
 
 
-def test_the_two_screenshot_only_rules():
-    only = [r["id"] for r in ALL_RULES if engine.is_screenshot_only(r)]
-    assert only == ["GH-06", "GH-07"]
+def test_who_judges_each_rule():
+    kinds = {r["id"]: engine.rule_kind(r) for r in ALL_RULES}
+    assert [i for i, k in kinds.items() if k == engine.KIND_VISION] == ["GH-06", "GH-07"]
+    assert [i for i, k in kinds.items() if k == engine.KIND_DOCUMENT] == [
+        "DOC-01",
+        "DOC-02",
+        "DOC-03",
+    ]
+    assert list(kinds.values()).count(engine.KIND_CODE) == 14
+    assert engine.KIND_LEGACY not in kinds.values()  # every screenshot rule has an AI check
+
+
+def test_cross_checks():
+    crossed = {r["id"]: r["ai_check"] for r in API_RULES if r.get("ai_check")}
+    assert sorted(crossed) == ["AWS-01", "AWS-02", "AWS-05", "GH-01"]
+    # AWS-05's picture shows one bucket; the API checks every bucket.
+    assert [i for i, c in crossed.items() if c.get("comparable") is False] == ["AWS-05"]
+
+
+@pytest.mark.parametrize("rule", DOCUMENT_RULES, ids=lambda r: r["id"])
+def test_document_rules_read_every_sample_folder(rule, monkeypatch):
+    assert rule["ai_check"]["missing_means"] == "fail"
+    for folder in sorted(EXAMPLES.iterdir()):
+        monkeypatch.setenv(files.ENV_VAR, str(folder))
+        document = files.read_document(rule["params"])
+        assert document["status"] == files.OK, (folder.name, document.get("reason"))
 
 
 @pytest.mark.parametrize("rule", SCREENSHOT_RULES, ids=lambda r: r.get("id", "?"))
@@ -89,6 +116,9 @@ def test_rule_is_well_formed(rule):
     assert rule["severity"] in ("low", "medium", "high")
     if engine.is_screenshot_only(rule):
         assert not rule.keys() & API_KEYS
+        return
+    if engine.rule_kind(rule) == engine.KIND_DOCUMENT:
+        assert rule["collector"] == files.COLLECTOR and "check" not in rule
         return
     assert rule.keys() >= API_KEYS
     assert callable(engine.get_collector(rule["collector"]))

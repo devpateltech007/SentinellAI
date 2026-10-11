@@ -1,5 +1,10 @@
-# ComplianceLens rulebook (V3): 16 rules across AWS, GitHub and the HR list.
+# ComplianceLens rulebook (V4): 19 rules across AWS, GitHub, the HR list and policy documents.
 # How to write a rule card: see rules/README.md.
+#
+# Who judges (V4): 14 rules are judged by code from API data; GH-06 and GH-07 by the AI
+# reading their screenshot; DOC-01 to DOC-03 by the AI reading a policy document. An
+# `ai_check` on a code rule is only used by `run --cross-check`, which records whether
+# the AI reads the screenshot the same way; it never changes the code's verdict.
 #
 # Each rule can be broken and fixed on purpose (or, where that is unsafe, is
 # tested with fake data): see scripts/README.md.
@@ -27,6 +32,11 @@
     mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
       - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
       - { pattern: "[0-9]{12}" }
+  ai_check:   # --cross-check only
+    expect: "The password policy's minimum password length is 12 characters or more."
+    pass_if: ["Password minimum length shows 12 or more characters"]
+    fail_if: ["Password minimum length shows fewer than 12 characters", "No password policy is set"]
+    review_if: ["The password policy section is not visible, cut off or still loading"]
 
 - id: AWS-02
   title: Every IAM user with a console password has MFA
@@ -44,6 +54,11 @@
     mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
       - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
       - { pattern: "[0-9]{12}" }
+  ai_check:   # --cross-check only
+    expect: "Every IAM user who has a console password also has an MFA device."
+    pass_if: ["Every user with a Password age shows an MFA device"]
+    fail_if: ["A user with a Password age shows no MFA device (a dash in the MFA column)"]
+    review_if: ["The MFA or Password age columns are not visible, cut off or still loading"]
 
 - id: AWS-03
   title: Root account has MFA
@@ -94,6 +109,12 @@
     mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
       - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
       - { pattern: "[0-9]{12}" }
+  ai_check:   # --cross-check only: the picture shows one bucket, the API checks them all
+    expect: "Block all public access is On for this bucket."
+    pass_if: ["Block all public access shows On"]
+    fail_if: ["Block all public access shows Off"]
+    review_if: ["The Block public access box is not visible or still loading"]
+    comparable: false
 
 - id: AWS-06
   title: Every S3 bucket has versioning on
@@ -163,6 +184,11 @@
     capture: { full_page: true }
     mask:
       - { role: button, name: "Open user navigation menu" }   # your avatar
+  ai_check:   # --cross-check only
+    expect: "The rule for main requires a pull request with at least 1 approving review."
+    pass_if: ["'Require a pull request before merging' is ticked and Required approvals is 1 or more"]
+    fail_if: ["'Require a pull request before merging' is not ticked", "Required approvals is 0"]
+    review_if: ["The setting is not visible, cut off or still loading"]
 
 - id: GH-02
   title: Force pushes to main are blocked
@@ -220,9 +246,8 @@
     mask:
       - { role: button, name: "Open user navigation menu" }   # your avatar
 
-# Screenshot-only rules (V3): no collector and no check. Code can't judge them, so they
-# are NEEDS REVIEW with the screenshot attached; V4 adds AI checks. Both settings are on
-# the organization's Member privileges page (only organization owners can open it).
+# Vision rules (V4): no collector and no check; the AI reads the screenshot. Both settings
+# are on the organization's Member privileges page (only organization owners can open it).
 
 - id: GH-06
   title: Organization base repository permission is Read or None
@@ -233,6 +258,15 @@
     wait_for: { role: heading, name: "Base permissions" }
     mask:
       - { role: button, name: "Open user navigation menu" }   # your avatar
+  ai_check:
+    expect: "The selected base repository permission is Read or No permission."
+    pass_if:
+      - "The selected value under Base permissions is Read"
+      - "The selected value under Base permissions is No permission"
+    fail_if: ["The selected value under Base permissions is Write or Admin"]
+    review_if:
+      - "The Base permissions control is not visible, cut off, covered or still loading"
+      - "A list of options is open instead of the selected value"
 
 - id: GH-07
   title: Members cannot delete or transfer repositories
@@ -245,6 +279,12 @@
       - scroll_to: { text: "Repository deletion and transfer" }
     mask:
       - { role: button, name: "Open user navigation menu" }   # your avatar
+  ai_check:
+    expect: "'Allow members to delete or transfer repositories for this organization' is not ticked."
+    pass_if:
+      - "The box 'Allow members to delete or transfer repositories for this organization' is visible and not ticked"
+    fail_if: ["That box is ticked"]
+    review_if: ["The box is not visible, cut off, covered or unclear"]
 
 # --- HR ----------------------------------------------------------------------
 
@@ -258,3 +298,50 @@
     allow_aws: [compliancelens-audit]   # service accounts with no employee
     allow_github: []
   check: { custom: no_unmatched_accounts }
+
+# --- Policy documents (V4) ----------------------------------------------------
+# The AI reads a document from COMPLIANCELENS_POLICIES_DIR (default: the made-up compliant
+# samples in policies/examples/compliant). A policy that never states the requirement
+# is FAIL (missing_means: fail); one that contradicts itself is NEEDS REVIEW.
+
+- id: DOC-01
+  title: Password policy requires 12+ characters
+  severity: medium
+  collector: files.read_document
+  params: { path: password-policy.pdf }
+  ai_check:
+    expect: "Every user password must be at least 12 characters long."
+    pass_if: ["The policy sets a minimum password length of 12 characters or more for all passwords"]
+    fail_if:
+      - "The policy sets a minimum below 12 characters"
+      - "The policy lets some passwords be shorter than 12 characters"
+    review_if: ["Parts of the policy give different minimum lengths"]
+    missing_means: fail
+
+- id: DOC-02
+  title: Policy requires MFA for every AWS console user
+  severity: high
+  collector: files.read_document
+  params: { path: access-control-policy.md }
+  ai_check:
+    expect: "Every user who can sign in to the AWS console must use multi-factor authentication (MFA)."
+    pass_if: ["MFA is required for every user who can sign in to the AWS console"]
+    fail_if:
+      - "MFA is required only for some users, for example administrators"
+      - "MFA is optional or only encouraged"
+    review_if: ["Parts of the policy disagree about who must use MFA"]
+    missing_means: fail
+
+- id: DOC-03
+  title: Offboarding removes AWS and GitHub access within 24 hours
+  severity: high
+  collector: files.read_document
+  params: { path: offboarding-policy.txt }
+  ai_check:
+    expect: "When someone leaves, their AWS and GitHub access is removed within 24 hours."
+    pass_if: ["Access to both AWS and GitHub is removed within 24 hours or sooner"]
+    fail_if:
+      - "Access is removed later than 24 hours, for example within days"
+      - "Only one of AWS or GitHub is covered"
+    review_if: ["Parts of the policy give different time limits"]
+    missing_means: fail

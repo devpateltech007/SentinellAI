@@ -184,9 +184,13 @@ def test_lasting_errors_are_permanent(kind, status):
 )
 def test_timeouts_and_connection_problems_are_transient(kind, error, words):
     provider, server = make(kind, error)
-    with pytest.raises(base.TransientError, match=words):
+    with pytest.raises(base.TransientError, match=words) as e:
         provider.send(request())
     assert len(server.requests) == 1
+    # Only a broken connection gets the extra tries; a timeout may still be answered.
+    assert isinstance(e.value, base.DroppedConnection) == ("connect" in words)
+    if "connect" in words:
+        assert str(e.value) == "could not connect: connection refused"  # the real cause
 
 
 @pytest.mark.parametrize("kind", ADAPTERS)

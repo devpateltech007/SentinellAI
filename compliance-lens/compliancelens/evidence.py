@@ -5,6 +5,9 @@
         AWS-02.meta.json   verdict, reason, timestamp, collector, tool version, sha256
         AWS-02.png         V3: the page screenshot with a banner (rule, UTC time, URL)
         DOC-01.source.pdf  V4: the exact policy document a document rule read
+        DOC-01.ai.json     V4: the AI check: decision, settings and every attempt
+        GH-06.ai-input.png V4: the exact picture the AI was sent
+        AWS-01.crosscheck.json  V4 (--cross-check): the AI's reading of a code rule's screenshot
         manifest.json      every file of the run with its sha256
 
 Every hash is the SHA-256 of the exact bytes written to disk. The manifest's own
@@ -60,6 +63,7 @@ LINKS = (
     ("ai", "replies_file", "replies_sha256"),
     ("ai", "input_file", "input_sha256"),
     ("crosscheck", "file", "sha256"),
+    ("crosscheck", "input_file", "input_sha256"),
 )
 
 
@@ -211,14 +215,28 @@ def stamp_screenshot(png: bytes, text: str) -> tuple[bytes, dict]:
     return out.getvalue(), {"width": width, "height": height, "banner_height": BANNER_HEIGHT}
 
 
-def _write_file(run_dir: Path, name: str, data: bytes) -> dict:
+def write_file(run_dir: Path, name: str, data: bytes) -> dict:
+    """Write one file of the run (a plain file name). Returns its manifest entry."""
+    if Path(name).name != name:
+        raise ValueError(f"not a plain file name: {name!r}")
     write_atomic(Path(run_dir) / name, data)
     return {"path": name, "sha256": sha256_bytes(data), "size": len(data)}
 
 
 def write_screenshot(run_dir: Path, rule_id: str, png: bytes) -> dict:
     """Write <ID>.png (the stamped screenshot). Returns its manifest entry."""
-    return _write_file(run_dir, f"{safe_name(rule_id)}.png", png)
+    return write_file(run_dir, f"{safe_name(rule_id)}.png", png)
+
+
+def write_ai_files(run_dir: Path, rule_id: str, record: dict, png: bytes | None, cross: bool):
+    """V4: write the AI check's record (<ID>.ai.json, or <ID>.crosscheck.json for a
+    cross-check) and the picture it was sent (<ID>.ai-input.png). Returns their entries."""
+    stem = safe_name(rule_id)
+    record_entry = write_file(
+        run_dir, f"{stem}.{'crosscheck' if cross else 'ai'}.json", to_json_bytes(record)
+    )
+    picture = write_file(run_dir, f"{stem}.ai-input.png", png) if png is not None else None
+    return record_entry, picture
 
 
 def write_source(run_dir: Path, rule_id: str, data: bytes, document_name: str) -> dict:
@@ -229,7 +247,7 @@ def write_source(run_dir: Path, rule_id: str, data: bytes, document_name: str) -
     suffix = Path(document_name).suffix.lower()
     if suffix not in SOURCE_SUFFIXES:
         raise ValueError(f"not a policy document type: {document_name!r}")
-    return _write_file(run_dir, f"{safe_name(rule_id)}.source{suffix}", data)
+    return write_file(run_dir, f"{safe_name(rule_id)}.source{suffix}", data)
 
 
 def write_manifest(run_dir: Path, run_info: dict, files: list[dict]) -> str:

@@ -110,6 +110,7 @@ class Site:
     challenge_texts: tuple[str, ...] = ()  # page text of MFA / confirm prompts
     denied_texts: tuple[str, ...] = ()  # page text of "no permission" messages
     logged_in: str | None = None  # CSS selector found only on logged-in pages
+    busy_css: str | None = None  # CSS of the spinners shown while data is still loading
     login_tip: str = ""  # printed before the login window opens
     login_note: str = ""  # printed after a successful login
     allow_http: bool = False  # only for the fake local site in the tests
@@ -141,6 +142,9 @@ SITES = {
             r"^https://([a-z0-9-]+\.)*signin\.aws(?:[/?#]|$)",
         ),
         denied_texts=("You don't have permission", "is not authorized to perform", "AccessDenied"),
+        # The console draws a table's rows first and its columns later, each with a
+        # spinner (Cloudscape's spinner has a "circle-left" part).
+        busy_css="[class*='circle-left']",
         login_tip="Sign in as the IAM user compliancelens-audit (never root), with MFA.",
         login_note=(
             "AWS console logins end after 12 hours: log in again before an audit after that."
@@ -479,6 +483,22 @@ def _visible(page, spec: dict):
     return _locate(page, spec).filter(visible=True).first
 
 
+def _settle(page, site: Site) -> bool | None:
+    """Wait until the site's spinners have been gone for QUIET_MS (None: no spinners to wait
+    for; False: still loading after SETTLE_MS, and the picture is taken anyway)."""
+    if not site.busy_css:
+        return None
+    from playwright.sync_api import TimeoutError as PlaywrightTimeout
+
+    try:
+        page.wait_for_function(
+            _SETTLE_JS, arg=[site.busy_css, QUIET_MS], polling=100, timeout=SETTLE_MS
+        )
+    except PlaywrightTimeout:
+        return False
+    return True
+
+
 def _page_problem(page, site: Site, response=None) -> tuple[str, str] | None:
     """(status, reason) if the page is not usable evidence, else None.
 
@@ -521,6 +541,21 @@ def _timeout_problem(page, site: Site, waited_for: str, timeout_ms: int) -> tupl
     )
 
 
+# A site with `busy_css` (AWS) fills in its data after the page appears, showing spinners
+# meanwhile, and a column can start loading only after the rows are drawn. So its picture
+# is taken once no spinner has been visible for QUIET_MS, or after SETTLE_MS anyway, with
+# a reason saying the page was still loading (the AI then can't judge it as clear).
+QUIET_MS = 1000
+SETTLE_MS = 10_000
+_SETTLE_JS = """([selector, quietMs]) => {
+  const busy = [...document.querySelectorAll(selector)].some((e) => e.getClientRects().length);
+  const now = performance.now();
+  if (busy) { window.__complianceLensQuiet = null; return false; }
+  if (window.__complianceLensQuiet == null) window.__complianceLensQuiet = now;
+  return now - window.__complianceLensQuiet >= quietMs;
+}"""
+
+
 @dataclass
 class Capture:
     """One screenshot attempt. `png` (the raw browser picture) is set only when captured."""
@@ -533,6 +568,7 @@ class Capture:
     final_url: str | None = None
     captured_at: str | None = None
     full_page: bool = False
+    settled: bool | None = None  # sites with busy_css: did the spinners go away in time?
 
     @property
     def ok(self) -> bool:
@@ -704,6 +740,7 @@ class Screenshotter:
         problem = _page_problem(page, site)  # still logged in and on the site after the steps
         if problem:
             return failed(*problem)
+        settled = _settle(page, site)
 
         capture = shot.get("capture") or {}
         full_page = bool(capture.get("full_page"))
@@ -716,15 +753,19 @@ class Screenshotter:
             png = _visible(page, capture["target"]).screenshot(**options)
         else:
             png = page.screenshot(full_page=full_page, **options)
+        reason = "captured"
+        if settled is False:
+            reason = f"captured, but the page was still loading after {SETTLE_MS // 1000} s"
         return Capture(
             CAPTURED,
-            "captured",
+            reason,
             site.name,
             png=png,
             requested_url=url,
             final_url=page.url,
             captured_at=_now().isoformat(),
             full_page=full_page,
+            settled=settled,
         )
 
 

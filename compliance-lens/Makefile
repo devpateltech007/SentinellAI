@@ -6,10 +6,10 @@ VENV   := .venv
 BIN    := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format audit history verify login aitest clean
+.PHONY: help setup test lint format audit crosscheck history verify login aitest clean
 
 help:  ## Show this list
-	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-8s %s\n", $$1, $$2}'
+	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
 
 setup:  ## Create .venv, install everything (and Chromium), turn on git hooks
 	$(PYTHON) -m venv $(VENV)
@@ -34,6 +34,9 @@ format:  ## Fix code style automatically
 
 audit:  ## Run a compliance audit (all rules)
 	$(BIN)/python audit.py run
+
+crosscheck:  ## Audit, and let the AI also read the code rules' screenshots (verdicts unchanged)
+	$(BIN)/python audit.py run --cross-check
 
 history:  ## Show past audit runs
 	$(BIN)/python audit.py history

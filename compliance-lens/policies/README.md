@@ -19,10 +19,7 @@ Each folder holds the same three files, for a made-up company, "Example Labs":
 | `access-control-policy.md` | DOC-02 | MFA for every user who can sign in to the AWS console |
 | `offboarding-policy.txt` | DOC-03 | AWS and GitHub access removed within 24 hours of leaving |
 
-DOC rules join the rulebook later in V4, once the AI checks are connected; until then a
-document rule reads and saves its file but stays NEEDS REVIEW.
-
-| Folder | What the documents say | Expected verdict (once the AI checks run) |
+| Folder | What the documents say | Expected verdict |
 | --- | --- | --- |
 | `compliant/` | 14 characters; MFA for every console user; access removed within 24 hours | PASS |
 | `noncompliant/` | 8 characters; MFA for administrators only; 5 business days | FAIL |

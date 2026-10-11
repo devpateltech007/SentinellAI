@@ -83,6 +83,15 @@ class TransientError(ProviderError):
     retryable = True
 
 
+class DroppedConnection(TransientError):
+    """The connection failed or broke before an answer came back: network trouble.
+
+    Seen live: large uploads (pictures) to the provider sometimes break mid-way on one
+    network (SSL "bad record mac", in Python and in curl alike), so the evaluator
+    gives these a few more tries than other errors.
+    """
+
+
 class PermanentError(ProviderError):
     """Trying again won't help: a bad key, no access, an unknown model, a bad request."""
 
@@ -127,8 +136,8 @@ def translate(error: Exception, sdk) -> ProviderError:
     """
     if isinstance(error, sdk.APITimeoutError):
         return TransientError(f"no answer within the timeout: {short(error)}")
-    if isinstance(error, sdk.APIConnectionError):
-        return TransientError(f"could not connect: {short(error)}")
+    if isinstance(error, sdk.APIConnectionError):  # the SDK's text hides the real cause
+        return DroppedConnection(f"could not connect: {short(error.__cause__ or error)}")
     if isinstance(error, sdk.APIStatusError):
         status = error.status_code
         message = short(getattr(error, "message", error))

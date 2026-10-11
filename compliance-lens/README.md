@@ -7,10 +7,13 @@ defaults to PASS: any error or unclear result becomes NEEDS REVIEW.
 
 This is a 15-week semester project. The full plan is in
 [`../ComplianceLens Project Plan.md`](../ComplianceLens%20Project%20Plan.md).
-**Current version: V3 (Screenshots)**: 16 rules across AWS, GitHub and an HR employee
-list. Every run is saved as hashed evidence files plus a SQLite history, and `verify`
-reports any evidence file changed after the audit. Rules with a web page also get a
-screenshot with a banner (rule, UTC time, URL), taken with a login you save once by hand.
+**Current version: V4 (AI evaluation), being finished**: 19 rules across AWS, GitHub,
+an HR employee list and policy documents. Every run is saved as hashed evidence files
+plus a SQLite history, and `verify` reports any evidence file changed after the audit.
+Rules with a web page also get a screenshot with a banner (rule, UTC time, URL), taken
+with a login you save once by hand. An AI model of your choice (set in `.env`) judges
+what code can't: two settings only shown as screenshots, and three policy documents.
+Anything the AI can't answer clearly is NEEDS REVIEW, never PASS.
 
 ---
 
@@ -23,6 +26,7 @@ cp .env.example .env      # then fill it in (see "Account setup")
 make test                 # run the tests (no real accounts needed)
 make login SITE=github    # log in by hand once, for screenshots (V3)
 make login SITE=aws       # the same for AWS (needed again after 12 hours)
+make aitest               # check the AI model and key in .env (V4)
 make audit                # run a real audit
 make history              # list past runs
 make verify RUN=run-0001  # check a run's evidence was not changed
@@ -30,7 +34,8 @@ make verify RUN=run-0001  # check a run's evidence was not changed
 
 Without any accounts set up, `make audit` still runs: every rule shows NEEDS REVIEW
 with the reason (for example "GITHUB_TOKEN not set"). It never crashes. Without saved
-logins it simply takes no screenshots and says how to fix that.
+logins it simply takes no screenshots and says how to fix that; without an AI key the
+AI rules say "AI not configured".
 
 ## Prerequisites
 
@@ -129,6 +134,16 @@ passkey stored in iCloud Keychain.
 A saved login is as powerful as a password; see **Security** below. A run with an
 expired login keeps every API verdict and lists the missing screenshots with the fix.
 
+### AI model (V4)
+
+17. In `.env`, set `COMPLIANCELENS_AI_MODEL=<provider>/<model>` and that provider's
+    key in `COMPLIANCELENS_AI_API_KEY` (Anthropic, OpenAI, a local Ollama/LM Studio
+    model with no key, or any OpenAI-compatible service; see `.env.example`). For a
+    model the tool doesn't know, also set its price (`COMPLIANCELENS_AI_PRICE_INPUT`
+    and `_OUTPUT`, $ per million tokens) so the spending limit works.
+18. `make aitest`: one made-up policy and one made-up screenshot with known answers.
+    It prints the model, cost and time, never the key.
+
 Defaults used in this repo: AWS region `us-east-1`, AWS profile `compliancelens`.
 
 ## Running
@@ -138,6 +153,8 @@ Defaults used in this repo: AWS region `us-east-1`, AWS profile `compliancelens`
 | `make help` | List all commands |
 | `make setup` | Create `.venv`, install pinned libraries, install git hooks |
 | `make audit` | Run all rules and save the run (`python audit.py run`) |
+| `make crosscheck` | The same, and the AI also reads the code rules' screenshots and says whether it agrees |
+| `make aitest` | Check the AI model and key set in `.env` |
 | `make history` | Past runs, newest first, with PASS / FAIL / NEEDS REVIEW totals |
 | `make verify RUN=run-0007` | Re-hash a run's files and report anything changed or missing |
 | `make login SITE=github` | Log in by hand and save the login for screenshots (`SITE=aws` too) |
@@ -152,6 +169,10 @@ More options:
 python audit.py                     # same as `run`
 python audit.py run --rule AWS-02   # one rule (repeat --rule for more); marked "partial"
 python audit.py run --no-screenshots   # API checks only: no browser, no screenshots
+python audit.py run --no-ai         # no AI calls: AI rules are NEEDS REVIEW
+python audit.py run --cross-check   # the AI also reads code rules' screenshots (verdicts unchanged)
+python audit.py run --refresh-ai    # ask the AI again instead of reusing cached answers
+python audit.py run --ai-model openai/<model>   # another model, for this run only
 python audit.py history --limit 5
 python audit.py --help
 ```
@@ -169,25 +190,29 @@ ComplianceLens v0.3.0 audit  2026-10-29 14:02 UTC
 [FAIL] AWS-02  Every IAM user with a console password has MFA
        count = 1 (expected == 0)  users: ['intern-bob']
 ...
-[NEEDS REVIEW] GH-06   Organization base repository permission is Read or None
-       screenshot captured; needs human review until AI checks (V4)
+[PASS] GH-06   Organization base repository permission is Read or None
+       The Base permissions control is visible and its selected value is Read, which meets the rule.
+       ai-vision · high confidence · openai/gpt-6-luna · "Base permissions — Read"
 ...
-[PASS] HR-01   Every AWS and GitHub account belongs to an active employee
-       every AWS and GitHub account belongs to an active employee
-13 PASS  1 FAIL  2 NEEDS REVIEW   run-0007 saved to evidence/2026-10-29/run-0007/
+[PASS] DOC-01  Password policy requires 12+ characters
+       The policy requires every password to be at least 14 characters long.
+       ai-text · high confidence · openai/gpt-6-luna · "Every password must be at least 14 characters long."
+...
+18 PASS  1 FAIL  0 NEEDS REVIEW   run-0007 saved to evidence/2026-10-29/run-0007/
 Screenshots: 15 of 15 saved.
+AI: 5 check(s) with openai/gpt-6-luna: 5 call(s), 0 from cache, 6,982 tokens, $0.0010
 Check the evidence later with:  python audit.py verify run-0007
 ```
 
 ```
 $ python audit.py history
 Run        Started (UTC)     Status    Scope    PASS  FAIL  REVIEW
-run-0007   2026-10-29 14:02  complete  full       13     1       2
+run-0007   2026-10-29 14:02  complete  full       18     1       0
 run-0006   2026-10-29 13:40  complete  partial     0     1       0
 
 $ python audit.py verify run-0007
 Verifying run-0007 (evidence/2026-10-29/run-0007/)
-OK: 47 files match their recorded SHA-256 hashes.
+OK: 63 files match their recorded SHA-256 hashes.
 ```
 
 To check that a verdict really flips, follow the break-and-fix steps in
@@ -196,10 +221,10 @@ To check that a verdict really flips, follow the break-and-fix steps in
 ## How it works
 
 ```
-rules/*.yaml → engine → connectors (AWS, GitHub, HR) → check → verdict
-                  ↓                                               ↓
-            browser (V3) → screenshot + banner → evidence/<date>/run-NNNN/
-                                       *.json, *.meta.json, *.png, manifest.json  +  compliance.db
+rules/*.yaml → engine → connectors (AWS, GitHub, HR, files) → check → verdict
+                  ↓                                                     ↓
+            browser (V3) → screenshot + banner ──→ evaluator (V4: AI) ──→ evidence/<date>/run-NNNN/
+                                       *.json, *.meta.json, *.png, *.source.*, *.ai.json, manifest.json  +  compliance.db
 ```
 
 1. `engine.py` loads and checks the rulebook.
@@ -214,8 +239,14 @@ rules/*.yaml → engine → connectors (AWS, GitHub, HR) → check → verdict
 5. `runner.py` adds the banner, saves the PNG, the raw evidence and a meta file per rule,
    a manifest of every file with its SHA-256, and a row per result in SQLite (`compliance.db`).
 
-**Screenshot-only rules** (GH-06, GH-07) have a screenshot but no API check. Code can't
-judge them, so they are NEEDS REVIEW with the picture attached until V4 adds AI checks.
+6. **AI rules (V4).** GH-06 and GH-07 have only a screenshot, and DOC-01 to DOC-03 read a
+   policy document (`policies/`). The AI model set in `.env` judges them
+   (`compliancelens/evaluator/`): only a clear, consistent answer becomes PASS or FAIL;
+   unsure, low confidence, a quote not in the document, a refusal or an error is NEEDS
+   REVIEW with the reason. Every attempt is saved (`<ID>.ai.json`, plus the exact picture
+   sent, `<ID>.ai-input.png`), accepted answers are cached so a repeat audit costs
+   nothing, and a per-run call and $ limit applies. `--cross-check` also lets the AI read
+   the code rules' screenshots; that records agreement but never changes a verdict.
 
 **Tamper detection.** `verify` re-hashes every file and compares it with the manifest,
 and the manifest and evidence hashes with the database. Editing, deleting or adding a
@@ -238,9 +269,9 @@ empty placeholders until that version.
 | `compliancelens/runner.py` | V2 | Runs an audit and saves it; verifies saved runs |
 | `compliancelens/engine.py` | V1 | Loads rules, calls collectors, applies checks |
 | `compliancelens/evidence.py` | V2 | Evidence files, meta files, manifest, hash checks |
-| `compliancelens/connectors/` | V1 | Collects evidence: `aws.py`, `github.py`, `hr.py`, `browser.py` (V3; later `files.py`) |
+| `compliancelens/connectors/` | V1 | Collects evidence: `aws.py`, `github.py`, `hr.py`, `browser.py` (V3), `files.py` (V4) |
 | `compliancelens/storage/` | V2 | SQLite results database (`db.py`) |
-| `compliancelens/evaluator/` | V4 *later* | AI checks for screenshots and documents |
+| `compliancelens/evaluator/` | V4 | AI checks for screenshots and documents (any model, set in `.env`) |
 | `compliancelens/dashboard/` | V5 *later* | Web dashboard with human review |
 | `compliancelens/reporting/` | V6 *later* | HTML/PDF report templates |
 | `rules/` | V1 | The rulebook: one YAML card per rule |
@@ -248,10 +279,10 @@ empty placeholders until that version.
 | `tests/` | V1 | pytest tests; `fixtures/` holds recorded API replies and a fake website |
 | `config/` | V6 *later* | Settings file (repo names, region, enabled rules) |
 | `evidence/` | V1 | Output of every run (**gitignored**) |
-| `compliance.db` | V2 | Run history (**gitignored**, created on first run; upgraded by V3, copy kept as `compliance-v1-backup.db`) |
+| `compliance.db` | V2 | Run history and AI answers (**gitignored**, created on first run; each upgrade keeps a copy, e.g. `compliance-v2-backup.db`) |
 | `sessions/` | V3 | Saved browser logins (**gitignored**, private files) |
 | `reports/` | V6 *later* | Generated reports (**gitignored**) |
-| `policies/` | V4 *later* | Sample policy documents for DOC rules |
+| `policies/` | V4 | Made-up sample policy documents for the DOC rules (compliant, noncompliant, ...) |
 | `experiment/` | V4–V6 *later* | AI vs code accuracy research |
 | `scripts/` | V1 | Break-and-fix steps for each rule |
 | `docs/` | V6–V7 *later* | Write-ups, slides, sample report |
@@ -285,6 +316,11 @@ something that looks like a secret.
 - `.env`, `evidence/`, `sessions/`, `reports/`, `data/employees.csv` and `*.db` are gitignored.
 - Evidence can contain user names, account IDs and settings: keep it local. HR-01's
   evidence holds account names only, never employee names or emails.
+- **AI checks (V4) send evidence to the AI provider** named in `COMPLIANCELENS_AI_MODEL`:
+  the screenshots of GH-06/GH-07 (and of code rules with `--cross-check`) and the
+  policy documents' text. A local model (`ollama/`, `lmstudio/`) keeps it on this
+  computer. The key is never printed, logged or saved, and an Anthropic key is never
+  sent to another provider. `--no-ai` makes no AI calls at all.
 
 **Saved browser logins (V3).** `sessions/github.json` and `sessions/aws.json` work like
 passwords: anyone with the file is logged in.
@@ -316,7 +352,9 @@ passwords: anyone with the file is logged in.
 | `HTTP 404: no access to the page` | The login can't see the page (not an owner/admin), or the URL is wrong | Check the account's role and the rule's `url` |
 | `... did not appear within 20 s (has the page changed?)` | GitHub or AWS changed the page | Update the rule's `wait_for` / `steps` (see `rules/README.md`) |
 | GH-01/GH-02 screenshot says `HTTP 404` | The `main` branch rule was deleted and re-created, so it has a new number | Copy the new number into `vars.rule` (see `scripts/README.md`, GH-02) |
-| A screenshot shows loading spinners | It waits for a heading, not for the data | Wait for something only shown with the data (see `rules/README.md`) |
+| A screenshot shows loading spinners | It waits for a heading, not for the data (AWS pages also wait until no spinner is left; "still loading after 10 s" means that never happened) | Wait for something only shown with the data (see `rules/README.md`) |
+| `AI provider error: could not connect` | The network dropped the upload (seen with large pictures); it is tried up to 5 times | Run again, or check the connection / VPN |
+| `AI not configured` | No key for the model in `.env` | Add `COMPLIANCELENS_AI_API_KEY`, then `make aitest` |
 | `GITHUB_ORG not set` (config error) | The URL needs `{org}` | Add `GITHUB_ORG` to `.env` |
 | A screenshot shows something private | Not masked yet | Add a `mask:` locator to the rule card |
 | You need an audit now but logins expired | | `python audit.py run --no-screenshots` |

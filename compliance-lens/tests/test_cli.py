@@ -194,7 +194,9 @@ def test_real_rulebook_without_credentials_needs_review(monkeypatch):
     monkeypatch.setattr(browser, "_start_playwright", start)
     result = invoke()
     assert result.exit_code == 0, result.output
-    assert "0 PASS  0 FAIL  16 NEEDS REVIEW" in result.output
+    assert "0 PASS  0 FAIL  19 NEEDS REVIEW" in result.output
+    # The DOC rules find no policies folder; no AI key either, and nothing PASSes.
+    assert "the document was not read: the policies folder" in result.output
     assert "Screenshots: 0 of 15 saved." in result.output
     assert "AWS: 8 not saved (session missing). Fix: python audit.py login aws" in result.output
     assert "GitHub: 4 not saved (session missing). Fix: python audit.py login github" in (
@@ -203,7 +205,7 @@ def test_real_rulebook_without_credentials_needs_review(monkeypatch):
     assert "GitHub: 3 not saved (config error)" in result.output  # GITHUB_ORG not set
     run, results = stored(1)
     assert run["status"] == "complete"
-    assert len(results) == 16
+    assert len(results) == 19
     assert {r["screenshot_status"] for r in results} == {"session_missing", "config_error", None}
 
 
@@ -785,12 +787,15 @@ def document_rules(tmp_path, monkeypatch):
 
 
 def test_document_rules_save_the_exact_document(document_rules, temp_storage):
-    out = audit(document_rules, "--no-screenshots").output
-    assert "[NEEDS REVIEW] DOC-01  Password policy requires 12+ characters\n" in out
-    assert "policy document password-policy.pdf read (1 page(s)," in out
-    assert "[NEEDS REVIEW] DOC-09  A policy that is not there\n       policy document" in out
+    out = audit(document_rules, "--no-screenshots", "--no-ai").output
+    assert (
+        "[NEEDS REVIEW] DOC-01  Password policy requires 12+ characters\n"
+        "       AI checks are turned off (--no-ai)\n       ai-text · disabled"
+    ) in out
+    assert "[NEEDS REVIEW] DOC-09  A policy that is not there\n       the document was not" in out
     assert "missing-policy.md not found in policies/examples/compliant" in out
-    assert "[NEEDS REVIEW] GH-06   Base permission\n       screenshot not captured:" in out
+    assert "[NEEDS REVIEW] GH-06   Base permission\n       no screenshot to judge:" in out
+    assert "AI: off (--no-ai); 4 AI check(s) not made: NEEDS REVIEW." in out
 
     folder = run_dir(temp_storage)
     policies = cli.PROJECT_ROOT / "policies/examples/compliant"
@@ -819,7 +824,7 @@ def test_document_rules_save_the_exact_document(document_rules, temp_storage):
 
     result = invoke("verify", "run-0001")
     assert result.exit_code == 0, result.output
-    assert "OK: 10 files match" in result.output  # 4 rules x 2 + 2 documents
+    assert "OK: 14 files match" in result.output  # 4 rules x 2 + 2 documents + 4 AI records
 
 
 def test_verify_catches_an_edited_document(document_rules, temp_storage):

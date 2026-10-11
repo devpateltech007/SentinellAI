@@ -4,7 +4,9 @@
 the prompt and answer format, and `python audit.py ai-test`. Stage 2, done: documents are
 read by `connectors/files.py` and saved with the run; the database has the AI tables.
 Stage 3, done: the judge (`ai.py`), screenshot preparation, the budget and the cache.
-Still to come: connecting it to `python audit.py run` (Stage 4).
+Stage 4, done: `python audit.py run` uses it for GH-06/GH-07 and DOC-01 to DOC-03
+(`--no-ai`, `--cross-check`, `--refresh-ai`, `--ai-model`). Still to come: the research
+experiment (Stage 5) and the release (Stage 6).
 
 **Purpose:** judge evidence that code cannot: screenshots and policy documents. Every AI
 verdict has a reason and a confidence; anything unclear becomes NEEDS REVIEW.
@@ -71,7 +73,10 @@ is NEEDS REVIEW with the reason, so an unclear answer can never become PASS.
 | A screenshot's PASS or FAIL with no quote | `inconsistent` |
 | Otherwise | `accepted` (high or medium confidence kept) |
 
-There is one retry per evaluation, shared by the two "tried once more" rows. Quotes
+There is one retry per evaluation, shared by the two "tried once more" rows. A
+**dropped connection** (no reply at all) gets up to 3 extra tries first: on one network,
+10-40% of picture uploads (80-440 KB) broke mid-way, in Python and in curl alike, while
+small requests never did. A dropped upload reaches no model and costs nothing. Quotes
 are matched after normalizing entities, ligatures, typographic quotes and dashes,
 broken words and spaces, and must be at least 8 characters. Every attempt (what was
 sent, the whole reply, tokens, cost, time) goes into the record for `<ID>.ai.json`;
