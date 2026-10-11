@@ -8,7 +8,7 @@ status is NEEDS REVIEW with its reason. Rows marked * share one retry per evalua
         a screenshot too big to send at a readable size          image_too_big
      2  --no-ai / no key / budget used / SDK missing             disabled, not_configured,
                                                                  budget_exhausted, not_installed
-     3* timeout, connection, 429, 5xx                             provider_error
+     3* timeout, dropped connection (3 more tries), 429, 5xx      provider_error
      4  bad key, unknown model, bad request, no credit           provider_error
      5  the model refused, or a content filter stopped it        refusal
      6  the answer was cut off                                   truncated
@@ -47,6 +47,9 @@ from compliancelens.evaluator.providers import base
 VALIDATION_VERSION = 1
 CACHE_VERSION = 1
 RETRY_WAIT_SECONDS = 2
+# Extra tries for a dropped connection, before the shared retry: pictures are large
+# uploads, and on one network 10-40% of them broke mid-way (nothing reached the model).
+CONNECTION_RETRIES = 3
 MIN_QUOTE_CHARS = 8  # a shorter "quote" can be found almost anywhere
 
 ACCEPTED = "accepted"
@@ -64,6 +67,7 @@ UNSURE = "unsure"
 LOW_CONFIDENCE = "low_confidence"
 INCONSISTENT = "inconsistent"
 QUOTE_NOT_FOUND = "quote_not_found"
+ERROR = "error"  # a bug in the AI check itself; the audit goes on
 STATUSES = (
     ACCEPTED,
     EVIDENCE_MISSING,
@@ -80,6 +84,7 @@ STATUSES = (
     LOW_CONFIDENCE,
     INCONSISTENT,
     QUOTE_NOT_FOUND,
+    ERROR,
 )
 # The model gave an answer, but it was not good enough to use (for cross-checks).
 ABSTAINED = (REFUSAL, UNSURE, LOW_CONFIDENCE, INCONSISTENT, QUOTE_NOT_FOUND)
@@ -241,15 +246,16 @@ class _Reading:
     confidence: str = engine.LOW
     answer: dict | None = None
     retry: bool = False
+    dropped: bool = False  # the connection broke: nothing came back
 
 
 class Evaluator:
     """The AI checks of one audit run: the settings, the provider (created on first use),
     the budget and the cache.
 
-    `enabled=False` is `run --no-ai`. `cache` is a cache.Cache or None; `read_cache=False`
-    is `--refresh-ai`. `fallbacks` lets Claude answer a refusal with another model
-    (audits); the research experiment turns it off.
+    `enabled=False` is `run --no-ai` (then `settings` may be None). `cache` is a
+    cache.Cache or None; `read_cache=False` is `--refresh-ai`. `fallbacks` lets Claude
+    answer a refusal with another model (audits); the research experiment turns it off.
     """
 
     def __init__(
@@ -260,15 +266,17 @@ class Evaluator:
         cache=None,
         read_cache: bool = True,
         fallbacks: bool = True,
-        make_provider=providers.get_provider,
+        make_provider=None,
     ):
+        if settings is None and enabled:
+            raise ValueError("AI settings are needed unless the AI checks are turned off")
         self.settings = settings
         self.enabled = enabled
         self.cache = cache
         self.read_cache = read_cache
         self.fallbacks = fallbacks
-        self.budget = Budget(settings)
-        self._make_provider = make_provider
+        self.budget = Budget(settings) if settings is not None else None
+        self._make_provider = make_provider or providers.get_provider
         self._provider = None
         self._not_installed: str | None = None
 
@@ -297,6 +305,8 @@ class Evaluator:
         if page is None:
             why = missing or "no screenshot was taken"
             return self._finish(outcome, EVIDENCE_MISSING, f"no screenshot to judge: {why}")
+        if not self.enabled:
+            return self._finish(outcome, DISABLED, "AI checks are turned off (--no-ai)")
         try:
             prepared = images.prepare(page, self.settings.image)
         except images.Unusable as e:
@@ -312,6 +322,14 @@ class Evaluator:
         return self._ask(rule, outcome, parts)
 
     def totals(self) -> dict:
+        if self.budget is None:
+            return {
+                "calls": 0,
+                "cache_hits": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cost_usd": 0.0,
+            }
         return self.budget.totals()
 
     # ----------------------------------------------------------------- asking
@@ -323,7 +341,7 @@ class Evaluator:
             verdict=engine.NEEDS_REVIEW,
             reason="",
             confidence=engine.LOW,
-            settings=self.settings.identity(),
+            settings=self.settings.identity() if self.settings is not None else None,
         )
 
     @staticmethod
@@ -356,17 +374,22 @@ class Evaluator:
             return self._finish(outcome, NOT_INSTALLED, self._not_installed)
 
         request = prompt.build_request(self.settings, parts, fallbacks=self.fallbacks)
-        reading = None
-        for number in (1, 2):
-            if number == 2:
-                if not reading.retry:
+        reading, shared, dropped = None, 1, CONNECTION_RETRIES  # retries left
+        while True:
+            if reading is not None:
+                if reading.dropped and dropped:
+                    dropped -= 1
+                elif reading.retry and shared:
+                    shared -= 1
+                else:
                     break
                 _sleep(RETRY_WAIT_SECONDS)
             problem = self.budget.reserve(request)
             if problem:
                 if reading is None:
                     return self._finish(outcome, BUDGET_EXHAUSTED, f"AI budget used up: {problem}")
-                break  # keep the first attempt's result
+                break  # keep the last attempt's result
+            number = len(outcome.attempts) + 1
             reading = self._attempt(rule, outcome, provider, request, number, document)
         outcome.status, outcome.reason = reading.status, reading.reason
         outcome.verdict, outcome.confidence = reading.verdict, reading.confidence
@@ -382,7 +405,9 @@ class Evaluator:
             record["error"] = {"kind": type(e).__name__, "message": str(e)}
             if e.status_code is not None:
                 record["error"]["status_code"] = e.status_code
-            return _Reading(PROVIDER_ERROR, f"AI provider error: {e}", retry=e.retryable)
+            dropped = isinstance(e, base.DroppedConnection)
+            reason = f"AI provider error: {e}"
+            return _Reading(PROVIDER_ERROR, reason, retry=e.retryable, dropped=dropped)
         except Exception as e:  # a bug in an adapter must not stop the audit
             record["error"] = {"kind": type(e).__name__, "message": base.short(e)}
             return _Reading(PROVIDER_ERROR, f"AI provider error: {base.short(e)}")

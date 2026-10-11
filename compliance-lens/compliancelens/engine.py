@@ -12,8 +12,8 @@ Rule kinds (V4), told apart by what the rule card has:
     legacy    screenshot only (V3): nobody can judge it, so it is NEEDS REVIEW.
 
 The screenshots themselves are taken by the runner (see connectors/browser.py), and
-the AI checks run there too (see evaluator/). Until they do, document and vision
-rules are NEEDS REVIEW with the reason why.
+the AI checks run there too (see evaluator/): run_rule leaves document and vision
+rules NEEDS REVIEW, and the runner replaces that with the AI check's outcome.
 """
 
 import datetime
@@ -268,7 +268,7 @@ def _document_result(rule: dict, data: dict) -> dict:
     else:
         reason = (
             f"policy document {name} read ({len(data['pages'])} page(s), {data['chars']:,}"
-            " characters); AI check not connected yet (V4 in progress)"
+            " characters); the AI check has not run"
         )
     return result(rule, NEEDS_REVIEW, reason, data, method=AI_TEXT)
 
@@ -281,10 +281,10 @@ def run_rule(rule: dict) -> dict:
     """
     kind = rule_kind(rule)
     if kind == KIND_LEGACY:
-        reason = "screenshot-only rule: needs human review until AI checks are added (V4)"
+        reason = "screenshot-only rule: needs human review (the rule has no ai_check)"
         return result(rule, NEEDS_REVIEW, reason, {"screenshot_only": True}, method=SCREENSHOT)
     if kind == KIND_VISION:
-        reason = "screenshot rule: AI check not connected yet (V4 in progress)"
+        reason = "screenshot rule: the AI check has not run"
         return result(rule, NEEDS_REVIEW, reason, {"screenshot_only": True}, method=AI_VISION)
     try:
         data, error = _collect(rule)

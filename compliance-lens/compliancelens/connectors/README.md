@@ -127,7 +127,11 @@ every machine: 1440×900, scale 1, `en-US`, UTC, light theme, no animations, no 
 a sign-in, MFA, error or "no access" page? → wait for `wait_for` → run the `steps` (wait,
 scroll, click a link or tab only) → check again → mask → take the PNG in memory.
 `wait_for`, steps and `capture.target` use the first **visible** match (pages often hold
-hidden copies of the same text); masks cover every match, visible or not.
+hidden copies of the same text); masks cover every match, visible or not. On AWS (a site
+with `busy_css`), the picture also waits until no loading spinner has been visible for
+1 second (at most 10 s): the console draws a table's rows before its columns, so a
+column can start loading after the `wait_for` element appeared. Still loading after 10 s
+→ the picture is taken anyway and recorded as `settled: false`.
 
 | Status | Means | Fix |
 | --- | --- | --- |

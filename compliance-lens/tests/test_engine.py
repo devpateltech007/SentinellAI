@@ -396,7 +396,7 @@ def test_screenshot_only_rule_needs_review():
     assert result["method"] == engine.SCREENSHOT
     assert result["confidence"] == engine.LOW
     assert result["evidence"] == {"screenshot_only": True}
-    assert "until AI checks are added (V4)" in result["reason"]
+    assert result["reason"] == "screenshot-only rule: needs human review (the rule has no ai_check)"
 
 
 def test_which_rules_are_screenshot_only():
@@ -524,8 +524,7 @@ def test_a_document_rule_reads_its_document(temp_storage):
         engine.LOW,
     )
     assert result["reason"] == (
-        "policy document p.txt read (1 page(s), 46 characters);"
-        " AI check not connected yet (V4 in progress)"
+        "policy document p.txt read (1 page(s), 46 characters); the AI check has not run"
     )
     assert result["evidence"]["status"] == files.OK
     assert result["evidence"][files.SNAPSHOT].startswith(b"Passwords")  # the runner saves it
@@ -550,7 +549,7 @@ def test_a_vision_rule_waits_for_its_ai_check():
     result = engine.run_rule(vision())
     assert (result["verdict"], result["method"]) == (engine.NEEDS_REVIEW, engine.AI_VISION)
     assert result["evidence"] == {"screenshot_only": True}
-    assert "AI check not connected yet" in result["reason"]
+    assert result["reason"] == "screenshot rule: the AI check has not run"  # the runner asks
 
 
 def test_an_engine_error_keeps_the_rules_method(monkeypatch):

@@ -1,6 +1,6 @@
 # scripts/ — break-and-fix routines
 
-**Version:** V1 (3 rules), V2 (14 rules), V3 (16 rules + screenshot checks). Grows with every new rule.
+**Version:** V1 (3 rules), V2 (14 rules), V3 (16 rules + screenshot checks), V4 (19 rules: AI-judged screenshots and policy documents). Grows with every new rule.
 
 **Purpose:** for every rule, a short routine that makes the real test account
 **non-compliant** and then **compliant** again, so you can prove the verdict flips.
@@ -35,7 +35,8 @@ automated tests (`make test`) with fake AWS/GitHub data instead.
 | AWS-08 inactive users | ❌ PASS only (quick check below) | A user has to be idle 90 days |
 | GH-01 to GH-04 | ✅ | |
 | GH-05 org 2FA | ❌ PASS only | GitHub requires 2FA for most accounts, so a member without it is hard to create |
-| GH-06, GH-07 | ✅ (the screenshot changes; the verdict stays NEEDS REVIEW until V4) | |
+| GH-06, GH-07 | ✅ (V4: the AI reads the screenshot, so the verdict flips) | |
+| DOC-01 to DOC-03 | ✅ by switching the policy folder (no account change) | |
 | HR-01 | ✅ (edit the local CSV) | |
 
 ---
@@ -176,23 +177,23 @@ Live: PASS (you are the only member and have 2FA). GitHub now requires 2FA for m
 accounts, so FAIL is tested with a recorded reply in `tests/test_github.py`. If you do
 have a second account without 2FA: invite it to the organization → FAIL; remove it → PASS.
 
-## GH-06: Organization base repository permission is Read or None (screenshot-only)
+## GH-06: Organization base repository permission is Read or None (AI reads the screenshot)
 
-| Step | Do this | Expected |
+| Step | Do this | Expected verdict |
 | --- | --- | --- |
-| Break | Organization → Settings → Member privileges → Base permissions → **Write** | NEEDS REVIEW; the picture shows "Write" |
-| Fix | Set it back to **Read** | NEEDS REVIEW; the picture shows "Read" |
+| Break | Organization → Settings → Member privileges → Base permissions → **Write** | FAIL; the AI reads "Write" |
+| Fix | Set it back to **Read** | PASS; the AI reads "Read" |
 
-Run `python audit.py run --rule GH-06` after each step and open `GH-06.png`. The
-`raw_sha256` in `GH-06.meta.json` changes with the picture. The verdict can't change
-until V4 adds AI checks.
+Run `python audit.py run --rule GH-06 --rule GH-07` after each step and open `GH-06.png`
+and `GH-06.ai.json` (the AI's answer and quote). A changed page is a new picture, so the
+AI is asked again (the cache only reuses answers for identical pixels).
 
-## GH-07: Members cannot delete or transfer repositories (screenshot-only)
+## GH-07: Members cannot delete or transfer repositories (AI reads the screenshot)
 
-| Step | Do this | Expected |
+| Step | Do this | Expected verdict |
 | --- | --- | --- |
-| Break | Member privileges → Repository deletion and transfer → tick **Allow members to delete or transfer repositories** → Save | NEEDS REVIEW; the picture shows it ticked |
-| Fix | Untick it → Save | NEEDS REVIEW; the picture shows it unticked |
+| Break | Member privileges → Repository deletion and transfer → tick **Allow members to delete or transfer repositories** → Save | FAIL; the AI reads it ticked |
+| Fix | Untick it → Save | PASS; the AI reads it unticked |
 
 Only the organization's members are affected; owners can always delete and transfer.
 
@@ -209,8 +210,8 @@ Also FAIL: an IAM user or org member that isn't in the CSV and isn't in HR-01's
 ## DOC rules (V4): flip by folder, no account changes
 
 Document rules read their files from `COMPLIANCELENS_POLICIES_DIR`. To flip them, point
-it at another folder of `policies/examples/` (see `policies/README.md`). These verdicts
-need the AI checks, which V4 connects in a later stage:
+it at another folder of `policies/examples/` (see `policies/README.md`), e.g.
+`COMPLIANCELENS_POLICIES_DIR=policies/examples/noncompliant python audit.py run --rule DOC-01 --rule DOC-02 --rule DOC-03`:
 
 | Folder | Expected verdict |
 | --- | --- |

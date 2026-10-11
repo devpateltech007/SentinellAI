@@ -125,6 +125,45 @@ CREATE INDEX idx_ai_evaluations_status ON ai_evaluations(status);
 """
 
 
+# The ai_evaluations columns a caller may fill (id is automatic).
+AI_EVALUATION_FIELDS = (
+    "result_id",
+    "role",
+    "method",
+    "status",
+    "verdict",
+    "model_verdict",
+    "confidence",
+    "reason",
+    "quote",
+    "observed",
+    "comparison",
+    "provider",
+    "base_url_host",
+    "model",
+    "served_model",
+    "json_mode",
+    "prompt_version",
+    "schema_version",
+    "prep_version",
+    "settings_json",
+    "evidence_sha256",
+    "ai_input_sha256",
+    "cache_key",
+    "from_cache",
+    "cache_source",
+    "attempts",
+    "input_tokens",
+    "output_tokens",
+    "cost_usd",
+    "elapsed_ms",
+    "replies_path",
+    "replies_sha256",
+    "input_path",
+    "created_at",
+)
+
+
 def _add_columns(table: str, columns: str) -> str:
     return "".join(f"ALTER TABLE {table} ADD COLUMN {c.strip()};\n" for c in columns.split(",\n"))
 
@@ -322,6 +361,38 @@ def add_result(
     return cursor.lastrowid
 
 
+def add_ai_evaluation(conn, values: dict) -> int:
+    """Save one AI evaluation of a result (V4). `values` uses AI_EVALUATION_FIELDS names."""
+    unknown = set(values) - set(AI_EVALUATION_FIELDS)
+    if unknown:
+        raise ValueError(f"unknown ai_evaluations columns: {sorted(unknown)}")
+    names = ", ".join(values)
+    marks = ", ".join("?" * len(values))
+    with conn:
+        cursor = conn.execute(
+            f"INSERT INTO ai_evaluations ({names}) VALUES ({marks})", tuple(values.values())
+        )
+    return cursor.lastrowid
+
+
+def set_run_ai(conn, run_id: int, totals: dict, settings_json: str | None) -> None:
+    """Record a run's AI totals (V4): calls, cache hits, tokens, cost (None = unknown)."""
+    with conn:
+        conn.execute(
+            "UPDATE runs SET ai_calls = ?, ai_cache_hits = ?, ai_input_tokens = ?,"
+            " ai_output_tokens = ?, ai_cost_usd = ?, ai_settings = ? WHERE id = ?",
+            (
+                totals["calls"],
+                totals["cache_hits"],
+                totals["input_tokens"],
+                totals["output_tokens"],
+                totals.get("cost_usd"),
+                settings_json,
+                run_id,
+            ),
+        )
+
+
 def finish_run(
     conn, run_id: int, finished_at: str, manifest_path: str, manifest_sha256: str
 ) -> None:
@@ -361,3 +432,12 @@ def get_run(conn, run_id: int) -> sqlite3.Row | None:
 
 def get_results(conn, run_id: int) -> list[sqlite3.Row]:
     return conn.execute("SELECT * FROM results WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
+
+
+def get_ai_evaluations(conn, run_id: int) -> list[sqlite3.Row]:
+    """A run's AI evaluations (V4), each with its result's rule_id."""
+    return conn.execute(
+        "SELECT a.*, r.rule_id FROM ai_evaluations a JOIN results r ON r.id = a.result_id"
+        " WHERE r.run_id = ? ORDER BY a.id",
+        (run_id,),
+    ).fetchall()

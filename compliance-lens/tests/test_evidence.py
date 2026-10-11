@@ -474,6 +474,11 @@ def test_write_source_keeps_the_documents_type(tmp_path, name, file):
     assert (tmp_path / file).read_bytes() == b"text"
 
 
+def test_run_files_must_have_plain_names(tmp_path):
+    with pytest.raises(ValueError, match="not a plain file name"):
+        evidence.write_file(tmp_path, "../outside.json", b"{}")
+
+
 def test_write_source_refuses_other_types(tmp_path):
     with pytest.raises(ValueError, match="not a policy document type"):
         evidence.write_source(tmp_path, "DOC-01", b"x", "policy.docx")
@@ -534,8 +539,8 @@ def test_evidence_that_is_not_json_does_not_describe_the_document(tmp_path):
 def test_ai_and_crosscheck_files_are_linked_too(tmp_path):
     """Stage 3 writes these; verify already checks every file a meta file names."""
     run_dir = evidence.create_run_dir(tmp_path, DAY, 15)
-    replies = evidence._write_file(run_dir, "GH-06.ai.json", b"[]\n")
-    picture = evidence._write_file(run_dir, "GH-06.ai-input.png", make_png())
+    replies = evidence.write_file(run_dir, "GH-06.ai.json", b"[]\n")
+    picture = evidence.write_file(run_dir, "GH-06.ai-input.png", make_png())
     result = {
         **RESULT,
         "id": "GH-06",

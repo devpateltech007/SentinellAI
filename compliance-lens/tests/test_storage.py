@@ -526,6 +526,32 @@ def test_ai_evaluation_values_are_checked(conn, result_id, values):
         conn.execute(*evaluation(**{"result_id": result_id, **values}))
 
 
+def test_add_ai_evaluation_saves_a_row_and_refuses_unknown_columns(conn, result_id):
+    row_id = db.add_ai_evaluation(
+        conn,
+        {
+            "result_id": result_id,
+            "role": "primary",
+            "method": "ai-vision",
+            "status": "unsure",
+            "verdict": "NEEDS REVIEW",
+            "created_at": "now",
+        },
+    )
+    [saved] = db.get_ai_evaluations(conn, 1)
+    assert (saved["id"], saved["rule_id"], saved["status"]) == (row_id, "AWS-01", "unsure")
+    with pytest.raises(ValueError, match="unknown ai_evaluations columns: \\['api_key'\\]"):
+        db.add_ai_evaluation(conn, {"result_id": result_id, "api_key": "x"})
+
+
+def test_run_ai_totals_are_saved(conn):
+    run_id = start(conn)
+    totals = {"calls": 3, "cache_hits": 2, "input_tokens": 900, "output_tokens": 90}
+    db.set_run_ai(conn, run_id, {**totals, "cost_usd": None}, '{"name": "openai/x"}')
+    run = db.get_run(conn, run_id)
+    assert [run[c] for c in RUN_AI_COLUMNS] == [3, 2, 900, 90, None, '{"name": "openai/x"}']
+
+
 def test_the_ai_cache_keeps_one_answer_per_key(conn, result_id):
     insert = (
         "INSERT INTO ai_cache (cache_key, kind, rule_id, answer_json, replies_json, provider,"

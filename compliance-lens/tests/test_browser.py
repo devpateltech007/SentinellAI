@@ -37,6 +37,8 @@ PAGES = {
     "/details": ("details.html", True),
     "/tall": ("tall.html", True),
     "/slow": ("slow.html", True),
+    "/loading": ("loading.html", True),
+    "/stuck": ("stuck.html", True),
     "/confirm": ("confirm.html", True),
     "/noaccess": ("noaccess.html", True),
     "/signout": ("signout.html", True),
@@ -690,6 +692,41 @@ def test_pattern_mask_hides_matching_text(logged_in, server):
 def test_slow_evidence_is_awaited(logged_in, server):
     [result] = capture(rule("/slow", server, wait_for={"text": "Loaded later"}))
     assert result.status == browser.CAPTURED, result.reason
+
+
+@pytest.fixture
+def busy_site(site, monkeypatch):
+    """The fake site, with spinners like the AWS console's (and short waits for the tests)."""
+    monkeypatch.setitem(
+        browser.SITES, "test", dataclasses.replace(site, busy_css="[class*='circle-left']")
+    )
+    monkeypatch.setattr(browser, "QUIET_MS", 300)
+    monkeypatch.setattr(browser, "SETTLE_MS", 3000)
+
+
+def test_a_late_spinner_is_waited_for(logged_in, busy_site, server):
+    # The heading is there at once, a spinner appears 150 ms later, the data at 600 ms:
+    # the picture waits for the data, not just for the first quiet moment.
+    target = {"target": {"css": "#data"}}
+    [result] = capture(rule("/loading", server, capture=target))
+    assert (result.status, result.reason, result.settled) == (browser.CAPTURED, "captured", True)
+    assert dark_pixels(result.png) > 0  # "Virtual (1)" is in the picture
+
+
+def test_a_spinner_that_never_stops_is_noted(logged_in, busy_site, server):
+    [result] = capture(rule("/stuck", server))
+    assert result.status == browser.CAPTURED and result.settled is False
+    assert result.reason == "captured, but the page was still loading after 3 s"
+
+
+def test_sites_without_spinners_are_not_waited_for(logged_in, server):
+    [result] = capture(rule("/stuck", server))
+    assert (result.reason, result.settled) == ("captured", None)
+
+
+def test_aws_waits_for_its_spinners():
+    assert browser.SITES["aws"].busy_css == "[class*='circle-left']"
+    assert browser.SITES["github"].busy_css is None
 
 
 def test_other_sites_are_blocked_in_tests(logged_in, server):

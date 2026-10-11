@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="test-user" content="tester"><title>Loading</title></head>
+<body><h1>Users</h1>
+<div id="status"></div>
+<div id="data" style="width:300px;height:40px;font:24px sans-serif"></div>
+<script>
+  // Like the AWS console: rows first, then a column starts loading (a spinner), then data.
+  setTimeout(function () {
+    document.getElementById("status").innerHTML = '<span class="ui_circle-left_x">o</span>';
+  }, 150);
+  setTimeout(function () {
+    document.getElementById("status").innerHTML = "";
+    document.getElementById("data").textContent = "Virtual (1)";
+  }, 600);
+</script></body></html>

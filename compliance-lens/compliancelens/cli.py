@@ -4,6 +4,11 @@
     python audit.py run                 run every rule in rules/starter_rules.yaml
     python audit.py run --rule AWS-02   run one rule (repeat --rule for more)
     python audit.py run --no-screenshots   API checks only, no browser
+    python audit.py run --no-ai         no AI calls: document and vision rules are NEEDS REVIEW
+    python audit.py run --cross-check   the AI also reads code rules' screenshots (never
+                                        changes a verdict; says whether it agrees)
+    python audit.py run --refresh-ai    ask the AI again instead of reusing cached answers
+    python audit.py run --ai-model openai/<model>   another model for this run only
     python audit.py history             past runs and their scores
     python audit.py verify run-0007     re-hash a run's files and report any change
     python audit.py login github        log in by hand once, for screenshots (or: aws)
@@ -24,7 +29,7 @@ from dotenv import load_dotenv
 
 from compliancelens import __version__, engine, evidence, runner
 from compliancelens.connectors import browser
-from compliancelens.evaluator import answer, prompt, providers, smoke
+from compliancelens.evaluator import ai, answer, prompt, providers, smoke
 from compliancelens.evaluator import settings as ai_settings
 from compliancelens.evaluator.providers import base as provider_base
 from compliancelens.storage import db
@@ -39,18 +44,87 @@ app = typer.Typer(
 )
 
 
+def _shorten(text: str, limit: int = 80) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def format_ai(block: dict) -> str:
+    """How the AI judged a rule: method, confidence (or why not), model, cache, quote."""
+    accepted = block["status"] == ai.ACCEPTED
+    how = f"{block['confidence']} confidence" if accepted else block["status"].replace("_", " ")
+    parts = [block["method"], how]
+    if block.get("model") and (block.get("calls") or block.get("from_cache")):
+        parts.append(f"{block['provider']}/{block['model']}")
+    if block.get("from_cache"):
+        parts.append(f"cached from {block.get('cache_source') or 'an earlier run'}")
+    if accepted and block.get("quote"):
+        parts.append(f'"{_shorten(block["quote"])}"')
+    return " · ".join(parts)
+
+
+def format_crosscheck(block: dict) -> str:
+    """Whether the AI's reading of a code rule's screenshot agrees with the code."""
+    comparison = block["comparison"]
+    read = f" (read {_shorten(block['observed'], 40)!r})" if block.get("observed") else ""
+    if comparison == ai.AGREE:
+        return f"the AI agrees: {block['verdict']}{read}"
+    if comparison == ai.DISAGREE:
+        return f"the AI DISAGREES: it says {block['verdict']}{read}: {block['reason']}"
+    if comparison == ai.INCOMPARABLE:
+        return f"not comparable (the screenshot shows only part of what the code checks){read}"
+    if comparison == ai.AI_ABSTAINED:
+        return f"the AI abstained ({block['status'].replace('_', ' ')}): {block['reason']}"
+    return f"unavailable: {block['reason']}"
+
+
 def format_result(r: dict) -> str:
     """Two lines per rule: verdict, ID and title, then the reason indented.
 
-    A third line says why a screenshot is missing (screenshot-only rules already
-    say it in their reason).
+    AI-judged rules (V4) add a line saying how: method, confidence, model and quote. A
+    cross-check adds whether the AI agrees. For a code rule, a last line says why its
+    screenshot is missing (the other rules already say it in their reason).
     """
     text = f"[{r['verdict']}] {r['id']:<7} {r['title']}\n       {r['reason']}"
+    if r.get("ai"):
+        text += f"\n       {format_ai(r['ai'])}"
+    if r.get("crosscheck"):
+        text += f"\n       cross-check: {format_crosscheck(r['crosscheck'])}"
     shot = r.get("screenshot") or {}
     missing = shot.get("status") not in (None, browser.CAPTURED, browser.SKIPPED)
-    if missing and r.get("method") != engine.SCREENSHOT:
+    if missing and r.get("method") == engine.CODE:
         text += f"\n       screenshot not saved: {shot['reason']}"
     return text
+
+
+CROSSCHECK_LABELS = {
+    ai.AGREE: "agree",
+    ai.DISAGREE: "DISAGREE",
+    ai.AI_ABSTAINED: "AI abstained",
+    ai.UNAVAILABLE: "unavailable",
+    ai.INCOMPARABLE: "not comparable",
+}
+
+
+def format_ai_summary(summary: runner.RunSummary) -> list[str]:
+    """The run's AI calls, cache hits, tokens and cost, and the cross-check counts."""
+    totals = summary.ai
+    if not totals:
+        return []
+    if not totals["enabled"]:
+        return [f"AI: off (--no-ai); {totals['checks']} AI check(s) not made: NEEDS REVIEW."]
+    cost = "cost unknown" if totals.get("cost_usd") is None else f"${totals['cost_usd']:.4f}"
+    tokens = totals["input_tokens"] + totals["output_tokens"]
+    lines = [
+        f"AI: {totals['checks']} check(s) with {totals['model']}: {totals['calls']} call(s),"
+        f" {totals['cache_hits']} from cache, {tokens:,} tokens, {cost}"
+    ]
+    lines += [f"  note: {warning}" for warning in summary.warnings]
+    if summary.crosschecks:
+        counts = Counter(c["comparison"] for c in summary.crosschecks)
+        found = [f"{counts[k]} {label}" for k, label in CROSSCHECK_LABELS.items() if counts[k]]
+        lines.append(f"Cross-checks: {', '.join(found)} (verdicts unchanged)")
+    return lines
 
 
 def format_totals(summary: runner.RunSummary) -> str:
@@ -89,15 +163,49 @@ def display_path(path: Path) -> str:
         return str(path)
 
 
-def _run(rule_ids: list[str] | None, rules_file: Path, screenshots: bool = True) -> int:
+def _ai_options(
+    use_ai: bool, cross_check: bool, refresh_ai: bool, ai_model: str | None, screenshots: bool
+) -> runner.AIOptions | int:
+    """The run's AI options, or exit code 2 after saying what is wrong."""
+    if not use_ai and (cross_check or refresh_ai or ai_model):
+        typer.echo("--no-ai can't be used with --cross-check, --refresh-ai or --ai-model.")
+        return 2
+    if cross_check and not screenshots:
+        typer.echo("--cross-check reads screenshots: leave out --no-screenshots.")
+        return 2
+    if not use_ai:
+        return runner.AIOptions(enabled=False)
+    try:
+        settings = ai_settings.resolve(model=ai_model)
+    except ai_settings.AISettingsError as e:
+        typer.echo("The AI settings in .env have problems (fix them, or run with --no-ai):")
+        for problem in e.problems:
+            typer.echo(f"  - {problem}")
+        return 2
+    return runner.AIOptions(settings=settings, refresh=refresh_ai, cross_check=cross_check)
+
+
+def _run(
+    rule_ids: list[str] | None,
+    rules_file: Path,
+    screenshots: bool = True,
+    use_ai: bool = True,
+    cross_check: bool = False,
+    refresh_ai: bool = False,
+    ai_model: str | None = None,
+) -> int:
     now = datetime.datetime.now(datetime.UTC)
     typer.echo(f"ComplianceLens v{__version__} audit  {now:%Y-%m-%d %H:%M} UTC")
+    options = _ai_options(use_ai, cross_check, refresh_ai, ai_model, screenshots)
+    if isinstance(options, int):
+        return options
     try:
         summary = runner.run_audit(
             rules_file,
             rule_ids,
             on_result=lambda r: typer.echo(format_result(r)),
             screenshots=screenshots,
+            ai_options=options,
         )
     except engine.RulebookError as e:
         typer.echo(f"Rulebook {display_path(rules_file)} has problems:")
@@ -112,7 +220,7 @@ def _run(rule_ids: list[str] | None, rules_file: Path, screenshots: bool = True)
         return 1
 
     typer.echo(format_totals(summary))
-    for line in format_screenshots(summary):
+    for line in format_screenshots(summary) + format_ai_summary(summary):
         typer.echo(line)
     if summary.scope != db.FULL:
         typer.echo(f"Partial run ({len(summary.results)} rule(s)); not a full audit score.")
@@ -141,9 +249,35 @@ def run(
             help="Take screenshots with the saved logins; --no-screenshots runs API checks only.",
         ),
     ] = True,
+    use_ai: Annotated[
+        bool,
+        typer.Option(
+            "--ai/--no-ai",
+            help="Let the AI judge documents and screenshots; --no-ai makes those rules"
+            " NEEDS REVIEW without any AI call.",
+        ),
+    ] = True,
+    cross_check: Annotated[
+        bool,
+        typer.Option(
+            "--cross-check",
+            help="Also let the AI read code rules' screenshots and say whether it agrees"
+            " (never changes a verdict).",
+        ),
+    ] = False,
+    refresh_ai: Annotated[
+        bool,
+        typer.Option("--refresh-ai", help="Ask the AI again instead of reusing cached answers."),
+    ] = False,
+    ai_model: Annotated[
+        str | None,
+        typer.Option(
+            "--ai-model", help="Use this model instead of COMPLIANCELENS_AI_MODEL for this run."
+        ),
+    ] = None,
 ) -> None:
     """Run the audit and save its evidence and results."""
-    raise typer.Exit(_run(rule, rules_file, screenshots))
+    raise typer.Exit(_run(rule, rules_file, screenshots, use_ai, cross_check, refresh_ai, ai_model))
 
 
 @app.command()

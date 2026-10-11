@@ -34,6 +34,11 @@ def estimate_input_tokens(request, limits) -> int:
     return math.ceil(text / CHARS_PER_TOKEN) + pictures
 
 
+def dollars(amount: float) -> str:
+    """$2.00, but $0.0045: small limits and costs keep their digits."""
+    return f"${amount:.2f}" if amount >= 0.1 else f"${amount:.4f}"
+
+
 class Budget:
     def __init__(self, settings):
         self.settings = settings
@@ -57,8 +62,8 @@ class Budget:
         most, cap = self.worst_case(request), self.settings.max_cost_per_run
         if most is not None and cap is not None and self.spent + most > cap:
             return (
-                f"this call could cost up to ${most:.4f}, which would pass the ${cap:.2f}"
-                f" limit per run (${self.spent:.4f} spent)"
+                f"this call could cost up to {dollars(most)}, which would pass the"
+                f" {dollars(cap)} limit per run ({dollars(self.spent)} spent)"
             )
         return None
 

@@ -38,7 +38,9 @@ no token-like query values, no AWS account ID. The meta file's `screenshot` bloc
 | `width`, `height`, `banner_height`, `full_page` | Picture size; V4 cuts `banner_height` off to get the raw picture back |
 
 A failed screenshot writes no PNG; its status and reason are still in the meta file and
-the database. A screenshot-only rule's `<ID>.json` is `{"screenshot_only": true}`.
+the database. A screenshot rule's `<ID>.json` is `{"screenshot_only": true}`. AWS pages
+also record `settled`: whether the console's loading spinners were gone (for a second)
+when the picture was taken; `false` means it was still loading after 10 s.
 
 For AWS-05 and AWS-06 the screenshot shows the test bucket only; the JSON covers every
 bucket and stays the real proof.
@@ -49,13 +51,23 @@ text by page; the meta file's `source` block holds `file`, `sha256`, `size`, `pa
 the policies folder) and `media_type`. A document that couldn't be read (e.g. not found)
 saves no copy; its reason is in the JSON.
 
+**AI checks (V4).** A document or vision rule's AI check writes `<ID>.ai.json`: the
+decision (status, verdict, reason, the model's answer), the model settings and versions,
+what was judged (document hash, or the picture's pixel hash), the cache origin, the
+usage and cost, and **every attempt** (the text sent, the whole reply, tokens, time).
+The picture actually sent is `<ID>.ai-input.png` (the screenshot, banner cut off,
+shrunk to the model's limit). With `--cross-check`, a code rule's reading goes to
+`<ID>.crosscheck.json` (plus its `<ID>.ai-input.png`) with the comparison: `agree`,
+`disagree`, `ai_abstained`, `unavailable` or `incomparable`. The meta file's `ai` /
+`crosscheck` block names these files with their hashes. The key is never written.
+
 **Checking a run:** `python audit.py verify run-0007` (or `make verify RUN=run-0007`):
 
 1. The manifest's hash must match the one in the database.
 2. Every file in the manifest must exist and match its hash.
-3. Every raw evidence, meta, PNG and document file must also match the hash in the database.
-4. Every file a meta file names (screenshot, document, later the AI's replies) must
-   exist in the run and match the hash the meta file recorded.
+3. Every raw evidence, meta, PNG, document and AI file must also match the hash in the database.
+4. Every file a meta file names (screenshot, document, the AI's record and the picture
+   it was sent) must exist in the run and match the hash the meta file recorded.
 5. A saved document must be the one its `<ID>.json` describes (same sha256).
 6. Extra files are reported as warnings (`.DS_Store` is ignored).
 

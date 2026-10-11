@@ -12,11 +12,12 @@ names can't contain one.) `../audit.py` just starts `cli.main()`.
 | `evidence.py` | V2 | Evidence files, meta files, screenshot banners (V3), saved documents (V4), manifest, SHA-256 checks |
 | `connectors/` | V1 | Collect evidence from one system each; `browser.py` (V3) takes screenshots; `files.py` (V4) reads policy documents |
 | `storage/` | V2 | SQLite results database |
-| `evaluator/` | V4 | AI checks for screenshots and documents |
+| `evaluator/` | V4 | AI checks for screenshots and documents (any model, set in `.env`) |
 | `dashboard/` | V5 | Web dashboard |
 | `reporting/` | V6 | HTML/PDF reports |
 
 Flow: `cli` → `runner` → `engine` → `connectors` → `engine` check → `connectors/browser`
-screenshot (V3, rules with a `screenshot:` block) → `evidence` + `storage`.
+screenshot (V3, rules with a `screenshot:` block) → `evaluator` AI check (V4, document and
+vision rules, and cross-checks) → `evidence` + `storage`.
 
 **Never put here:** secrets, evidence, or generated files.

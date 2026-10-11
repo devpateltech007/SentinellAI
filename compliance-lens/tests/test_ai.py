@@ -152,6 +152,21 @@ def test_a_screenshot_too_big_to_read_is_never_sent():
 # --------------------------------------------------------- 2: no call at all ----
 
 
+def test_settings_are_needed_unless_the_ai_is_off():
+    with pytest.raises(ValueError, match="AI settings are needed"):
+        ai.Evaluator(None)
+    off = ai.Evaluator(None, enabled=False)
+    assert off.document(DOC_RULE, DOCUMENT).status == ai.DISABLED
+    assert off.screenshot(VISION_RULE, page()).status == ai.DISABLED
+    assert off.totals() == {
+        "calls": 0,
+        "cache_hits": 0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cost_usd": 0.0,
+    }
+
+
 def test_ai_turned_off():
     outcome, provider = judge_document(enabled=False)
     assert (outcome.status, outcome.reason) == (ai.DISABLED, "AI checks are turned off (--no-ai)")
@@ -190,7 +205,8 @@ def test_the_call_limit():
 def test_the_dollar_limit():
     outcome, provider = judge_document(settings_=settings(MAX_COST_PER_RUN_USD="0.001"))
     assert outcome.status == ai.BUDGET_EXHAUSTED
-    assert "which would pass the $0.00 limit per run" in outcome.reason
+    assert "which would pass the $0.0010 limit per run ($0.0000 spent)" in outcome.reason
+    assert budget.dollars(2) == "$2.00" and budget.dollars(0.0045) == "$0.0045"
     assert provider.requests == []
 
 
@@ -209,6 +225,23 @@ def test_a_temporary_error_is_tried_once_more(waits):
     }
     assert second["answer"]["verdict"] == "PASS"
     assert outcome.calls == 1  # the failed attempt cost nothing
+
+
+def test_a_dropped_connection_gets_three_more_tries(waits):
+    dropped = base.DroppedConnection("could not connect: [SSL: SSLV3_ALERT_BAD_RECORD_MAC]")
+    outcome, provider = judge_document(dropped, dropped, dropped, reply())
+    assert (outcome.status, outcome.verdict) == (ai.ACCEPTED, engine.PASS)
+    assert len(outcome.attempts) == 4 and len(waits) == 3
+    assert [a["attempt"] for a in outcome.attempts] == [1, 2, 3, 4]
+    assert outcome.calls == 1  # dropped uploads reached no model and cost nothing
+
+
+def test_dropped_connections_then_the_shared_retry_then_give_up(waits):
+    dropped = base.DroppedConnection("could not connect: connection reset")
+    outcome, provider = judge_document(*[dropped] * 5)
+    assert outcome.status == ai.PROVIDER_ERROR
+    assert outcome.reason == "AI provider error: could not connect: connection reset"
+    assert len(provider.requests) == 5 and len(waits) == 4
 
 
 def test_a_second_temporary_error_gives_up(waits):
