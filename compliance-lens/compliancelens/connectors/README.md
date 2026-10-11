@@ -1,6 +1,6 @@
 # compliancelens/connectors/ — evidence collectors
 
-**Version:** V1 (AWS, GitHub), V2 (more AWS and GitHub, HR), V3 (`browser.py`). V4 adds `files.py`.
+**Version:** V1 (AWS, GitHub), V2 (more AWS and GitHub, HR), V3 (`browser.py`), V4 (`files.py`).
 
 **Purpose:** code that *collects* evidence from one system. Connectors never judge
 PASS or FAIL; the engine does that.
@@ -12,7 +12,8 @@ PASS or FAIL; the engine does that.
   Helpers that are not collectors start with `_`.
 - A rule card points to a collector as `<file>.<function>`, e.g. `github.branch_protection`.
 - If something goes wrong, raise an exception. The engine turns it into NEEDS REVIEW.
-  Never turn "couldn't tell" into a value that could PASS.
+  Never turn "couldn't tell" into a value that could PASS. (`files.read_document`
+  returns a `status` instead, see below: the reason a document can't be read is evidence too.)
 - Read-only access only. A connector must never change a setting.
 
 **Adding a new system:** add a file here and register it in `COLLECTORS` in `engine.py`.
@@ -24,7 +25,7 @@ Nothing else needs to change.
 | `github.py` | V1, V2 | GitHub REST API (branch protection, force pushes, secret scanning, Dependabot, org 2FA) |
 | `hr.py` | V2 | `data/employees.csv` compared with IAM users and GitHub org members |
 | `browser.py` | V3 | Saved logins and page screenshots (Playwright, Chromium); not a collector, see below |
-| `files.py` | V4 | Local policy documents |
+| `files.py` | V4 | Local policy documents (PDF, Markdown, text) |
 
 ## Collectors
 
@@ -46,6 +47,7 @@ Nothing else needs to change.
 | `github.org_members_without_2fa` | GH-05 | `count`, `members` |
 | `github.org_members` | (HR-01) | `count`, `members` |
 | `hr.unmatched_accounts` | HR-01 | `unmatched_aws`, `unmatched_github`, counts |
+| `files.read_document` | DOC-01 to DOC-03 | `status`, `path`, `folder`, `media_type`, `size`, `sha256`, `extractor`, `pages` (number + text), `chars`, `warnings` |
 
 ## Shared behaviour
 
@@ -66,6 +68,40 @@ Nothing else needs to change.
 | --- | --- |
 | AWS | `SecurityAudit` managed policy (IAM, S3, CloudTrail reads + `GenerateCredentialReport`) |
 | GitHub | Fine-grained token owned by the organization: Administration (read), Metadata (read), Members (read). GH-05 also needs the token owner to be an **organization owner**. |
+
+## The files connector (V4)
+
+`files.read_document` reads one document from the policies folder,
+`COMPLIANCELENS_POLICIES_DIR` (default `policies/examples/compliant`, relative to the
+project). The rule card names the file: `params: { path: password-policy.pdf }`. It is
+the only collector of `files.py` a rule card may name; `policies_dir` and `path_problem`
+are helpers the engine uses to check rule cards.
+
+- **One read:** the bytes are read once (at most 5 MB + 1 byte), hashed, turned into text,
+  and handed to the runner, which saves them as `<ID>.source.<ext>`. The saved copy is
+  exactly what was judged.
+- **Text:** `.txt` and `.md` must be UTF-8 (a BOM is fine; Windows line ends become `\n`
+  in the text only). A PDF is read page by page with `pypdf`; a PDF encrypted with an
+  empty password is opened, with a warning.
+- **Never cut short:** a document over the limits is refused, not truncated.
+
+| Status | Means |
+| --- | --- |
+| `ok` | Read; the text is in `pages` |
+| `not_found` | No such file, or no policies folder |
+| `outside_folder` | The path (e.g. a link) leads outside the policies folder |
+| `unsupported_type` | A link with a document's name leads to another type of file |
+| `too_large` | More than 5 MB |
+| `not_utf8` | A text file that isn't UTF-8 text (or has NUL bytes) |
+| `encrypted` | A PDF with a password |
+| `corrupt` | A PDF `pypdf` can't read |
+| `too_many_pages` | More than 50 pages |
+| `no_text` | No text at all: empty, or only scanned pictures |
+| `partly_unreadable` | Some pages are pictures without text (listed in `picture_pages`) |
+| `too_long` | More than 100,000 characters |
+
+Anything but `ok` makes the rule NEEDS REVIEW with the reason. A bad `path` in a rule
+card (absolute, `..`, another file type) is refused before the run.
 
 ## The browser connector (V3)
 

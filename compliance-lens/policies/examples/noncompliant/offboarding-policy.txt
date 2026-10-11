@@ -1,0 +1,18 @@
+EXAMPLE LABS OFFBOARDING POLICY
+Version 1.2. Owner: People team and IT. Applies to every employee and contractor.
+This is a made-up policy written to test ComplianceLens.
+
+1. PURPOSE
+This policy makes sure people who leave Example Labs can no longer reach company
+systems or data.
+
+2. ACCESS REMOVAL
+The People team tells IT on the employee's last working day.
+IT removes the person's access to AWS and GitHub within 5 business days of their last
+working day.
+
+3. EQUIPMENT
+Laptops and security keys are returned within 5 working days of the last working day.
+
+4. RECORDS
+IT records every removed account in the offboarding ticket.

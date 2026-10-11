@@ -34,6 +34,9 @@ sessions/*
 reports/*
 !reports/README.md
 
+# Your own policy documents (V4): only the made-up examples are committed.
+policies/private/
+
 # Raw experiment screenshots and results (V4-V6).
 experiment/data/
 
