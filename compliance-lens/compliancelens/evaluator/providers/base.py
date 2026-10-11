@@ -95,6 +95,11 @@ class Provider(Protocol):
     def send(self, request: AIRequest) -> AIReply: ...
 
 
+# A 429 with one of these codes is not rate limiting: the account can't pay, and waiting
+# won't change that (OpenAI's codes; seen live as "billing_not_active").
+NO_CREDIT_CODES = {"insufficient_quota", "billing_not_active"}
+
+
 def is_transient_status(status: int) -> bool:
     """HTTP statuses worth one more try."""
     return status in (408, 409, 429) or status >= 500
@@ -104,6 +109,15 @@ def short(error: Exception, limit: int = 300) -> str:
     """The first line of an error, cut to `limit` characters."""
     lines = str(error).strip().splitlines()
     return (lines[0] if lines else type(error).__name__)[:limit]
+
+
+def _error_code(error) -> str | None:
+    """The provider's own error code: `code` (openai) or body.error.code/type (anthropic)."""
+    code = getattr(error, "code", None)
+    body = getattr(error, "body", None)
+    if not code and isinstance(body, dict) and isinstance(body.get("error"), dict):
+        code = body["error"].get("code") or body["error"].get("type")
+    return code if isinstance(code, str) else None
 
 
 def translate(error: Exception, sdk) -> ProviderError:
@@ -117,6 +131,11 @@ def translate(error: Exception, sdk) -> ProviderError:
         return TransientError(f"could not connect: {short(error)}")
     if isinstance(error, sdk.APIStatusError):
         status = error.status_code
+        message = short(getattr(error, "message", error))
+        if status == 429 and _error_code(error) in NO_CREDIT_CODES:
+            return PermanentError(
+                f"HTTP 429: the account has no credit or billing is off ({message})", status
+            )
         kind = TransientError if is_transient_status(status) else PermanentError
-        return kind(f"HTTP {status}: {short(getattr(error, 'message', error))}", status)
+        return kind(f"HTTP {status}: {message}", status)
     return PermanentError(short(error))

@@ -13,6 +13,7 @@ import requests.adapters
 
 from compliancelens import evidence
 from compliancelens.connectors import aws, browser, files, github
+from compliancelens.evaluator import ai
 from compliancelens.storage import db
 
 
@@ -75,4 +76,5 @@ def no_sleep(monkeypatch):
     waits = []
     monkeypatch.setattr(aws, "_sleep", waits.append)
     monkeypatch.setattr(github, "_sleep", waits.append)
+    monkeypatch.setattr(ai, "_sleep", waits.append)
     return waits

@@ -153,6 +153,16 @@ def test_temporary_errors_are_transient_and_not_retried_by_the_sdk(kind, status)
 
 
 @pytest.mark.parametrize("kind", ADAPTERS)
+@pytest.mark.parametrize("code", ["insufficient_quota", "billing_not_active"])
+def test_a_429_for_no_credit_is_permanent(kind, code):
+    body = {"error": {"type": code, "code": code, "message": "You exceeded your quota."}}
+    provider, server = make(kind, (429, body))
+    with pytest.raises(base.PermanentError, match="no credit or billing is off") as e:
+        provider.send(request())
+    assert e.value.status_code == 429 and not e.value.retryable
+
+
+@pytest.mark.parametrize("kind", ADAPTERS)
 @pytest.mark.parametrize("status", [400, 401, 403, 404])
 def test_lasting_errors_are_permanent(kind, status):
     provider, server = make(kind, (status, error_body("bad request")))

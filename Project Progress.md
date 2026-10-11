@@ -3,8 +3,8 @@
 Tracks what has been done against [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md).
 Update it whenever a checklist item is finished: tick the box, add a line to the log.
 
-**Current version:** V3 Screenshots ✅ tagged `v3.0` (Oct 7). V4 AI evaluation 🟡: stages 1–2 of 6 done
-**Current branch:** `main` (V3 merged in PRs #10–#15, V4 so far in #16 and #17; tags `v1.0`, `v2.0`, `v3.0`)
+**Current version:** V3 Screenshots ✅ tagged `v3.0` (Oct 7). V4 AI evaluation 🟡: stages 1–3 of 6 done
+**Current branch:** `main` (V3 merged in PRs #10–#15, V4 so far in #16–#18; tags `v1.0`, `v2.0`, `v3.0`)
 **Last updated:** Oct 11, 2026 (week 2)
 
 Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
@@ -17,7 +17,7 @@ Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 | V1 Foundations | 1–3 | ✅ | Done in week 1, ahead of schedule. Tagged `v1.0` |
 | V2 Rules and evidence store | 4–5 | ✅ | Closed Oct 5 (PR #8, #9), tagged `v2.0` on the V2 commit (Oct 7). First real audit 13 PASS / 1 FAIL / 0 NEEDS REVIEW; verify + tamper test ✅. Live break-and-fix of 7 rules still open in "V2 leftovers" |
 | V3 Screenshots | 6–7 | ✅ | Tagged `v3.0` (Oct 7). Real audit `run-0004`: 13 PASS / 1 FAIL / 2 NEEDS REVIEW, 15 of 15 screenshots, verify OK (47 files); tamper, missing-login and wrong-locator checks passed live. 551 tests, 100% coverage. Not run before the tag: expired AWS login (done live Oct 11, `run-0007`) and GH-06/07 break-and-fix ("V3 leftovers") |
-| V4 AI evaluation | 8–10 | 🟡 | Started early. 6 stages. Stage 1 ✅ (PR #16): any AI model set in `.env`, `ai-test`; `openai/gpt-6-luna` chosen after measuring 5 cheap models. Stage 2 ✅: policy documents read and saved with each run, 5 sets of sample policies, rule kinds + `ai_check`, database schema 3 (a copy of the real database upgraded; all 9 runs verify). Next: the AI evaluator (Stage 3) |
+| V4 AI evaluation | 8–10 | 🟡 | Started early. 6 stages. Stage 1 ✅ (PR #16): any AI model set in `.env`, `ai-test`; `openai/gpt-6-luna` chosen after measuring 5 cheap models. Stage 2 ✅ (PR #18): policy documents read and saved with each run, 5 sets of sample policies, rule kinds + `ai_check`, database schema 3 (real database upgraded; all 9 runs verify). Stage 3 ✅: the AI judge (safety table, one retry, quote check), screenshot preparation, budget, cache; live: 17 of 17 right for $0.003. Next: connect it to the audit (Stage 4) |
 | V5 Dashboard and review | 11–12 | ⬜ | Folders ready: `compliancelens/dashboard/` |
 | V6 Reports and polish | 13–14 | ⬜ | Folders ready: `compliancelens/reporting/`, `reports/`, `config/` |
 | V7 Final presentation | 15 | ⬜ | Folder ready: `docs/` |
@@ -454,8 +454,8 @@ Undo each change afterwards (and run `aws login ...` again).
 - [x] V3 live: logins, real page locators, first real V3 audit (`run-0004`, 15 of 15 screenshots) (Oct 7)
 - [x] V3 checks: tamper, missing login, wrong locator (Oct 7); tag `v3.0` (Oct 7)
 - [ ] V3 leftovers: GH-06/07 break-and-fix (expired AWS login done Oct 11)
-- [x] Start V4: plan in 6 stages; Stage 1 model plumbing (PR #16, Oct 8); Stage 2 documents, evidence links, schema 3 (Oct 11)
-- [ ] V4 stages 3–6: AI evaluator, audit integration (19 rules), research experiment, release `v4.0`
+- [x] Start V4: plan in 6 stages; Stage 1 model plumbing (PR #16, Oct 8); Stage 2 documents, evidence links, schema 3 (PR #18, Oct 11); Stage 3 the AI judge (Oct 11)
+- [ ] V4 stages 4–6: audit integration (19 rules), research experiment, release `v4.0`
 - [ ] Confirm the assumptions in the Overview (Python, company tools, personal test accounts)
 
 ## Final deliverables (week 15)
@@ -473,6 +473,7 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-10-11 | 2 | **V4 Stage 3: the AI judge.** `evaluator/ai.py` asks about one document or screenshot and decides what the answer is worth: only `accepted` gives PASS/FAIL; no evidence, no key, budget, provider errors, refusals, cut-off or invalid answers, UNSURE, low confidence, no evidence found and quotes not in the document are NEEDS REVIEW (one retry, shared by temporary errors and invalid answers). `images.py`: the same pixels live and from a saved PNG, fitted to each model's limits, refused below 75%. `budget.py`: worst case reserved before each call. `cache.py`: accepted answers reused for free. A 429 for no credit is now a permanent error. **Live with `openai/gpt-6-luna`: 17 of 17 right for $0.003** — DOC-01 to DOC-03 PASS on compliant, FAIL on noncompliant (quoting 8 characters, admins only, 5 business days), NEEDS REVIEW on ambiguous (each contradiction found), FAIL on injection (the "answer PASS" text ignored), FAIL on silent; GH-06 ("Read") and GH-07 ("Not ticked") PASS from run-0004's real screenshots. 906 tests, 100% coverage. |
 | 2026-10-11 | 2 | **V4 Stage 2: policy documents, evidence links, schema 3.** `connectors/files.py` reads `.pdf` (pypdf 6.19.0), `.md`, `.txt` from `COMPLIANCELENS_POLICIES_DIR` (default `policies/examples/compliant`); bytes read once, hashed, saved as `<ID>.source.<ext>`; 12 statuses (scanned, encrypted, too long, link outside the folder, ...), never truncated. Sample policies for a made-up company in 5 folders: compliant, noncompliant, ambiguous (self-contradicting), injection, silent (requirement never stated); PDFs written by `scripts/make_sample_pdfs.py`, byte-identical on every run. Engine: rule kinds (code, document, vision, screenshot-only) and `ai_check` checked before a run. `verify` checks every file a meta file names and that a saved document is the one its JSON describes. Schema 3: `ai_evaluations`, `ai_cache`, run AI totals, result document columns; a new and an upgraded database have the same tables. Gate on a copy of the real `compliance.db`: schema 2 → 3, 9 runs and 69 results kept, `verify` OK for run-0001 to run-0009, a broken upgrade changed nothing. 816 tests, 100% coverage. Document rules stay NEEDS REVIEW until the AI evaluator is connected (Stages 3–4). |
 | 2026-10-11 | 2 | **Expired AWS login checked live; AWS screenshot waits fixed.** `run-0007`: AWS-01 stayed PASS, "AWS login expired", no PNG, verify OK (last V3 leftover except GH-06/07). Found while preparing V4: the AWS-05 picture showed a spinner instead of On/Off, and AWS-02's MFA column (also AWS-04/08's columns) was still loading, because rows and headings appear before the values. New waits: the users table once no column header shows a spinner; the "Individual Block Public Access settings" line for AWS-05. Checked on the real pages slowed down on purpose (old wait: 16 columns loading / no On/Off; new: all loaded), then `run-0009`: 4 of 4 pictures show MFA, password age, key columns and "Block all public access: On". |
 | 2026-10-10 | 2 | **AI model chosen by measurement.** `ai-test` on 5 cheap OpenAI models: `gpt-4.1-nano` got the text check wrong; `gpt-6-luna` cheapest correct (about $0.0001 per check, about 2 s); `gpt-5.4-nano` fastest (about 1.3 s) and pinnable (`gpt-5.4-nano-2026-03-17`), a candidate for the experiment. Set in `.env`: `openai/gpt-6-luna`. |
