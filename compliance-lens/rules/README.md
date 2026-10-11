@@ -153,8 +153,11 @@ use the first **visible** match: pages often hold hidden copies of the same text
 
 **Wait for the data, not the heading.** AWS draws a page's headings first and fills in
 the data a second or two later. Wait for something that only exists once the data is
-there (`"Password minimum length"`, a user row `a[href*='users/details']`), or the picture
-shows loading spinners.
+there (`"Password minimum length"`, or AWS-05's "Individual Block Public Access settings"
+line, shown only once On/Off has loaded), or the picture shows loading spinners. Tables can
+show rows before their columns: the IAM users table fills in MFA, activity and access keys
+later, each column header with its own spinner, so AWS-02/04/08 wait for the table once no
+header spinner is left (`:not(:has(thead [class*='circle-left']))`).
 
 **When a page changes** (GitHub and AWS redesign often), the rule shows
 `selector_timeout: ... did not appear`. Open the page, find a heading or label that

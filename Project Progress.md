@@ -16,7 +16,7 @@ Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 | Repo setup | 1 | ✅ | `compliance-lens/` folder, tooling, hooks, CI (passing) |
 | V1 Foundations | 1–3 | ✅ | Done in week 1, ahead of schedule. Tagged `v1.0` |
 | V2 Rules and evidence store | 4–5 | ✅ | Closed Oct 5 (PR #8, #9), tagged `v2.0` on the V2 commit (Oct 7). First real audit 13 PASS / 1 FAIL / 0 NEEDS REVIEW; verify + tamper test ✅. Live break-and-fix of 7 rules still open in "V2 leftovers" |
-| V3 Screenshots | 6–7 | ✅ | Tagged `v3.0` (Oct 7). Real audit `run-0004`: 13 PASS / 1 FAIL / 2 NEEDS REVIEW, 15 of 15 screenshots, verify OK (47 files); tamper, missing-login and wrong-locator checks passed live. 551 tests, 100% coverage. Not run before the tag: expired AWS login (12 h) and GH-06/07 break-and-fix ("V3 leftovers") |
+| V3 Screenshots | 6–7 | ✅ | Tagged `v3.0` (Oct 7). Real audit `run-0004`: 13 PASS / 1 FAIL / 2 NEEDS REVIEW, 15 of 15 screenshots, verify OK (47 files); tamper, missing-login and wrong-locator checks passed live. 551 tests, 100% coverage. Not run before the tag: expired AWS login (done live Oct 11, `run-0007`) and GH-06/07 break-and-fix ("V3 leftovers") |
 | V4 AI evaluation | 8–10 | ⬜ | Folders ready: `compliancelens/evaluator/`, `policies/` |
 | V5 Dashboard and review | 11–12 | ⬜ | Folders ready: `compliancelens/dashboard/` |
 | V6 Reports and polish | 13–14 | ⬜ | Folders ready: `compliancelens/reporting/`, `reports/`, `config/` |
@@ -169,12 +169,12 @@ Tests: 316 passing, 100% coverage (target 70%).
 ## V3 Screenshots ✅ (tagged `v3.0`, Oct 7)
 
 Tagged before two live checks were run, to keep to the schedule. They are listed in
-**V3 leftovers (later)** below and are **not** ticked: they have not been done yet.
+**V3 leftovers (later)** below. The expired AWS login was done on Oct 11; GH-06/07 is still open.
 
 ### V3 leftovers (later)
 
-- [ ] Expired AWS login: more than 12 h after `make login SITE=aws` (without logging in again), run `python audit.py run --rule AWS-01`. Expect PASS kept, `screenshot not saved: AWS login expired`, no PNG. (Covered offline by `test_browser.py`, not yet seen live.)
-- [ ] GH-06/GH-07 visual break-and-fix: base permission **Write** and delete/transfer **ticked** → `run --rule GH-06 --rule GH-07` → pictures show it → set back to **Read** / unticked → run again (`scripts/README.md`)
+- [x] Expired AWS login: more than 12 h after `make login SITE=aws` (without logging in again), run `python audit.py run --rule AWS-01`. Expect PASS kept, `screenshot not saved: AWS login expired`, no PNG. Done Oct 11 (`run-0007`, login saved Oct 6): PASS kept, "AWS login expired (the page went to sign-in)" with the fix printed, no PNG, verify OK
+- [ ] GH-06/GH-07 visual break-and-fix: base permission **Write** and delete/transfer **ticked** → `run --rule GH-06 --rule GH-07` → pictures show it → set back to **Read** / unticked → run again (`scripts/README.md`). Moved to V4 Stage 4, where the AI must also say FAIL on the Write picture
 
 Plan reviewed Oct 5 (V3 plan + review of it). Decisions:
 
@@ -215,7 +215,7 @@ Live checks (you, with me):
 - [x] PNG tamper test on a backup copy of `run-0004`: verify FAILED with 3 problems (manifest, database, meta file all name `GH-01.png`); restored → OK, 47 files (Oct 7)
 - [x] Missing login (`COMPLIANCELENS_SESSIONS_DIR=/tmp/no-logins`, `run-0005`): GH-01 stayed PASS, GH-06 NEEDS REVIEW, both `session_missing` with the fix printed, no PNG; verify OK (Oct 7)
 - [x] Wrong locator (a copy of the rulebook, `run-0006`): AWS-01 stayed PASS, `selector_timeout` "did not appear within 20 s", no PNG; verify OK (Oct 7)
-- [ ] Expired AWS login (more than 12 h after `make login SITE=aws`): see "V3 leftovers"
+- [x] Expired AWS login (more than 12 h after `make login SITE=aws`): `run-0007`, Oct 11 (see "V3 leftovers")
 - [ ] GH-06/GH-07 visual break-and-fix: see "V3 leftovers"
 - [x] Time the screenshots: all 15 in 31 s (Oct 7); a full run with the API checks is well under 2 minutes
 - [x] PRs merged with CI green: #10 (V3), #11 (GH-07 change), #12 (login fix), #13 (real-page locators)
@@ -228,7 +228,7 @@ session is reported, not silently captured.
   stamped PNGs that verify, and an edited PNG fails verify)
 - Live: stamped screenshots for every UI rule ✅ (`run-0004`, Oct 7: 15 of 15, verify OK for
   47 files); a missing login and a changed page are reported, never captured ✅ (`run-0005`,
-  `run-0006`); an expired session live ⬜ (V3 leftovers: needs the 12-hour AWS check)
+  `run-0006`); an expired session is reported live ✅ (`run-0007`, Oct 11)
 
 **What exists now:**
 
@@ -453,7 +453,7 @@ Undo each change afterwards (and run `aws login ...` again).
 - [x] Start V3: plan reviewed, decisions D1–D5, code + offline tests done (Oct 5)
 - [x] V3 live: logins, real page locators, first real V3 audit (`run-0004`, 15 of 15 screenshots) (Oct 7)
 - [x] V3 checks: tamper, missing login, wrong locator (Oct 7); tag `v3.0` (Oct 7)
-- [ ] V3 leftovers: expired AWS login (12 h), GH-06/07 break-and-fix
+- [ ] V3 leftovers: GH-06/07 break-and-fix (expired AWS login done Oct 11)
 - [ ] Start V4: AI evaluation (weeks 8–10)
 - [ ] Confirm the assumptions in the Overview (Python, company tools, personal test accounts)
 
@@ -472,6 +472,7 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-10-11 | 2 | **Expired AWS login checked live; AWS screenshot waits fixed.** `run-0007`: AWS-01 stayed PASS, "AWS login expired", no PNG, verify OK (last V3 leftover except GH-06/07). Found while preparing V4: the AWS-05 picture showed a spinner instead of On/Off, and AWS-02's MFA column (also AWS-04/08's columns) was still loading, because rows and headings appear before the values. New waits: the users table once no column header shows a spinner; the "Individual Block Public Access settings" line for AWS-05. Checked on the real pages slowed down on purpose (old wait: 16 columns loading / no On/Off; new: all loaded), then `run-0009`: 4 of 4 pictures show MFA, password age, key columns and "Block all public access: On". |
 | 2026-10-07 | 2 | **V3 closed and tagged `v3.0`; `v2.0` tagged on `1fe2122`.** Live checks passed: PNG tamper test (verify FAILED on `GH-01.png` in manifest, database and meta file; restored → OK, 47 files), missing login (`run-0005`: verdicts kept, `session_missing`, no PNG), wrong locator (`run-0006`: PASS kept, `selector_timeout`, no PNG). Tagged before two checks to keep to the schedule; not ticked, listed in "V3 leftovers": expired AWS login after 12 h, GH-06/07 break-and-fix. V2's 7 live break-and-fix checks also still open. |
 | 2026-10-07 | 2 | **V3 works live.** After PR #13: `run-0004` gave 13 PASS, 1 FAIL (AWS-02), 2 NEEDS REVIEW and **15 of 15 screenshots**; `verify` OK (47 files); spot-checked AWS-07 (Status Logging, account ID masked). Left: tamper, missing-login, wrong-locator and expired-login checks, GH-06/07 break-and-fix, tag `v3.0`. |
 | 2026-10-07 | 2 | **First real V3 audit** (`run-0003`): 13 PASS, 1 FAIL (AWS-02), 2 NEEDS REVIEW, as expected; `verify` OK (44 files); old `run-0001` still OK after the database upgrade. But only 12 of 15 screenshots, and 6 AWS ones showed loading spinners (the heading appears before the data). Looked at the real pages (read-only) and fixed: wait for the data, not the heading; use only **visible** matches (GitHub keeps hidden copies of text); GH-01/GH-02 open the `main` rule by its number (its Edit link is in a hidden menu); AWS-04/AWS-07 scroll to the right column; mask every 12-digit account ID (new `pattern` locator) and the GitHub avatar; URLs recorded without account IDs. All 15 screenshots checked by eye; 31 s for all 15. 551 tests. |
