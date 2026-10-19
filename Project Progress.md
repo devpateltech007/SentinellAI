@@ -3,8 +3,8 @@
 Tracks what has been done against [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md).
 Update it whenever a checklist item is finished: tick the box, add a line to the log.
 
-**Current version:** V3 Screenshots ✅ tagged `v3.0` (Oct 7). V4 AI evaluation 🟡: stages 1–4 of 6 done (Stage 4 closed Oct 19 with the GH-06/07 flip); Stage 5 experiment tools built and piloted (Oct 19)
-**Current branch:** `main` (V3 merged in PRs #10–#15, V4 so far in #16–#20; tags `v1.0`, `v2.0`, `v3.0`)
+**Current version:** V4 AI evaluation ✅ tagged `v4.0` (Oct 19), version `0.4.0`. The experiment's main data collection moved to V5.
+**Current branch:** `main` (V3 merged in PRs #10–#15, V4 in #16–#23 plus the release PR; tags `v1.0` to `v4.0`)
 **Last updated:** Oct 19, 2026 (week 4)
 
 Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
@@ -17,11 +17,11 @@ Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 | V1 Foundations | 1–3 | ✅ | Done in week 1, ahead of schedule. Tagged `v1.0` |
 | V2 Rules and evidence store | 4–5 | ✅ | Closed Oct 5 (PR #8, #9), tagged `v2.0` on the V2 commit (Oct 7). First real audit 13 PASS / 1 FAIL / 0 NEEDS REVIEW; verify + tamper test ✅. Live break-and-fix of 7 rules still open in "V2 leftovers" |
 | V3 Screenshots | 6–7 | ✅ | Tagged `v3.0` (Oct 7). Real audit `run-0004`: 13 PASS / 1 FAIL / 2 NEEDS REVIEW, 15 of 15 screenshots, verify OK (47 files); tamper, missing-login and wrong-locator checks passed live. 551 tests, 100% coverage. Not run before the tag: expired AWS login (done live Oct 11, `run-0007`) and GH-06/07 break-and-fix ("V3 leftovers", both done later: Oct 11 and Oct 19) |
-| V4 AI evaluation | 8–10 | 🟡 | Started early. 6 stages. Stage 1 ✅ (PR #16): any AI model set in `.env`, `ai-test`; `openai/gpt-6-luna` chosen after measuring 5 cheap models. Stage 2 ✅ (PR #18): policy documents read and saved with each run, 5 sets of sample policies, rule kinds + `ai_check`, database schema 3 (real database upgraded; all 9 runs verify). Stage 3 ✅ (PR #19): the AI judge (safety table, retries, quote check), screenshot preparation, budget, cache; live: 17 of 17 right for $0.003. Stage 4 ✅ (PR #20): the AI in `audit.py run`, 19 rules; **live audit 18 PASS / 1 FAIL / 0 NEEDS REVIEW** (`run-0010`, $0.0010), repeat from cache for $0; GH-06/07 live flip FAIL → PASS (Oct 19). Stage 5 🟡: the experiment's tools are built (55 + 10 cases, setup that changes and puts back the accounts, capture, labelling packs, runs, analysis; 1,163 tests, 100%); pilot 10 of 10 right at a 4 MP picture limit ($0.0031). Next: capture the 55 cases, labels |
-| V5 Dashboard and review | 11–12 | ⬜ | Folders ready: `compliancelens/dashboard/` |
+| V4 AI evaluation | 8–10 | ✅ | Tagged `v4.0` (Oct 19), version 0.4.0. Started early. 6 stages. Stage 1 ✅ (PR #16): any AI model set in `.env`, `ai-test`; `openai/gpt-6-luna` chosen after measuring 5 cheap models. Stage 2 ✅ (PR #18): policy documents read and saved with each run, 5 sets of sample policies, rule kinds + `ai_check`, database schema 3 (real database upgraded; all 9 runs verify). Stage 3 ✅ (PR #19): the AI judge (safety table, retries, quote check), screenshot preparation, budget, cache; live: 17 of 17 right for $0.003. Stage 4 ✅ (PR #20): the AI in `audit.py run`, 19 rules; **live audit 18 PASS / 1 FAIL / 0 NEEDS REVIEW** (`run-0010`, $0.0010), repeat from cache for $0; GH-06/07 live flip FAIL → PASS (Oct 19). Stage 5 🟡: the experiment's tools are built (55 + 10 cases, setup that changes and puts back the accounts, capture, labelling packs, runs, analysis; 1,163 tests, 100%); pilot 10 of 10 right at a 4 MP picture limit ($0.0031). Stage 6 ✅: release. The experiment's main data collection (capture the 55 cases, labels by 2 people, 3 answers each, analysis) moved to V5 |
+| V5 Dashboard and review | 11–12 | ⬜ | Folders ready: `compliancelens/dashboard/`. Also the experiment's main data collection (carried over from V4) |
 | V6 Reports and polish | 13–14 | ⬜ | Folders ready: `compliancelens/reporting/`, `reports/`, `config/` |
 | V7 Final presentation | 15 | ⬜ | Folder ready: `docs/` |
-| Research experiment | 8–14 | ⬜ | Folder ready: `experiment/` |
+| Research experiment | 8–14 | 🟡 | V4: tools (`experiment/lab/`, 55 + 10 cases) and pilot (10 of 10 right). V5: capture, labels, 3 answers per case, analysis. V6: write-up |
 
 ## Repo setup ✅
 
@@ -250,7 +250,7 @@ were written before seeing the real pages and will be fixed in the live step.
 
 Tests: 551 passing, 100% coverage (target 70%).
 
-## V4 AI evaluation 🟡 (stages 1–4 of 6 done, Oct 11)
+## V4 AI evaluation ✅ (tagged `v4.0`, Oct 19)
 
 Started early (week 2; the plan has it in weeks 8–10). The plan was reviewed and split
 into 6 stages, one PR each. An AI model judges what code can't: GH-06/GH-07 from their
@@ -284,8 +284,8 @@ Stages:
 - [x] Stage 4 live flip: GH-06 **Write** → FAIL, back to **Read** → PASS; GH-07 **ticked** → FAIL, unticked → PASS (Oct 19, `run-0039` to `run-0041`)
 - [x] Stage 5a, the experiment's tools (Oct 19): GitHub token given **Organization → Administration: Read-only** (the base permission now reads `read`); `github.org_settings`; research picture profiles in `browser.py` (window size, theme, no login, kept error pages, skipped steps, a script; audits always use the audit's own); `experiment/lab/` (`python -m experiment.lab`): 55 main + 10 pilot cases in `experiment/cases.yaml`, the setup that changes AWS and GitHub with its own logins and puts everything back (`restore` after a crash; only marked users, MFA devices and buckets are removed), capture (the API must show the state twice, then picture, then the API again), labelling packs + Cohen's κ, runs (3 answers, no cache, no fallbacks, resumable, stops on a new served model or the $ limit), analysis (Wilson intervals, misread vs misjudged); `make experiment`, `make analyze`. 1,163 tests, 100% coverage. Checked live without changing anything: the research views on the real GitHub page (covered, menu open, small text); found and fixed: `gh auth token` hands out `GITHUB_TOKEN` (the audit's read-only token) when it is set, so the setup now hides it from `gh` and refuses it.
 - [x] Stage 5b, the pilot (Oct 19): logins (root for changes, `gh` with `admin:org`, the audit login renewed); 10 pilot cases captured in 5 batches, everything put back and checked; AI 1 answer each: **8 of 8 decided right** at the default 1.2 MP (GH-01's 1440 × 2119 page refused without a call), **10 of 10 right at 2600 px / 4 MP** ($0.0031, 2.9 s per answer). Decisions frozen in [`compliance-lens/docs/experiment-pilot.md`](compliance-lens/docs/experiment-pilot.md): 4 MP limit, the 55 cases, 3 answers each. AWS honours dark mode, GitHub's pages are always dark (the account's theme)
-- [ ] Stage 5c: capture the 55 cases, labels by 2 people (κ), 3 answers per case, analysis
-- [ ] Stage 6, release: README pass, Project Plan wording fixes, version `0.4.0`, tag `v4.0`
+- [ ] Stage 5c, **moved to V5** (Oct 19, to close V4): capture the 55 cases, labels by 2 people (κ), 3 answers per case, analysis. Everything it needs is built and piloted
+- [x] Stage 6, release (Oct 19): Project Plan wording fixed (no temperature: 3 fresh answers per case instead; the experiment's rules are AWS-01, AWS-02, AWS-05, GH-01, GH-06; its schedule over V4–V6; the main run added to V5's checklist), README example and `docs/` row updated, version `0.4.0`, tag `v4.0`
 
 Live checks (Stage 4, Oct 11, `openai/gpt-6-luna`):
 - [x] Full audit `run-0010`: 18 PASS, 1 FAIL (AWS-02), 0 NEEDS REVIEW; 15 of 15 screenshots; 5 AI calls, $0.0010; verify OK (63 files)
@@ -302,19 +302,20 @@ Live checks (Stage 4, Oct 11, `openai/gpt-6-luna`):
 - Every rule has a verdict with method, reason and confidence ✅
 - Bad or unsure AI answers never become PASS ✅ (every case tested with a fake model; live: ambiguous → NEEDS REVIEW, injection → FAIL)
 - Old runs still verify ✅ (run-0001 to run-0009 after the upgrade)
-- The experiment runs reproducibly ⬜ (Stage 5)
+- The experiment runs reproducibly ✅ (the pilot's tables are rebuilt from the saved answers alone; the main data collection is in V5)
 
 Notes:
 - `gpt-6-luna` isn't in the built-in model list, so pictures are limited to 1.2 MP: full-page
-  screenshots (GH-01 to GH-04) can't be cross-checked unless `COMPLIANCELENS_AI_IMAGE_MAX_PIXELS`
-  is raised. To decide in the Stage 5 pilot.
+  screenshots (GH-01 to GH-04) can't be cross-checked. Decided in the pilot: 2600 px / 4 MP
+  (`COMPLIANCELENS_AI_IMAGE_MAX_EDGE=2600`, `COMPLIANCELENS_AI_IMAGE_MAX_PIXELS=4000000` in `.env`)
+  reads GH-01 correctly; needed for the experiment's main run in V5.
 - The Oct 11 live checks left many partial runs in `history` (run-0010 to run-0037).
 
 ## How to test V4 (simple version)
 
 ```bash
 cd ~/Desktop/SentinellAI/compliance-lens
-make test                    # 951 tests, no accounts or AI calls
+make test                    # 1,163 tests, no accounts or AI calls
 make aitest                  # the model and key in .env: "Both checks passed"
 make audit                   # 18 PASS, 1 FAIL (AWS-02), 0 NEEDS REVIEW; AI lines under GH-06/07, DOC-01..03
 make verify RUN=run-NNNN     # the run it printed
@@ -534,7 +535,8 @@ Undo each change afterwards (and run `aws login ...` again).
 - [x] V3 leftovers: expired AWS login (Oct 11), GH-06/07 break-and-fix (Oct 19)
 - [x] Start V4: plan in 6 stages; Stage 1 model plumbing (PR #16, Oct 8); Stage 2 documents, evidence links, schema 3 (PR #18, Oct 11); Stage 3 the AI judge (PR #19, Oct 11); Stage 4 the AI in the audit, 19 rules (PR #20, Oct 11)
 - [x] V4 Stage 4 live flip: GH-06 Write → FAIL → Read → PASS, GH-07 ticked → FAIL → unticked → PASS (Oct 19)
-- [ ] V4 stages 5–6: research experiment, release `v4.0`
+- [x] V4 Stage 5 tools + pilot (PR #23) and Stage 6 release: version 0.4.0, tag `v4.0` (Oct 19)
+- [ ] V5: the experiment's main data collection (carried over from V4)
 - [ ] Confirm the assumptions in the Overview (Python, company tools, personal test accounts)
 
 ## Final deliverables (week 15)
@@ -552,6 +554,7 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-10-19 | 4 | **V4 closed and tagged `v4.0`** (version 0.4.0). Stage 5 tools and pilot merged (PR #23). To close V4 now, the experiment's main data collection (55 cases, two labellers, 3 answers each, analysis) moved to V5, which the plan allows (the experiment runs alongside V4–V6). Project Plan wording fixed: no temperature (3 fresh answers per case instead), the experiment's five rules (GH-06 instead of GH-02), its schedule, and the main run added to V5's checklist. |
 | 2026-10-19 | 4 | **V4 Stage 5b: the pilot.** Root `aws login --profile compliancelens-setup` for the changes, `gh auth refresh -s admin:org`, the audit's AWS logins renewed (`compliancelens-audit`'s console password reset). 10 pilot cases in 5 batches, all saved; after each batch the read-only logins confirmed everything was back (base permission Read, 1 approval, password policy 14 + all types, intern-bob's temporary MFA gone, test buckets deleted). `openai/gpt-6-luna`, 1 answer per case: 8 of 8 decided right at the default 1.2 MP limit, GH-01's full-page picture (1440 × 2119) refused as too big; 10 of 10 right at 2600 px / 4 MP, all high confidence, every observed value right, $0.0031. The AWS console honours dark mode; it shows a "Console Mobile App" pop-up (covers none of these settings). Report wording fixed for pilots. Pilot note: `compliance-lens/docs/experiment-pilot.md`. |
 | 2026-10-19 | 4 | **V4 Stage 5a: the experiment's tools.** `experiment/lab/` (`python -m experiment.lab`): `cases.yaml` with 55 main cases (per rule 4 PASS + 4 FAIL plain pictures, plus dark 2, small text 5, below the fold 2, covered 1, prompt injection 2, unclear 3) and 10 pilot cases; `world.py`, the only code that writes to AWS or GitHub, with its own logins (an administrator's `aws login --profile compliancelens-setup`, the GitHub CLI with `admin:org`), saving what it changes first and putting it back (also after a crash), removing only marked test users, MFA devices (TOTP codes made in code) and `clx-` buckets; capture with an API check before and after each picture; labelling packs (shuffled, coded pictures) and Cohen's κ; runs with fixed settings named by their hash; analysis with 95% Wilson intervals. `github.org_settings` (the token now has the organization's Administration read); research picture profiles in `browser.py`. Live, read-only: the research views on the real Member privileges page; GitHub pictures are always dark (the account's theme), so the GitHub "dark" cases became small-text ones; the small-text view now scales instead of zooming so the avatar mask stays in place; found and fixed: `gh auth token` returns the audit's `GITHUB_TOKEN` when it is set. 1,163 tests, 100% coverage. |
 | 2026-10-19 | 4 | **V4 Stage 4 closed: GH-06/07 live flip.** Base permission set to Write and "Allow members to delete or transfer repositories" ticked → `run-0039`: GH-06 and GH-07 FAIL, high confidence, the AI quoting "Base permissions — Write" and "… — checked" (2 calls, $0.0005). Set back to Read and unticked → `run-0040`: PASS ×2 from the cache (pixel-identical to earlier compliant pictures); `run-0041` with `--refresh-ai`: PASS ×2 from new answers ($0.0005). All 3 runs verify OK. Also closes the last V3 leftover. |
