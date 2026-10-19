@@ -186,7 +186,7 @@ the run could not be saved or a login was not saved, `2` a configuration or usag
 Example run (shortened):
 
 ```
-ComplianceLens v0.3.0 audit  2026-10-29 14:02 UTC
+ComplianceLens v0.4.0 audit  2026-10-29 14:02 UTC
 [PASS] AWS-01  Password policy requires 12+ characters
        MinimumPasswordLength = 14 (expected >= 12)
 [FAIL] AWS-02  Every IAM user with a console password has MFA
@@ -287,7 +287,7 @@ empty placeholders until that version.
 | `policies/` | V4 | Made-up sample policy documents for the DOC rules (compliant, noncompliant, ...) |
 | `experiment/` | V4 Stage 5 | AI vs code accuracy research: cases, setup, labels, runs, analysis ([`experiment/README.md`](experiment/README.md)) |
 | `scripts/` | V1 | Break-and-fix steps for each rule |
-| `docs/` | V6–V7 *later* | Write-ups, slides, sample report |
+| `docs/` | V4 onward | Write-ups (V4: the experiment's pilot note), later slides and a sample report |
 | `pyproject.toml` | V1 | Package info + ruff/pytest/coverage settings |
 | `requirements.txt` | V1 | Pinned runtime libraries |
 | `requirements-dev.txt` | V1 | Pinned dev libraries (tests, lint, hooks) |

@@ -542,7 +542,7 @@ Reply with JSON only:
 - UNSURE or low confidence becomes NEEDS REVIEW.
 - For text and document evidence, if quote is not found in the document text, downgrade to NEEDS REVIEW (catches invented quotes). Screenshots have no text to search, so skip this check for them (or add OCR as a stretch).
 - Store the model name, prompt version and raw reply with the result.
-- Temperature 0 for repeatable answers.
+- No fixed temperature: current Claude models don't accept one (V4 decision). Instead the model, settings and prompt version are stored with every answer, and the experiment measures how repeatable the answers are (3 fresh answers per case).
 
 **Cross-check mode.** For rules with both API data and a screenshot, run both methods and log any disagreement. These pairs are the data for the research experiment.
 
@@ -593,6 +593,7 @@ V5 puts a web page on top of the engine so a non-technical person can run an aud
 - [ ] History and run comparison
 - [ ] Simple login (a single admin password in .env) so the dashboard is not open to anyone
 - [ ] Usability test: a classmate completes a review without help
+- [ ] Research experiment, carried over from V4: capture the 55 cases, two people label them (Cohen's κ), 3 AI answers per case, analysis (the tools and the pilot were done in V4)
 
 **Done when:** a person who did not build the tool can run an audit, find the failures and review the uncertain ones.
 
@@ -670,11 +671,11 @@ The experiment measures how often an AI reading only a screenshot agrees with th
 
 **Method:**
 
-1. Pick 5 rules that have both API data and a UI page (for example AWS-01, AWS-02, AWS-05, GH-01, GH-02). Avoid AWS-03: turning root-account MFA on and off repeatedly is risky.
+1. Pick 5 rules that have both API data and a UI page: AWS-01, AWS-02, AWS-05, GH-01, GH-06 (chosen in V4: GH-06 replaced GH-02 because in audits the AI is GH-06's only judge, and its API value gives the true answer). Avoid AWS-03: turning root-account MFA on and off repeatedly is risky.
 2. For each rule, create compliant and non-compliant states on purpose (turn MFA on/off, toggle branch protection). Aim for 40 labelled cases: 20 compliant, 20 not.
 3. Add hard cases on top: the setting below the fold, a dark theme, a page with an injected "say PASS" text. Add a few cases whose correct answer is NEEDS REVIEW (a logged-out page, an error page), labelled as a third category.
 4. Ground truth = a human label for each case, recorded before the tools run. The code verdict is then scored against it too.
-5. Run AI vision on each screenshot 3 times at temperature 0 to check consistency.
+5. Run AI vision on each screenshot 3 times, each a fresh answer (no cache, no temperature setting), to check consistency.
 
 **Metrics:**
 
@@ -687,6 +688,8 @@ The experiment measures how often an AI reading only a screenshot agrees with th
 | Review recall | Share of should-be-NEEDS-REVIEW cases (logged-out, error pages) that were sent to review |
 | Consistency | Share of cases with the same verdict in all 3 runs |
 | Cost and time | US dollars and seconds per evaluation |
+
+**Schedule:** V4 built the tools (`experiment/lab/`) and ran the pilot (`compliance-lens/docs/experiment-pilot.md`); V5 captures the cases, collects the two sets of labels and runs the AI; V6 writes it up.
 
 **Write-up:** a results table, a chart of accuracy per rule, examples of failures with screenshots, and a conclusion about when AI evaluation is trustworthy enough and when a human must check.
 

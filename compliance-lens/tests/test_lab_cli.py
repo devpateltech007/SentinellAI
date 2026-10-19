@@ -403,5 +403,5 @@ def test_main_shows_the_commands(monkeypatch, capsys):
     with pytest.raises(SystemExit) as e:
         cli.main()
     assert e.value.code == 0
-    out = capsys.readouterr().out
+    out = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)  # CI shows the help in colour
     assert "python -m experiment.lab" in out and "capture" in out and "analyze" in out
