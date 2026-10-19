@@ -6,7 +6,7 @@ VENV   := .venv
 BIN    := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format audit crosscheck history verify login aitest clean
+.PHONY: help setup test lint format audit crosscheck history verify login aitest experiment analyze clean
 
 help:  ## Show this list
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
@@ -51,6 +51,12 @@ login:  ## Save a login for screenshots: make login SITE=github (or aws)
 
 aitest:  ## Check the AI model set in .env (one text and one image call)
 	$(BIN)/python audit.py ai-test
+
+experiment:  ## Research experiment: the AI judges every captured case 3 times (resumes)
+	$(BIN)/python -m experiment.lab run --resume
+
+analyze:  ## Research experiment: the results tables (no AI call)
+	$(BIN)/python -m experiment.lab analyze
 
 clean:  ## Delete caches and the virtual environment (keeps evidence and logins)
 	rm -rf $(VENV) .pytest_cache .ruff_cache .coverage htmlcov build dist *.egg-info

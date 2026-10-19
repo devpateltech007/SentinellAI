@@ -241,6 +241,15 @@ def _judge(rule: dict, data: dict) -> dict:
     return result(rule, PASS if passed else FAIL, reason, data)
 
 
+def judge(rule: dict, data: dict) -> dict:
+    """Apply a code rule's check to data collected earlier (the research experiment judges
+    the API data it saved next to each screenshot). Never raises."""
+    try:
+        return _judge(rule, data)
+    except Exception as e:
+        return result(rule, NEEDS_REVIEW, f"engine error: {e}", {"error": str(e)})
+
+
 def is_screenshot_only(rule: dict) -> bool:
     """The screenshot is the rule's only evidence: no collector, no check (vision, legacy)."""
     return (

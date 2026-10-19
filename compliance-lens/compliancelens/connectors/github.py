@@ -2,8 +2,9 @@
 
 Needs GITHUB_TOKEN in .env: a fine-grained token owned by the test organization
 with read access to "Administration" and "Metadata" on the test repo and to
-"Members" on the organization. Each collector takes the rule's `params` and
-returns a dict.
+"Members" on the organization (and "Administration" on the organization for
+org_settings, used by the research experiment). Each collector takes the rule's
+`params` and returns a dict.
 """
 
 import os
@@ -18,6 +19,14 @@ MAX_PAGES = 50  # stop after 5,000 records rather than loop forever
 MAX_ATTEMPTS = 3  # tries per request when GitHub says "rate limited"
 MAX_RATE_LIMIT_WAIT_SECONDS = 60  # total wait before giving up, so a demo can't hang
 DEPENDABOT_DISABLED = "Vulnerability alerts are disabled."
+# Organization settings on the Member privileges page (GH-06, GH-07 and the research
+# experiment's other changes there).
+ORG_SETTINGS = (
+    "default_repository_permission",
+    "members_can_delete_repositories",
+    "members_can_create_private_repositories",
+    "members_can_fork_private_repositories",
+)
 
 _sleep = time.sleep  # tests replace this so they never really wait
 
@@ -201,3 +210,22 @@ def org_members_without_2fa(params: dict) -> dict:
     members = _get_all(f"{API}/orgs/{_org(params)}/members", {"filter": "2fa_disabled"})
     logins = sorted(member["login"] for member in members)
     return {"count": len(logins), "members": logins}
+
+
+def org_settings(params: dict) -> dict:
+    """GH-06 and GH-07 by API (research experiment): the base repository permission and
+    other Member privileges settings.
+
+    GitHub leaves these out (null) unless the token can read the organization's
+    Administration settings; a missing value is an error here, not a FAIL.
+    """
+    response = _get(f"{API}/orgs/{_org(params)}")
+    response.raise_for_status()
+    data = response.json()
+    settings = {name: data.get(name) for name in ORG_SETTINGS}
+    if settings["default_repository_permission"] is None:
+        raise RuntimeError(
+            "default_repository_permission not visible: the token needs read access to the"
+            " organization's Administration settings"
+        )
+    return settings

@@ -15,6 +15,7 @@ from compliancelens import evidence
 from compliancelens.connectors import aws, browser, files, github
 from compliancelens.evaluator import ai
 from compliancelens.storage import db
+from experiment import lab
 
 
 @pytest.fixture(autouse=True)
@@ -29,15 +30,18 @@ def fake_credentials(monkeypatch):
     # Tests that need a GitHub token or organization set their own fake ones.
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_ORG", raising=False)
-    # No real AI key, model or address from your shell: tests set their own.
+    # No real AI key, model or address from your shell, and no experiment setup login:
+    # tests set their own.
     for name in list(os.environ):
-        if name.startswith(("COMPLIANCELENS_AI_", "ANTHROPIC_", "OPENAI_")):
+        if name.startswith(
+            ("COMPLIANCELENS_AI_", "COMPLIANCELENS_SETUP_", "ANTHROPIC_", "OPENAI_")
+        ):
             monkeypatch.delenv(name)
 
 
 @pytest.fixture(autouse=True)
 def temp_storage(tmp_path, monkeypatch):
-    """Every test gets its own empty database, evidence, sessions and policies folders.
+    """Every test gets its own empty database, evidence, sessions, policies and experiment folders.
 
     The sessions folder matters most: with your real sessions/ a test could open
     your real GitHub or AWS pages. Tests that read the sample policies point
@@ -47,6 +51,9 @@ def temp_storage(tmp_path, monkeypatch):
     monkeypatch.setenv(db.ENV_VAR, str(tmp_path / "compliance.db"))
     monkeypatch.setenv(browser.ENV_VAR, str(tmp_path / "sessions"))
     monkeypatch.setenv(files.ENV_VAR, str(tmp_path / "policies"))
+    # The research experiment's pictures, answers and labels (never experiment/labels.csv).
+    monkeypatch.setenv(lab.DATA_ENV, str(tmp_path / "experiment"))
+    monkeypatch.setenv(lab.LABELS_ENV, str(tmp_path / "experiment" / "labels.csv"))
     return tmp_path
 
 
