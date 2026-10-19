@@ -17,16 +17,24 @@ served from this computer (`fixtures/browser/`).
 | `test_images.py` | Screenshots for the AI: the same pixels live and from a saved run, fitting to each model's limits, refusing pictures that would shrink too much |
 | `test_prompt.py` | The frozen v1 prompt and schema, escaping of documents, the strict answer parser, `ai-test`'s checks |
 | `test_aws.py` | AWS-01 to AWS-08: both verdict states, pagination, missing settings, errors, old keys and inactive users (with a fake clock) |
-| `test_github.py` | GH-01 to GH-05: each state, unclear 404s, missing token/org, pagination, rate-limit retries and giving up |
+| `test_github.py` | GH-01 to GH-05: each state, unclear 404s, missing token/org, pagination, rate-limit retries and giving up; `org_settings` (the experiment's GH-06 by API) |
 | `test_files.py` | Reading policy documents: text and PDF, every status (missing, link outside the folder, too large, not UTF-8, encrypted, damaged, scanned, partly scanned, too long), bad paths, the sample policies, and that the committed PDFs are the script's output |
 | `test_hr.py` | HR-01: matching, allowlists, terminated employees, missing or broken CSV, partial data |
 | `test_engine.py` | Every verdict path, every operator (with empty and wrong inputs), custom checks, confidence, rulebook validation, rule kinds and `ai_check` (V4) |
 | `test_evidence.py` | Run folder layout, hashing, manifest, screenshot banners and hashes, saved documents, and `verify` catching edited, deleted and extra files (PNGs and documents too), a document that isn't the one described, broken links to AI files, and bad manifests |
-| `test_browser.py` | Sites, session files (`0600`), URL placeholders and cleaning, rule card checks, and real Chromium against the fake website: capture, full page, one element, steps, masks, waiting for spinners that appear late (and noting ones that never stop), expired login, MFA and "no access" pages, timeouts, `login` save and reuse, a whole audit that verifies |
+| `test_browser.py` | Sites, session files (`0600`), URL placeholders and cleaning, rule card checks, and real Chromium against the fake website: capture, full page, one element, steps, masks, waiting for spinners that appear late (and noting ones that never stop), expired login, MFA and "no access" pages, timeouts, `login` save and reuse, a whole audit that verifies; the research experiment's picture profiles (window size, dark theme, no login, kept error pages, skipped steps, scripts) |
 | `test_storage.py` | Database schema, foreign keys, run lifecycle, history order, run names, screenshot and document columns, the AI tables' rules, upgrading schema 1 and 2 databases (same tables as a new one) and rolling back a failed upgrade |
 | `test_rules_file.py` | The real rulebook: the 19 rules (14 code, 2 vision, 3 document), 15 screenshot blocks, the cross-checks, every DOC rule reading every sample folder, valid, sensible value types, no secrets |
 | `test_audit_ai.py` | AI checks inside whole audits, with a fake model and browser: document and vision verdicts, the files saved and verified, the exact picture judged, the cache across runs, cross-checks, no key, `--no-ai`, budget, provider errors, bugs, flags that don't go together, bad AI settings |
 | `test_cli.py` | `run`, `run --rule`, `run --no-screenshots`, `history`, `verify`, `login`, `ai-test` (with a fake AI) end to end, document rules saving and verifying their files, exit codes, failures |
+| `test_lab_cases.py` | The research experiment's `cases.yaml` (55 main + 10 pilot cases, 4 PASS and 4 FAIL per rule) and its five rules: every bad case refused, AWS-05 judged on its own bucket |
+| `test_lab_world.py` | The experiment's setup with fake AWS (moto) and recorded GitHub replies: every bad setup refused, password policy, test users with MFA (TOTP codes), test buckets, main's protection rule, organization settings, a whole batch put back, only marked things removed, the audit's token never used for changes |
+| `test_lab_capture.py` | Capturing cases with a fake setup, browser and API: waiting for the state, discarding a case when the API changes during the picture, saved files and hashes, account IDs hidden, settings put back even after a crash |
+| `test_lab_labels.py` | `labels.csv`, the labelling packs (nothing in a pack says which case it is), importing them, Cohen's kappa, final labels |
+| `test_lab_run.py` | The AI runs with a fake model: labels first, every case × repeat, resume, retrying errors, a new served model or the $ limit stops the run, no cache, no fallbacks |
+| `test_lab_analyze.py` | The analysis on hand-made answers with known results: every rate, Wilson intervals, misread vs misjudged, consistency, the code's accuracy, the report |
+| `test_lab_cli.py` | `python -m experiment.lab` end to end with fakes for every account |
+| `lab_helpers.py` | Saved experiment cases for the tests above |
 | `fixtures/` | Recorded API replies and the fake website |
 
 **What is mocked instead of done live:** root MFA on (AWS-03), keys older than 90 days

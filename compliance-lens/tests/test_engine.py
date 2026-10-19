@@ -565,3 +565,22 @@ def test_result_keeps_a_given_confidence():
     given = engine.result({"id": "X"}, engine.PASS, "ok", {}, engine.AI_TEXT, engine.MEDIUM)
     assert given["confidence"] == engine.MEDIUM
     assert engine.result({"id": "X"}, engine.PASS, "ok", {})["confidence"] == engine.HIGH
+
+
+# --- judge: saved data (research experiment) ------------------------------------------
+
+
+def test_judge_applies_the_check_to_saved_data():
+    rule = {"id": "R", "title": "t", "check": {"field": "n", "op": ">=", "value": 12}}
+    assert engine.judge(rule, {"n": 14})["verdict"] == engine.PASS
+    assert engine.judge(rule, {"n": 8})["verdict"] == engine.FAIL
+    assert engine.judge(rule, {})["verdict"] == engine.NEEDS_REVIEW
+
+
+def test_judge_never_raises(monkeypatch):
+    def broken(rule, data):
+        raise KeyError("boom")
+
+    monkeypatch.setattr(engine, "_judge", broken)
+    r = engine.judge({"id": "R"}, {"n": 1})
+    assert r["verdict"] == engine.NEEDS_REVIEW and "engine error" in r["reason"]

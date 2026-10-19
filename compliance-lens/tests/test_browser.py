@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageStat
 
 from compliancelens import evidence, runner
 from compliancelens.connectors import browser
@@ -42,6 +42,7 @@ PAGES = {
     "/confirm": ("confirm.html", True),
     "/noaccess": ("noaccess.html", True),
     "/signout": ("signout.html", True),
+    "/theme": ("theme.html", True),
 }
 COOKIE = "session=ok"
 
@@ -942,3 +943,94 @@ def test_audit_saves_stamped_screenshots_that_verify(logged_in, server, tmp_path
     png.write_bytes(png.read_bytes() + b"x")
     _, report = runner.verify(summary.name)
     assert not report.ok
+
+
+# --- research profiles (the experiment only; audits always use AUDIT) -----------------
+
+
+def research(*rules, **profile):
+    with browser.Screenshotter(browser.Profile(name="research", **profile)) as shooter:
+        return [shooter.capture(r) for r in rules]
+
+
+def mean_brightness(png):
+    with Image.open(io.BytesIO(png)) as image:
+        return ImageStat.Stat(image.convert("L")).mean[0]
+
+
+def test_audits_use_the_audit_profile():
+    assert browser.Screenshotter().profile is browser.AUDIT
+    assert browser.AUDIT.context_options() == {
+        **browser.CONTEXT_OPTIONS,
+        "viewport": {"width": 1440, "height": 900},
+    }
+
+
+def test_window_size_and_dark_theme(logged_in, server):
+    [light] = capture(rule("/theme", server))
+    [dark] = research(rule("/theme", server), viewport=(800, 600), color_scheme="dark")
+    assert dark.status == browser.CAPTURED and dark.profile == "research"
+    assert png_size(dark.png) == (800, 600)
+    assert mean_brightness(light.png) > 200 > 50 > mean_brightness(dark.png)
+
+
+def test_a_browser_without_the_login(chromium, site, server):
+    r = rule("/evidence", server)
+    [refused] = research(r, logged_in=False)
+    assert refused.status == browser.SESSION_EXPIRED
+    [kept] = research(r, logged_in=False, keep_problem_pages=True)
+    assert kept.status == browser.CAPTURED and kept.png
+    assert kept.reason.startswith("captured anyway (research profile): Test site login expired")
+    assert kept.final_url == f"{server}/login"
+
+
+def test_missing_chromium_without_the_login(monkeypatch, site, server):
+    def no_browser(self):
+        raise browser.BrowserUnavailable("Chromium is not installed")
+
+    monkeypatch.setattr(browser.Screenshotter, "_start", no_browser)
+    [result] = research(rule("/evidence", server), logged_in=False)
+    assert result.status == browser.CAPTURE_ERROR
+
+
+def test_evidence_that_never_appears_can_be_kept(logged_in, server):
+    r = rule("/evidence", server, wait_for={"text": "Not on the page"}, timeout_ms=1000)
+    [result] = research(r, keep_problem_pages=True)
+    assert result.status == browser.CAPTURED
+    assert "did not appear within 1 s" in result.reason
+
+
+def test_a_page_that_signs_out_can_be_kept(logged_in, server):
+    r = rule("/signout", server, wait_for={"text": "Users"}, timeout_ms=1500)
+    [result] = research(r, keep_problem_pages=True)
+    assert result.status == browser.CAPTURED
+    assert "login" in result.reason
+
+
+def test_steps_can_be_skipped(logged_in, server):
+    steps = [{"click": {"role": "link", "name": "Details"}}]
+    [result] = research(rule("/evidence", server, steps=steps), run_steps=False)
+    assert result.final_url == f"{server}/evidence"
+
+
+def test_full_page_can_be_turned_on_or_off(logged_in, server):
+    [tall] = research(rule("/tall", server), full_page=True)
+    assert png_size(tall.png)[1] > 3000 and tall.full_page
+    target = {"capture": {"target": {"css": "#setting"}}}
+    [window] = research(rule("/evidence", server, **target), full_page=False)
+    assert png_size(window.png) == (1440, 900) and not window.full_page
+
+
+def test_a_script_runs_before_the_picture(logged_in, server):
+    cover = (
+        "const d = document.createElement('div'); d.style.cssText ="
+        " 'position:fixed;inset:0;background:#000'; document.body.appendChild(d);"
+    )
+    [result] = research(rule("/evidence", server), script=cover)
+    assert mean_brightness(result.png) < 5
+
+
+def test_spinners_can_be_ignored(logged_in, busy_site, server):
+    [result] = research(rule("/stuck", server, wait_for={"text": "Users"}), settle=False)
+    assert result.status == browser.CAPTURED and result.settled is None
+    assert result.reason == "captured"

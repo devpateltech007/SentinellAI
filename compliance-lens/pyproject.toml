@@ -41,10 +41,11 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+pythonpath = ["."]  # the research experiment (experiment/lab) is not part of the package
 
 # ------------------------------------------------------------ coverage ----
 [tool.coverage.run]
-source = ["compliancelens"]
+source = ["compliancelens", "experiment"]
 # Playwright's sync API switches greenlets; without this, lines after a page call look unrun.
 concurrency = ["thread", "greenlet"]
 

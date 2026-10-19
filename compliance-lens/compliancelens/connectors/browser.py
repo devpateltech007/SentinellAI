@@ -15,6 +15,8 @@ Safety rules:
   gitignored, and their contents are never printed, logged or copied anywhere.
 - Every problem (no login, expired login, MFA prompt, no access, a changed page)
   becomes a screenshot status with a reason. Nothing here stops an audit.
+- Audits always take pictures the same way (AUDIT). The research experiment may
+  use other profiles (dark theme, no login, a covered setting); rule cards can't.
 """
 
 import contextlib
@@ -76,6 +78,35 @@ CONTEXT_OPTIONS = {
     "accept_downloads": False,
 }
 SCREENSHOT_OPTIONS = {"type": "png", "animations": "disabled", "caret": "hide"}
+SCRIPT_WAIT_MS = 500  # after a profile's script, let the page redraw
+
+
+@dataclass(frozen=True)
+class Profile:
+    """How pictures are taken. Audits always use AUDIT. Only the research experiment
+    (experiment/) builds other profiles, to make harder or deliberately unusable
+    pictures; a rule card can't name one."""
+
+    name: str = "audit"
+    viewport: tuple[int, int] = (1440, 900)
+    color_scheme: str = "light"
+    logged_in: bool = True  # False: a browser without the saved login (shows sign-in)
+    run_steps: bool = True  # False: skip the rule's steps (e.g. no scroll to the setting)
+    settle: bool = True  # False: don't wait for spinners (a page still loading)
+    full_page: bool | None = None  # None: as the rule's capture block says
+    script: str | None = None  # JavaScript run just before the picture (cover, zoom, a menu)
+    keep_problem_pages: bool = False  # picture sign-in and error pages instead of refusing them
+
+    def context_options(self) -> dict:
+        width, height = self.viewport
+        return {
+            **CONTEXT_OPTIONS,
+            "viewport": {"width": width, "height": height},
+            "color_scheme": self.color_scheme,
+        }
+
+
+AUDIT = Profile()
 
 
 class UnknownSite(ValueError):
@@ -569,6 +600,7 @@ class Capture:
     captured_at: str | None = None
     full_page: bool = False
     settled: bool | None = None  # sites with busy_css: did the spinners go away in time?
+    profile: str = AUDIT.name
 
     @property
     def ok(self) -> bool:
@@ -592,11 +624,13 @@ class Screenshotter:
     Chromium starts only for the first rule that needs it, and only if that site
     has a saved login. Each site gets one browser context (its saved login) and
     each rule a fresh page. Call close() when done, or use it in a `with` block.
+    `profile` is AUDIT except in the research experiment.
     """
 
     _BROWSER = "*"  # key in _failures for "Chromium itself can't start"
 
-    def __init__(self):
+    def __init__(self, profile: Profile = AUDIT):
+        self.profile = profile
         self._playwright = None
         self._browser = None
         self._contexts = {}  # site name -> browser context
@@ -661,6 +695,13 @@ class Screenshotter:
         """(the site's logged-in browser context, None), or (None, the failed Capture)."""
         if site.name in self._contexts:
             return self._contexts[site.name], None
+        if not self.profile.logged_in:  # research: what someone without the login sees
+            try:
+                browser = self._start()
+            except BrowserUnavailable as e:
+                return self._fail(self._BROWSER, Capture(CAPTURE_ERROR, str(e)))
+            self._contexts[site.name] = _new_context(browser, **self.profile.context_options())
+            return self._contexts[site.name], None
         path = session_path(site.name)
         hint = f"run: {login_hint(site.name)}"
         if not path.is_file():
@@ -677,7 +718,7 @@ class Screenshotter:
         except BrowserUnavailable as e:
             return self._fail(self._BROWSER, Capture(CAPTURE_ERROR, str(e)))
         try:
-            context = _new_context(browser, storage_state=state, **CONTEXT_OPTIONS)
+            context = _new_context(browser, storage_state=state, **self.profile.context_options())
         except Exception:
             damaged = f"the saved {site.label} login can't be used ({hint})"
             return self._fail(site.name, Capture(SESSION_MISSING, damaged))
@@ -717,33 +758,52 @@ class Screenshotter:
             return failed(NAVIGATION_ERROR, f"the page did not load within {timeout // 1000} s")
         except PlaywrightError as e:
             return failed(NAVIGATION_ERROR, f"the page did not load: {_short(e)}")
-        problem = _page_problem(page, site, response)
-        if problem:
+        # A research profile may keep a page that is not evidence (sign-in, error, the
+        # setting never appeared): it is pictured anyway, with the problem noted.
+        kept = []
+
+        def refused(problem: tuple[str, str]) -> Capture | None:
+            if self.profile.keep_problem_pages:
+                kept.append(problem[1])
+                return None
             return failed(*problem)
 
-        waited_for = describe(shot["wait_for"])
-        try:
-            _visible(page, shot["wait_for"]).wait_for(state="visible", timeout=timeout)
-            for step in shot.get("steps") or []:
-                ((action, spec),) = step.items()
-                waited_for = describe(spec)
-                target = _visible(page, spec)
-                if action == "click":
-                    target.click(timeout=timeout)
-                    page.wait_for_load_state("domcontentloaded", timeout=timeout)
-                elif action == "scroll_to":
-                    target.scroll_into_view_if_needed(timeout=timeout)
-                else:
-                    target.wait_for(state="visible", timeout=timeout)
-        except PlaywrightTimeout:
-            return failed(*_timeout_problem(page, site, waited_for, timeout))
-        problem = _page_problem(page, site)  # still logged in and on the site after the steps
-        if problem:
-            return failed(*problem)
-        settled = _settle(page, site)
+        problem = _page_problem(page, site, response)
+        if problem and (refusal := refused(problem)):
+            return refusal
+
+        if not kept:
+            waited_for = describe(shot["wait_for"])
+            steps = (shot.get("steps") or []) if self.profile.run_steps else []
+            try:
+                _visible(page, shot["wait_for"]).wait_for(state="visible", timeout=timeout)
+                for step in steps:
+                    ((action, spec),) = step.items()
+                    waited_for = describe(spec)
+                    target = _visible(page, spec)
+                    if action == "click":
+                        target.click(timeout=timeout)
+                        page.wait_for_load_state("domcontentloaded", timeout=timeout)
+                    elif action == "scroll_to":
+                        target.scroll_into_view_if_needed(timeout=timeout)
+                    else:
+                        target.wait_for(state="visible", timeout=timeout)
+            except PlaywrightTimeout:
+                if refusal := refused(_timeout_problem(page, site, waited_for, timeout)):
+                    return refusal
+        if not kept:  # still logged in and on the site after the steps
+            problem = _page_problem(page, site)
+            if problem and (refusal := refused(problem)):
+                return refusal
+        settled = _settle(page, site) if self.profile.settle else None
+        if self.profile.script:
+            page.evaluate(self.profile.script)
+            page.wait_for_timeout(SCRIPT_WAIT_MS)
 
         capture = shot.get("capture") or {}
         full_page = bool(capture.get("full_page"))
+        if self.profile.full_page is not None:
+            full_page, capture = self.profile.full_page, {}
         options = {
             **SCREENSHOT_OPTIONS,
             "timeout": timeout,
@@ -754,7 +814,9 @@ class Screenshotter:
         else:
             png = page.screenshot(full_page=full_page, **options)
         reason = "captured"
-        if settled is False:
+        if kept:
+            reason = f"captured anyway ({self.profile.name} profile): {'; '.join(kept)}"
+        elif settled is False:
             reason = f"captured, but the page was still loading after {SETTLE_MS // 1000} s"
         return Capture(
             CAPTURED,
@@ -766,6 +828,7 @@ class Screenshotter:
             captured_at=_now().isoformat(),
             full_page=full_page,
             settled=settled,
+            profile=self.profile.name,
         )
 
 

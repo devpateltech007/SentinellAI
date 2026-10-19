@@ -375,3 +375,40 @@ def test_permission_403_is_not_retried(token, no_sleep):
         github.branch_protection(PARAMS)
     assert no_sleep == []
     assert len(responses.calls) == 1
+
+
+# --- org_settings (research experiment: GH-06 by API) ---------------------------------
+
+ORG_URL = "https://api.github.com/orgs/test-org"
+BASE_CHECK = {"field": "default_repository_permission", "op": "in", "value": ["read", "none"]}
+
+
+@responses.activate
+def test_org_settings(token, org):
+    responses.get(
+        ORG_URL,
+        json={
+            "login": "test-org",
+            "default_repository_permission": "write",
+            "members_can_delete_repositories": False,
+            "members_can_create_private_repositories": True,
+            "members_can_fork_private_repositories": False,
+            "plan": {"name": "free"},
+        },
+    )
+    assert github.org_settings({}) == {
+        "default_repository_permission": "write",
+        "members_can_delete_repositories": False,
+        "members_can_create_private_repositories": True,
+        "members_can_fork_private_repositories": False,
+    }
+    assert run("github.org_settings", BASE_CHECK, {})["verdict"] == "FAIL"
+
+
+@responses.activate
+def test_org_settings_need_administration_read(token, org):
+    # Without the organization's Administration read access GitHub leaves the value out.
+    responses.get(ORG_URL, json={"login": "test-org", "default_repository_permission": None})
+    with pytest.raises(RuntimeError, match="Administration"):
+        github.org_settings({})
+    assert run("github.org_settings", BASE_CHECK, {})["verdict"] == "NEEDS REVIEW"

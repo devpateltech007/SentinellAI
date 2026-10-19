@@ -101,8 +101,10 @@ below is done by **you**, signed in as an admin (AWS root/admin, GitHub owner).
 10. **Fine-grained token owned by the organization.** Settings → Developer settings →
     Fine-grained tokens → Resource owner: **your organization** → only the test repo.
     Repository permissions: **Administration: Read-only**, **Metadata: Read-only**.
-    Organization permissions: **Members: Read-only**. The organization may have to approve
-    the token. A token owned by your personal account can't read the organization.
+    Organization permissions: **Members: Read-only** (and **Administration: Read-only** for
+    the research experiment, which reads the base permission by API). The organization may
+    have to approve the token. A token owned by your personal account can't read the
+    organization.
 11. **Fill in `.env`:** `GITHUB_TOKEN=...` and `GITHUB_ORG=<your-org>`.
 12. **Point the GitHub rules at the repo.** In `rules/starter_rules.yaml`, set `repo:` in
     GH-01 to GH-04 to `<your-org>/compliancelens-test`.
@@ -283,7 +285,7 @@ empty placeholders until that version.
 | `sessions/` | V3 | Saved browser logins (**gitignored**, private files) |
 | `reports/` | V6 *later* | Generated reports (**gitignored**) |
 | `policies/` | V4 | Made-up sample policy documents for the DOC rules (compliant, noncompliant, ...) |
-| `experiment/` | V4–V6 *later* | AI vs code accuracy research |
+| `experiment/` | V4 Stage 5 | AI vs code accuracy research: cases, setup, labels, runs, analysis ([`experiment/README.md`](experiment/README.md)) |
 | `scripts/` | V1 | Break-and-fix steps for each rule |
 | `docs/` | V6–V7 *later* | Write-ups, slides, sample report |
 | `pyproject.toml` | V1 | Package info + ruff/pytest/coverage settings |
