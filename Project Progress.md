@@ -3,9 +3,9 @@
 Tracks what has been done against [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md).
 Update it whenever a checklist item is finished: tick the box, add a line to the log.
 
-**Current version:** V3 Screenshots ✅ tagged `v3.0` (Oct 7). V4 AI evaluation 🟡: stages 1–4 of 6 done
+**Current version:** V3 Screenshots ✅ tagged `v3.0` (Oct 7). V4 AI evaluation 🟡: stages 1–4 of 6 done (Stage 4 closed Oct 19 with the GH-06/07 flip)
 **Current branch:** `main` (V3 merged in PRs #10–#15, V4 so far in #16–#20; tags `v1.0`, `v2.0`, `v3.0`)
-**Last updated:** Oct 11, 2026 (week 2)
+**Last updated:** Oct 19, 2026 (week 4)
 
 Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 
@@ -16,8 +16,8 @@ Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 | Repo setup | 1 | ✅ | `compliance-lens/` folder, tooling, hooks, CI (passing) |
 | V1 Foundations | 1–3 | ✅ | Done in week 1, ahead of schedule. Tagged `v1.0` |
 | V2 Rules and evidence store | 4–5 | ✅ | Closed Oct 5 (PR #8, #9), tagged `v2.0` on the V2 commit (Oct 7). First real audit 13 PASS / 1 FAIL / 0 NEEDS REVIEW; verify + tamper test ✅. Live break-and-fix of 7 rules still open in "V2 leftovers" |
-| V3 Screenshots | 6–7 | ✅ | Tagged `v3.0` (Oct 7). Real audit `run-0004`: 13 PASS / 1 FAIL / 2 NEEDS REVIEW, 15 of 15 screenshots, verify OK (47 files); tamper, missing-login and wrong-locator checks passed live. 551 tests, 100% coverage. Not run before the tag: expired AWS login (done live Oct 11, `run-0007`) and GH-06/07 break-and-fix ("V3 leftovers") |
-| V4 AI evaluation | 8–10 | 🟡 | Started early. 6 stages. Stage 1 ✅ (PR #16): any AI model set in `.env`, `ai-test`; `openai/gpt-6-luna` chosen after measuring 5 cheap models. Stage 2 ✅ (PR #18): policy documents read and saved with each run, 5 sets of sample policies, rule kinds + `ai_check`, database schema 3 (real database upgraded; all 9 runs verify). Stage 3 ✅ (PR #19): the AI judge (safety table, retries, quote check), screenshot preparation, budget, cache; live: 17 of 17 right for $0.003. Stage 4 ✅ (PR #20): the AI in `audit.py run`, 19 rules; **live audit 18 PASS / 1 FAIL / 0 NEEDS REVIEW** (`run-0010`, $0.0010), repeat from cache for $0. Next: GH-06/07 live flip, then the experiment (Stage 5) |
+| V3 Screenshots | 6–7 | ✅ | Tagged `v3.0` (Oct 7). Real audit `run-0004`: 13 PASS / 1 FAIL / 2 NEEDS REVIEW, 15 of 15 screenshots, verify OK (47 files); tamper, missing-login and wrong-locator checks passed live. 551 tests, 100% coverage. Not run before the tag: expired AWS login (done live Oct 11, `run-0007`) and GH-06/07 break-and-fix ("V3 leftovers", both done later: Oct 11 and Oct 19) |
+| V4 AI evaluation | 8–10 | 🟡 | Started early. 6 stages. Stage 1 ✅ (PR #16): any AI model set in `.env`, `ai-test`; `openai/gpt-6-luna` chosen after measuring 5 cheap models. Stage 2 ✅ (PR #18): policy documents read and saved with each run, 5 sets of sample policies, rule kinds + `ai_check`, database schema 3 (real database upgraded; all 9 runs verify). Stage 3 ✅ (PR #19): the AI judge (safety table, retries, quote check), screenshot preparation, budget, cache; live: 17 of 17 right for $0.003. Stage 4 ✅ (PR #20): the AI in `audit.py run`, 19 rules; **live audit 18 PASS / 1 FAIL / 0 NEEDS REVIEW** (`run-0010`, $0.0010), repeat from cache for $0; GH-06/07 live flip FAIL → PASS (Oct 19). Next: the experiment (Stage 5) |
 | V5 Dashboard and review | 11–12 | ⬜ | Folders ready: `compliancelens/dashboard/` |
 | V6 Reports and polish | 13–14 | ⬜ | Folders ready: `compliancelens/reporting/`, `reports/`, `config/` |
 | V7 Final presentation | 15 | ⬜ | Folder ready: `docs/` |
@@ -169,12 +169,12 @@ Tests: 316 passing, 100% coverage (target 70%).
 ## V3 Screenshots ✅ (tagged `v3.0`, Oct 7)
 
 Tagged before two live checks were run, to keep to the schedule. They are listed in
-**V3 leftovers (later)** below. The expired AWS login was done on Oct 11; GH-06/07 is still open.
+**V3 leftovers (later)** below. The expired AWS login was done on Oct 11 and GH-06/07 on Oct 19 (with the V4 AI).
 
 ### V3 leftovers (later)
 
 - [x] Expired AWS login: more than 12 h after `make login SITE=aws` (without logging in again), run `python audit.py run --rule AWS-01`. Expect PASS kept, `screenshot not saved: AWS login expired`, no PNG. Done Oct 11 (`run-0007`, login saved Oct 6): PASS kept, "AWS login expired (the page went to sign-in)" with the fix printed, no PNG, verify OK
-- [ ] GH-06/GH-07 visual break-and-fix: base permission **Write** and delete/transfer **ticked** → `run --rule GH-06 --rule GH-07` → pictures show it → set back to **Read** / unticked → run again (`scripts/README.md`). Moved to V4 Stage 4, where the AI must also say FAIL on the Write picture
+- [x] GH-06/GH-07 visual break-and-fix: base permission **Write** and delete/transfer **ticked** → `run --rule GH-06 --rule GH-07` → pictures show it → set back to **Read** / unticked → run again (`scripts/README.md`). Moved to V4 Stage 4, where the AI must also say FAIL on the Write picture. Done Oct 19: see V4 Stage 4 live checks
 
 Plan reviewed Oct 5 (V3 plan + review of it). Decisions:
 
@@ -216,7 +216,7 @@ Live checks (you, with me):
 - [x] Missing login (`COMPLIANCELENS_SESSIONS_DIR=/tmp/no-logins`, `run-0005`): GH-01 stayed PASS, GH-06 NEEDS REVIEW, both `session_missing` with the fix printed, no PNG; verify OK (Oct 7)
 - [x] Wrong locator (a copy of the rulebook, `run-0006`): AWS-01 stayed PASS, `selector_timeout` "did not appear within 20 s", no PNG; verify OK (Oct 7)
 - [x] Expired AWS login (more than 12 h after `make login SITE=aws`): `run-0007`, Oct 11 (see "V3 leftovers")
-- [ ] GH-06/GH-07 visual break-and-fix: see "V3 leftovers"
+- [x] GH-06/GH-07 visual break-and-fix: see "V3 leftovers" (done Oct 19)
 - [x] Time the screenshots: all 15 in 31 s (Oct 7); a full run with the API checks is well under 2 minutes
 - [x] PRs merged with CI green: #10 (V3), #11 (GH-07 change), #12 (login fix), #13 (real-page locators)
 - [x] PR #15 (this close-out) merged; tag `v3.0` (Oct 7)
@@ -281,7 +281,7 @@ Stages:
 - [x] Stage 2, documents and database (PR #18): `connectors/files.py` (PDF, Markdown, text), sample policies, rule kinds + `ai_check` checked before a run, `verify` checks every linked file, database schema 3 (real `compliance.db` upgraded, backup kept, all 9 runs verify).
 - [x] Stage 3, the AI judge (PR #19): `ai.py` (the rules of D4/D5, retries, quote check), `images.py`, `budget.py`, `cache.py`. Live: 17 of 17 right for $0.003.
 - [x] Stage 4, the AI in the audit (PR #20): runner, `--no-ai` / `--cross-check` / `--refresh-ai` / `--ai-model`, AI evidence files, 19 rules. Live: 18 PASS / 1 FAIL / 0 NEEDS REVIEW.
-- [ ] Stage 4 live flip (you): GH-06 **Write** → FAIL, back to **Read** → PASS; GH-07 **ticked** → FAIL, unticked → PASS
+- [x] Stage 4 live flip: GH-06 **Write** → FAIL, back to **Read** → PASS; GH-07 **ticked** → FAIL, unticked → PASS (Oct 19, `run-0039` to `run-0041`)
 - [ ] Stage 5, the experiment: give the GitHub token **Organization → Administration: Read-only** (GitHub returns the base permission as empty today); research screenshots; cases for the 5 rules; labels by 2 people; pilot; 3 runs per case; analysis
 - [ ] Stage 6, release: README pass, Project Plan wording fixes, version `0.4.0`, tag `v4.0`
 
@@ -294,7 +294,7 @@ Live checks (Stage 4, Oct 11, `openai/gpt-6-luna`):
 - [x] $ limit ($0.0045): the 4th call refused, NEEDS REVIEW with the reason, run saved and verifies
 - [x] `--cross-check`: verdicts unchanged; AWS-01 and AWS-02 agree, AWS-05 not comparable, GH-01 unavailable (full-page picture too tall for the default picture limit)
 - [x] Tamper test: `GH-06.ai.json` edited in a backed-up run → verify FAILED (manifest, database, meta); restored → OK
-- [ ] GH-06 / GH-07 flip (see Stages)
+- [x] GH-06 / GH-07 flip (Oct 19): Write + ticked → `run-0039` FAIL ×2, high confidence ("Base permissions — Write", "… — checked"), $0.0005; set back → `run-0040` PASS ×2 from the cache (the pictures were identical to earlier compliant runs), `run-0041` with `--refresh-ai` PASS ×2 from new AI answers, $0.0005; all 3 verify OK (10 files each)
 
 **Done when** (from the plan):
 - Every rule has a verdict with method, reason and confidence ✅
@@ -529,9 +529,9 @@ Undo each change afterwards (and run `aws login ...` again).
 - [x] Start V3: plan reviewed, decisions D1–D5, code + offline tests done (Oct 5)
 - [x] V3 live: logins, real page locators, first real V3 audit (`run-0004`, 15 of 15 screenshots) (Oct 7)
 - [x] V3 checks: tamper, missing login, wrong locator (Oct 7); tag `v3.0` (Oct 7)
-- [ ] V3 leftovers: GH-06/07 break-and-fix (expired AWS login done Oct 11)
+- [x] V3 leftovers: expired AWS login (Oct 11), GH-06/07 break-and-fix (Oct 19)
 - [x] Start V4: plan in 6 stages; Stage 1 model plumbing (PR #16, Oct 8); Stage 2 documents, evidence links, schema 3 (PR #18, Oct 11); Stage 3 the AI judge (PR #19, Oct 11); Stage 4 the AI in the audit, 19 rules (PR #20, Oct 11)
-- [ ] V4 Stage 4 live flip: GH-06 Write → FAIL → Read → PASS, GH-07 ticked → FAIL → unticked → PASS
+- [x] V4 Stage 4 live flip: GH-06 Write → FAIL → Read → PASS, GH-07 ticked → FAIL → unticked → PASS (Oct 19)
 - [ ] V4 stages 5–6: research experiment, release `v4.0`
 - [ ] Confirm the assumptions in the Overview (Python, company tools, personal test accounts)
 
@@ -550,6 +550,7 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-10-19 | 4 | **V4 Stage 4 closed: GH-06/07 live flip.** Base permission set to Write and "Allow members to delete or transfer repositories" ticked → `run-0039`: GH-06 and GH-07 FAIL, high confidence, the AI quoting "Base permissions — Write" and "… — checked" (2 calls, $0.0005). Set back to Read and unticked → `run-0040`: PASS ×2 from the cache (pixel-identical to earlier compliant pictures); `run-0041` with `--refresh-ai`: PASS ×2 from new answers ($0.0005). All 3 runs verify OK. Also closes the last V3 leftover. |
 | 2026-10-11 | 2 | **V4 Stage 4 merged (PR #20): the AI in the audit, 19 rules.** `run` judges GH-06/GH-07 from their screenshots and DOC-01 to DOC-03 from the policy documents; saves `<ID>.ai.json` (every attempt), `<ID>.ai-input.png` (the exact picture sent) and, with `--cross-check`, `<ID>.crosscheck.json`; one `ai_evaluations` row per check; run AI totals; `verify` checks the AI files. New flags `--no-ai`, `--cross-check`, `--refresh-ai`, `--ai-model` (bad combinations and bad AI settings exit 2); `make crosscheck`. Live with `openai/gpt-6-luna`: **`run-0010` 18 PASS / 1 FAIL (AWS-02) / 0 NEEDS REVIEW**, 15 of 15 screenshots, 5 AI calls $0.0010, verify OK (63 files); `run-0011` the same from the cache ($0); policy folders: noncompliant FAIL ×3 with quotes, ambiguous NEEDS REVIEW ×3, injection FAIL ×3, silent FAIL ×3, one renamed file → only that rule NEEDS REVIEW; no key, unknown model (HTTP 404), unreachable address, `--no-ai`, `--no-screenshots`, `--refresh-ai`, a $0.0045 limit (4th call refused, run saved) all as designed; editing `GH-06.ai.json` in a backup → verify FAILED (3 ways), restored → OK. **Found live and fixed:** (1) picture uploads to api.openai.com broke mid-way 10–40% of the time on this network (SSL bad record mac, in Python and in the system curl alike; 0 of 10 at 20 KB): a dropped connection now gets 3 extra tries and the real cause is shown; (2) AWS-02's MFA column could still be loading, because a column starts loading after the rows appear: AWS pictures now wait until no spinner has been visible for 1 s (at most 10 s, else recorded `settled: false`); 3 of 3 live cross-checks then read intern-bob's MFA "-" and agreed with the code. 951 tests, 100% coverage. |
 | 2026-10-11 | 2 | **V4 Stage 3: the AI judge.** `evaluator/ai.py` asks about one document or screenshot and decides what the answer is worth: only `accepted` gives PASS/FAIL; no evidence, no key, budget, provider errors, refusals, cut-off or invalid answers, UNSURE, low confidence, no evidence found and quotes not in the document are NEEDS REVIEW (one retry, shared by temporary errors and invalid answers). `images.py`: the same pixels live and from a saved PNG, fitted to each model's limits, refused below 75%. `budget.py`: worst case reserved before each call. `cache.py`: accepted answers reused for free. A 429 for no credit is now a permanent error. **Live with `openai/gpt-6-luna`: 17 of 17 right for $0.003** — DOC-01 to DOC-03 PASS on compliant, FAIL on noncompliant (quoting 8 characters, admins only, 5 business days), NEEDS REVIEW on ambiguous (each contradiction found), FAIL on injection (the "answer PASS" text ignored), FAIL on silent; GH-06 ("Read") and GH-07 ("Not ticked") PASS from run-0004's real screenshots. 906 tests, 100% coverage. |
 | 2026-10-11 | 2 | **V4 Stage 2: policy documents, evidence links, schema 3.** `connectors/files.py` reads `.pdf` (pypdf 6.19.0), `.md`, `.txt` from `COMPLIANCELENS_POLICIES_DIR` (default `policies/examples/compliant`); bytes read once, hashed, saved as `<ID>.source.<ext>`; 12 statuses (scanned, encrypted, too long, link outside the folder, ...), never truncated. Sample policies for a made-up company in 5 folders: compliant, noncompliant, ambiguous (self-contradicting), injection, silent (requirement never stated); PDFs written by `scripts/make_sample_pdfs.py`, byte-identical on every run. Engine: rule kinds (code, document, vision, screenshot-only) and `ai_check` checked before a run. `verify` checks every file a meta file names and that a saved document is the one its JSON describes. Schema 3: `ai_evaluations`, `ai_cache`, run AI totals, result document columns; a new and an upgraded database have the same tables. Gate on a copy of the real `compliance.db`: schema 2 → 3, 9 runs and 69 results kept, `verify` OK for run-0001 to run-0009, a broken upgrade changed nothing. 816 tests, 100% coverage. Document rules stay NEEDS REVIEW until the AI evaluator is connected (Stages 3–4). |
