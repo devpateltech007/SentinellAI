@@ -212,6 +212,14 @@ def test_everything_can_be_overridden():
     assert s.cost(1_000_000, 1_000_000) == 7.5
     assert s.price_source.startswith("COMPLIANCELENS_AI_PRICE")
     assert not any("price" in w for w in s.warnings)
+    assert s.warnings == ()  # limits set by hand: nothing is guessed, nothing to warn about
+
+
+@pytest.mark.parametrize("limit", [{"IMAGE_MAX_EDGE": "2600"}, {"IMAGE_MAX_PIXELS": "4000000"}])
+def test_image_limits_set_by_hand_need_no_warning(limit):
+    s = resolve(MODEL="openai/gpt-6-luna", API_KEY=KEY, **limit)
+    assert not any("image limits" in w for w in s.warnings)
+    assert any("price" in w for w in s.warnings)  # the price is still unknown
 
 
 def test_temperature_is_refused_for_models_that_reject_it():

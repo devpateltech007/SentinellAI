@@ -306,7 +306,7 @@ class Evaluator:
             why = missing or "no screenshot was taken"
             return self._finish(outcome, EVIDENCE_MISSING, f"no screenshot to judge: {why}")
         if not self.enabled:
-            return self._finish(outcome, DISABLED, "AI checks are turned off (--no-ai)")
+            return self._finish(outcome, DISABLED, "the AI was turned off for this audit")
         try:
             prepared = images.prepare(page, self.settings.image)
         except images.Unusable as e:
@@ -359,7 +359,7 @@ class Evaluator:
 
     def _ask(self, rule: dict, outcome: AIOutcome, parts: tuple, document=None) -> AIOutcome:
         if not self.enabled:
-            return self._finish(outcome, DISABLED, "AI checks are turned off (--no-ai)")
+            return self._finish(outcome, DISABLED, "the AI was turned off for this audit")
         fallbacks = self.fallbacks and self.settings.fallbacks
         outcome.cache_key = cache_key(rule, outcome.evidence, self.settings, fallbacks)
         if self.cache is not None and self.read_cache:

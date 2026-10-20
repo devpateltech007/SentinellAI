@@ -352,7 +352,7 @@ def resolve(env=None, model: str | None = None) -> AISettings:
             f"the price of {name} is unknown, so the $ limit can't be checked:"
             f" set {PREFIX}PRICE_INPUT and {PREFIX}PRICE_OUTPUT ($ per million tokens)"
         )
-    if not known:
+    if not known and max_edge is None and max_pixels is None:  # set by hand: no guessing
         warnings.append(
             f"{provider}/{name} is not in the built-in list: using cautious image limits"
             f" ({image['max_edge']} px); set {PREFIX}IMAGE_MAX_EDGE if it reads larger images"

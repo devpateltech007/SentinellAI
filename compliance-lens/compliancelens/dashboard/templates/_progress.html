@@ -19,7 +19,7 @@
   </ul>
   {% endif %}
   {% if job.error %}<p class="notice bad" role="alert">{{ job.error }}</p>{% endif %}
-  {% for warning in job.warnings %}<p class="notice">{{ warning }}</p>{% endfor %}
+  {% for warning in job.warnings %}<p class="hint">Note: {{ warning }}</p>{% endfor %}
   {% if job.skipped %}<p>Turned off (not run): {{ job.skipped|join(", ") }}.</p>{% endif %}
   {% if job.state == "finished" %}
   <p><a class="button" href="/runs/{{ job.run_id }}">See the results of {{ job.run_id|run_name }}</a></p>

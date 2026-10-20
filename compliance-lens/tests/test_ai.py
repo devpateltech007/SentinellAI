@@ -169,7 +169,7 @@ def test_settings_are_needed_unless_the_ai_is_off():
 
 def test_ai_turned_off():
     outcome, provider = judge_document(enabled=False)
-    assert (outcome.status, outcome.reason) == (ai.DISABLED, "AI checks are turned off (--no-ai)")
+    assert (outcome.status, outcome.reason) == (ai.DISABLED, "the AI was turned off for this audit")
     assert provider.requests == []
 
 

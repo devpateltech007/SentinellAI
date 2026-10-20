@@ -708,3 +708,27 @@ def test_formatting():
     assert dashboard.verdict_class("FAIL") == "fail" and dashboard.verdict_class(None) == "none"
     assert dashboard.evidence_file(None) is None
     assert dashboard.evidence_file("\0bad") is None
+
+
+def test_notes_and_comparisons_stay_calm(settings, rules):
+    """From the live walkthrough: a model note is a quiet hint, and live pages always
+    differ pixel by pixel, so the comparison doesn't call that out."""
+
+    def finished(rules_file, options, on_event):
+        return types.SimpleNamespace(
+            run_id=1, warnings=["the model is not in the list"], skipped=[]
+        )
+
+    manager = jobs.JobManager(settings.rules_file, run=finished)
+    with TestClient(dashboard.create_app(settings, manager), base_url="http://127.0.0.1") as c:
+        sign_in(c)
+        post(c, "/run", {}, "/run")
+        assert manager.wait(10)
+        progress = c.get("/run/progress").text
+        assert '<p class="hint">Note: the model is not in the list</p>' in progress
+        assert 'class="notice"' not in progress
+    rich_run()
+    again, _, _ = rich_run()
+    with TestClient(dashboard.create_app(settings), base_url="http://127.0.0.1") as c:
+        sign_in(c)
+        assert "screenshot differs" not in c.get(f"/compare?a=1&b={again}").text

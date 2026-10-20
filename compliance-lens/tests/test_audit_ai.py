@@ -382,7 +382,7 @@ def test_without_a_key_ai_rules_need_review_and_code_rules_are_unchanged(rules, 
 
 def test_no_ai_makes_no_call(rules, model):
     out = run(rules, "--no-ai")
-    assert "AI checks are turned off (--no-ai)" in out
+    assert "the AI was turned off for this audit" in out
     assert "AI: off (--no-ai); 3 AI check(s) not made: NEEDS REVIEW." in out
     assert model.requests == []
     run_row, _, evaluations = stored()
