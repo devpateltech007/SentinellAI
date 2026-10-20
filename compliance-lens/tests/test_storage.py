@@ -402,17 +402,25 @@ def structure(conn) -> dict:
         t: [tuple(row)[1:5] for row in conn.execute(f"PRAGMA table_info({t})")] for t in tables
     }
     indexes = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='index'")}
-    return {"tables": dict(sorted(shape.items())), "indexes": indexes}
+    triggers = dict(conn.execute("SELECT name, sql FROM sqlite_master WHERE type='trigger'"))
+    return {"tables": dict(sorted(shape.items())), "indexes": indexes, "triggers": triggers}
 
 
 def test_new_database_has_the_v4_tables_and_columns(conn):
-    assert db.SCHEMA_VERSION == 3
-    assert columns(conn, "runs")[-6:] == RUN_AI_COLUMNS
+    assert columns(conn, "runs")[-8:-2] == RUN_AI_COLUMNS
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"ai_evaluations", "ai_cache"} <= tables
 
 
-@pytest.mark.parametrize("make", [make_v1_database, make_v2_database])
+def make_v3_database(path):
+    """A database as V4 left it: schema 3, with the V2/V3 rows and no V5 triggers."""
+    make_v2_database(path)
+    conn = sqlite3.connect(path)
+    conn.executescript(f"BEGIN;\n{db.MIGRATIONS[2]}PRAGMA user_version = 3;\nCOMMIT;")
+    conn.close()
+
+
+@pytest.mark.parametrize("make", [make_v1_database, make_v2_database, make_v3_database])
 def test_an_upgraded_database_matches_a_new_one(conn, temp_storage, make):
     path = temp_storage / "old.db"
     make(path)
@@ -428,7 +436,7 @@ def test_v2_database_is_upgraded_and_keeps_its_history(temp_storage):
     make_v2_database(path)
     conn = db.connect(path)
     try:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == db.SCHEMA_VERSION
         [row] = db.get_results(conn, 1)
         assert (row["rule_id"], row["screenshot_sha256"]) == ("AWS-02", "e" * 64)
         assert (row["source_path"], row["source_sha256"]) == (None, None)
@@ -566,3 +574,146 @@ def test_the_ai_cache_keeps_one_answer_per_key(conn, result_id):
         conn.execute(insert, ("k2", "video", result_id))
     with pytest.raises(sqlite3.IntegrityError), conn:
         conn.execute(insert, ("k3", "document", 999))
+
+
+# --- schema 4: run selection, append-only record, WAL (V5) -------------------------
+
+RUN_SELECTION_COLUMNS = ["rule_ids", "rules_total"]
+TRIGGERS = {
+    "overrides_are_never_edited",
+    "overrides_are_never_deleted",
+    "overrides_need_a_reviewer_and_note",
+    "results_are_never_edited",
+    "results_are_never_deleted",
+    "finished_runs_are_never_edited",
+}
+
+
+def triggers(conn):
+    return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+
+
+def test_new_database_has_the_v5_columns_and_triggers(conn):
+    assert db.SCHEMA_VERSION == 4
+    assert columns(conn, "runs")[-2:] == RUN_SELECTION_COLUMNS
+    assert triggers(conn) == TRIGGERS
+
+
+def test_database_uses_wal_and_waits_for_writers(conn):
+    assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+    assert conn.execute("PRAGMA busy_timeout").fetchone()[0] == db.BUSY_TIMEOUT_SECONDS * 1000
+
+
+def test_a_reader_is_not_blocked_by_a_writer(conn):
+    run_id = start(conn)
+    conn.execute("BEGIN IMMEDIATE")  # an audit in the middle of writing
+    conn.execute("UPDATE runs SET run_dir = 'x' WHERE id = ?", (run_id,))
+    reader = db.connect()
+    try:
+        assert db.get_run(reader, run_id)["run_dir"] is None  # the last committed state
+    finally:
+        reader.close()
+        conn.rollback()
+
+
+def test_start_run_records_the_chosen_rules(conn):
+    run_id = db.start_run(
+        conn, "now", db.PARTIAL, "0.5.0", "rules.yaml", "c" * 64, ["AWS-02", "GH-01"], 19
+    )
+    run = db.get_run(conn, run_id)
+    assert (run["rule_ids"], run["rules_total"]) == ('["AWS-02", "GH-01"]', 19)
+    assert [db.get_run(conn, start(conn))[c] for c in RUN_SELECTION_COLUMNS] == [None, None]
+
+
+def test_v3_database_is_upgraded_and_keeps_its_history(temp_storage):
+    path = temp_storage / "old.db"
+    make_v3_database(path)
+    conn = db.connect(path)
+    try:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert triggers(conn) == TRIGGERS
+        run = db.get_run(conn, 1)
+        assert (run["status"], run["rule_ids"], run["rules_total"]) == ("complete", None, None)
+        [row] = db.get_results(conn, 1)
+        assert (row["rule_id"], row["verdict"]) == ("AWS-02", "FAIL")
+        assert [r["note"] for r in db.get_overrides(conn, 1)] == ["checked"]
+        with pytest.raises(sqlite3.IntegrityError, match="never edited"), conn:
+            conn.execute("UPDATE results SET verdict = 'PASS'")
+    finally:
+        conn.close()
+    backup = sqlite3.connect(temp_storage / "old-v3-backup.db")
+    assert backup.execute("PRAGMA user_version").fetchone()[0] == 3
+    backup.close()
+
+
+def test_failed_upgrade_from_v3_changes_nothing(temp_storage, monkeypatch):
+    path = temp_storage / "old.db"
+    make_v3_database(path)
+    monkeypatch.setitem(db.MIGRATIONS, 3, db.MIGRATIONS[3] + "SELECT * FROM no_such_table;\n")
+    with pytest.raises(RuntimeError, match="could not upgrade old.db from schema 3"):
+        db.connect(path)
+    conn = sqlite3.connect(path)
+    assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert "rule_ids" not in columns(conn, "runs")
+    assert triggers(conn) == set()
+    conn.close()
+
+
+@pytest.fixture
+def reviewed(conn):
+    """A finished run with one result and one review: (run ID, result ID, review ID)."""
+    run_id = start(conn)
+    result_id = db.add_result(conn, run_id, RESULT, EVIDENCE, META)
+    db.finish_run(conn, run_id, "later", "m.json", "d" * 64)
+    review_id = db.add_override(conn, result_id, "FAIL", "admin", "checked by hand", "now")
+    return run_id, result_id, review_id
+
+
+def test_add_override_and_get_overrides(conn, reviewed):
+    _, result_id, review_id = reviewed
+    second = db.add_override(conn, result_id, "PASS", "admin", "fixed since", "later")
+    assert second == review_id + 1
+    rows = db.get_overrides(conn, result_id)
+    assert [(r["id"], r["new_verdict"], r["note"]) for r in rows] == [
+        (review_id, "FAIL", "checked by hand"),
+        (second, "PASS", "fixed since"),
+    ]
+    assert db.get_overrides(conn, 999) == []
+    assert db.get_result(conn, result_id)["rule_id"] == "AWS-01"
+    assert db.get_result(conn, 999) is None
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "UPDATE overrides SET new_verdict = 'PASS'",
+        "UPDATE overrides SET note = 'rewritten'",
+        "DELETE FROM overrides",
+        "UPDATE results SET verdict = 'PASS'",
+        "UPDATE results SET sha256 = 'x'",
+        "DELETE FROM results",
+        "UPDATE runs SET pass_count = 99",
+        "UPDATE runs SET status = 'running'",
+    ],
+)
+def test_the_record_is_append_only(conn, reviewed, sql):
+    with pytest.raises(sqlite3.IntegrityError, match="append-only|never"), conn:
+        conn.execute(sql)
+    assert db.get_overrides(conn, reviewed[1])[0]["note"] == "checked by hand"
+    assert db.get_results(conn, reviewed[0])[0]["verdict"] == "PASS"
+
+
+@pytest.mark.parametrize(("reviewer", "note"), [("admin", ""), ("admin", "  \n"), (" ", "ok")])
+def test_a_review_needs_a_reviewer_and_a_note(conn, reviewed, reviewer, note):
+    with pytest.raises(sqlite3.IntegrityError, match="needs a reviewer and a note"):
+        db.add_override(conn, reviewed[1], "PASS", reviewer, note, "now")
+    assert len(db.get_overrides(conn, reviewed[1])) == 1
+
+
+def test_a_running_run_can_still_be_updated(conn):
+    run_id = start(conn)
+    db.set_run_dir(conn, run_id, "2026-10-29/run-0001")
+    db.fail_run(conn, run_id, "later", "disk full")
+    assert db.get_run(conn, run_id)["status"] == db.FAILED
+    with pytest.raises(sqlite3.IntegrityError, match="finished run"):
+        db.fail_run(conn, run_id, "even later", "again")

@@ -9,7 +9,7 @@ import pytest
 from lab_helpers import captured
 from typer.testing import CliRunner
 
-from compliancelens import engine
+from compliancelens import engine, locking
 from compliancelens.connectors import browser
 from compliancelens.evaluator import providers
 from compliancelens.evaluator.providers import base
@@ -405,3 +405,17 @@ def test_main_shows_the_commands(monkeypatch, capsys):
     assert e.value.code == 0
     out = re.sub(r"\x1b\[[0-9;]*m", "", capsys.readouterr().out)  # CI shows the help in colour
     assert "python -m experiment.lab" in out and "capture" in out and "analyze" in out
+
+
+def test_capture_and_restore_while_an_audit_runs(monkeypatch, no_sleep):
+    monkeypatch.setattr(cli, "_setups", lambda rule_ids, need_aws=False: FakeSetup())
+    monkeypatch.setattr(
+        cli.capture,
+        "capture_batch",
+        lambda *a, **k: (_ for _ in ()).throw(locking.Busy({"purpose": "audit", "run_id": 4})),
+    )
+    out = lab("capture", "-c", "gh06-read", "--yes", code=1)
+    assert "Nothing was changed: an audit (run-0004) is already running" in out
+    with locking.AuditLock():
+        out = lab("restore", "--yes", code=1)
+    assert "Nothing was changed: an audit (pid " in out

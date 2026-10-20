@@ -6,6 +6,9 @@ the way the audit does (or with the case's research profile), read the API again
 and keep the case only if nothing changed in between. At the end of the batch,
 everything is put back, even if a case went wrong.
 
+A batch holds the audit lock (compliancelens/locking.py) from the first change until
+everything is put back, so no audit runs while the accounts are in a made-up state.
+
 Each case is saved in data/cases/<id>/:
     page.png    the browser's own picture, no banner: exactly what the AI is shown
     api.json    the API data at the time of the picture, and the code's verdict on it
@@ -20,7 +23,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from compliancelens import __version__, engine, evidence
+from compliancelens import __version__, engine, evidence, locking
 from compliancelens.connectors import browser
 from compliancelens.evaluator import images
 from experiment.lab import cases, data_dir
@@ -158,8 +161,16 @@ def capture_batch(
     sleep=time.sleep,
     clock=time.monotonic,
 ) -> list[Outcome]:
-    """Capture every case of the batch, then put the accounts back (always)."""
+    """Capture every case of the batch, then put the accounts back (always).
+
+    Raises locking.Busy, before changing anything, while an audit is running.
+    """
     root = root or cases_dir()
+    with locking.AuditLock(locking.EXPERIMENT_CAPTURE):
+        return _capture_locked(batch, rules, setup, shooter_factory, root, read, log, sleep, clock)
+
+
+def _capture_locked(batch, rules, setup, shooter_factory, root, read, log, sleep, clock):
     original = setup.begin({case.rule for case in batch})
     outcomes = []
     try:

@@ -8,7 +8,7 @@ import types
 import pytest
 from PIL import Image, ImageDraw
 
-from compliancelens import engine
+from compliancelens import engine, locking
 from compliancelens.connectors import browser
 from compliancelens.evaluator import images
 from experiment.lab import capture, cases
@@ -257,3 +257,24 @@ def test_defaults(tmp_path):
     assert capture.cases_dir().name == "cases"
     assert capture.load_captured() == []
     assert capture.api_data({"folder": str(tmp_path)}) == {}
+
+
+def test_a_batch_waits_for_no_audit_and_changes_nothing_while_one_runs(tmp_path, no_sleep):
+    setup = FakeSetup()
+    with locking.AuditLock(locking.AUDIT), pytest.raises(locking.Busy, match="an audit"):
+        capture.capture_batch([make_case()], RULES, setup, root=tmp_path, log=print)
+    assert setup.begun is None and not setup.restored
+
+
+def test_a_batch_holds_the_lock_until_everything_is_put_back(tmp_path):
+    seen = []
+
+    class Watching(FakeSetup):
+        def restore(self):
+            seen.append(locking.holder())
+            return super().restore()
+
+    setup = Watching()
+    capture.capture_batch([], RULES, setup, root=tmp_path, log=print)
+    assert seen[0]["purpose"] == "experiment capture"
+    assert locking.holder() is None

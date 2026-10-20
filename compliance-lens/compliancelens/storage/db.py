@@ -7,10 +7,17 @@ strings. Evidence paths are relative to the evidence folder.
 The schema is created on first use. PRAGMA user_version records its version, so
 later versions can upgrade it: schema 1 (V2) gains the screenshot columns in
 schema 2 (V3), and schema 3 (V4) adds the AI tables, the runs' AI totals and the
-results' document columns. A copy of the old file is kept before an upgrade. A new
-database and an upgraded one end up with exactly the same tables and columns.
+results' document columns, and schema 4 (V5) records which rules each run chose and
+makes the record append-only (see APPEND_ONLY). A copy of the old file is kept before
+an upgrade. A new database and an upgraded one end up with exactly the same tables,
+columns, indexes and triggers.
+
+The file is in WAL mode, so the dashboard can read while an audit writes. A plain
+file copy can miss the newest rows while the database is open: use sqlite3's
+`.backup` (or close every connection first) to copy it.
 """
 
+import json
 import os
 import re
 import sqlite3
@@ -18,7 +25,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_VAR = "COMPLIANCELENS_DB"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
+BUSY_TIMEOUT_SECONDS = 30  # wait this long for another connection's write to finish
 
 RUNNING, COMPLETE, FAILED = "running", "complete", "failed"
 FULL, PARTIAL = "full", "partial"
@@ -62,6 +70,34 @@ RUN_AI_COLUMNS = """
     ai_output_tokens  INTEGER NOT NULL DEFAULT 0,
     ai_cost_usd       REAL DEFAULT 0,
     ai_settings       TEXT"""
+
+# V5 run columns: the rule IDs the run chose (a JSON list, in rulebook order) and how
+# many rules the rulebook had, so a partial run shows its coverage. NULL for older runs.
+RUN_SELECTION_COLUMNS = """
+    rule_ids          TEXT,
+    rules_total       INTEGER"""
+
+# V5: the record is append-only. A human review adds a row to overrides and never edits
+# or removes one; a result is never edited or removed; a finished run is never edited.
+# The checks are in the database itself, so no code path (or slip in sqlite3) can
+# quietly rewrite history. They guard against mistakes, not against someone who drops
+# them on purpose: the evidence hashes and `verify` cover that.
+APPEND_ONLY = """
+CREATE TRIGGER overrides_are_never_edited BEFORE UPDATE ON overrides
+BEGIN SELECT RAISE(ABORT, 'overrides are append-only: add a new review instead'); END;
+CREATE TRIGGER overrides_are_never_deleted BEFORE DELETE ON overrides
+BEGIN SELECT RAISE(ABORT, 'overrides are append-only: add a new review instead'); END;
+CREATE TRIGGER overrides_need_a_reviewer_and_note BEFORE INSERT ON overrides
+WHEN trim(NEW.reviewer, char(32, 9, 10, 13)) = '' OR trim(NEW.note, char(32, 9, 10, 13)) = ''
+BEGIN SELECT RAISE(ABORT, 'a review needs a reviewer and a note'); END;
+CREATE TRIGGER results_are_never_edited BEFORE UPDATE ON results
+BEGIN SELECT RAISE(ABORT, 'results are never edited: a review adds an override'); END;
+CREATE TRIGGER results_are_never_deleted BEFORE DELETE ON results
+BEGIN SELECT RAISE(ABORT, 'results are never deleted'); END;
+CREATE TRIGGER finished_runs_are_never_edited BEFORE UPDATE ON runs
+WHEN OLD.status != 'running'
+BEGIN SELECT RAISE(ABORT, 'a finished run is never edited'); END;
+"""
 
 # V4 tables. Statuses are checked in code (evaluator/), so a new status needs no upgrade.
 AI_TABLES = """
@@ -173,6 +209,7 @@ def _add_columns(table: str, columns: str) -> str:
 MIGRATIONS = {
     1: _add_columns("results", SCREENSHOT_COLUMNS),
     2: _add_columns("runs", RUN_AI_COLUMNS) + _add_columns("results", SOURCE_COLUMNS) + AI_TABLES,
+    3: _add_columns("runs", RUN_SELECTION_COLUMNS) + APPEND_ONLY,
 }
 
 SCHEMA = f"""
@@ -191,7 +228,7 @@ CREATE TABLE runs (
     pass_count        INTEGER NOT NULL DEFAULT 0,
     fail_count        INTEGER NOT NULL DEFAULT 0,
     review_count      INTEGER NOT NULL DEFAULT 0,
-    error             TEXT,{RUN_AI_COLUMNS}
+    error             TEXT,{RUN_AI_COLUMNS},{RUN_SELECTION_COLUMNS}
 );
 
 CREATE TABLE results (
@@ -213,7 +250,8 @@ CREATE TABLE results (
     UNIQUE (run_id, rule_id)          -- also serves as the index on run_id
 );
 
--- Human overrides, used from V5. An override never edits a result; it adds a row.
+-- Human reviews (V5). A review never edits a result; it adds a row. The latest row
+-- (highest id) of a result is its effective verdict.
 CREATE TABLE overrides (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     result_id         INTEGER NOT NULL REFERENCES results(id),
@@ -226,7 +264,7 @@ CREATE TABLE overrides (
 CREATE INDEX idx_results_rule_id ON results(rule_id);
 CREATE INDEX idx_results_verdict ON results(verdict);
 CREATE INDEX idx_overrides_result_id ON overrides(result_id);
-{AI_TABLES}"""
+{AI_TABLES}{APPEND_ONLY}"""
 
 
 def db_path() -> Path:
@@ -237,13 +275,15 @@ def connect(path=None) -> sqlite3.Connection:
     """Open the database, creating the file and the tables if needed."""
     path = Path(path or db_path())
     path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(path, timeout=BUSY_TIMEOUT_SECONDS)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     if version > SCHEMA_VERSION:
         conn.close()
         raise RuntimeError(f"{path.name} was made by a newer ComplianceLens (schema {version})")
+    # Readers don't wait for a writer (the dashboard during an audit). Kept in the file.
+    conn.execute("PRAGMA journal_mode = WAL")
     if version == 0:  # new file: create everything in one transaction
         conn.executescript(f"BEGIN;\n{SCHEMA}\nPRAGMA user_version = {SCHEMA_VERSION};\nCOMMIT;")
     elif version < SCHEMA_VERSION:
@@ -290,14 +330,33 @@ def parse_run_name(name: str) -> int:
 
 
 def start_run(
-    conn, started_at: str, scope: str, tool_version: str, rules_file: str, rules_sha256: str
+    conn,
+    started_at: str,
+    scope: str,
+    tool_version: str,
+    rules_file: str,
+    rules_sha256: str,
+    rule_ids: list[str] | None = None,
+    rules_total: int | None = None,
 ) -> int:
-    """Record a new run as 'running' and return its ID."""
+    """Record a new run as 'running' and return its ID.
+
+    `rule_ids` (V5) are the rules the run chose, `rules_total` how many the rulebook had.
+    """
     with conn:
         cursor = conn.execute(
-            "INSERT INTO runs (started_at, status, scope, tool_version, rules_file, rules_sha256)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (started_at, RUNNING, scope, tool_version, rules_file, rules_sha256),
+            "INSERT INTO runs (started_at, status, scope, tool_version, rules_file, rules_sha256,"
+            " rule_ids, rules_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                started_at,
+                RUNNING,
+                scope,
+                tool_version,
+                rules_file,
+                rules_sha256,
+                None if rule_ids is None else json.dumps(list(rule_ids)),
+                rules_total,
+            ),
         )
     return cursor.lastrowid
 
@@ -409,6 +468,20 @@ def finish_run(
         )
 
 
+def add_override(
+    conn, result_id: int, new_verdict: str, reviewer: str, note: str, created_at: str
+) -> int:
+    """Add one human review of a result (V5) and return its ID. Use review.record(),
+    which checks the review first; the database refuses an empty reviewer or note."""
+    with conn:
+        cursor = conn.execute(
+            "INSERT INTO overrides (result_id, new_verdict, reviewer, note, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (result_id, new_verdict, reviewer, note, created_at),
+        )
+    return cursor.lastrowid
+
+
 def fail_run(conn, run_id: int, finished_at: str, error: str) -> None:
     """Mark the run failed, so it never looks like a finished audit."""
     with conn:
@@ -432,6 +505,17 @@ def get_run(conn, run_id: int) -> sqlite3.Row | None:
 
 def get_results(conn, run_id: int) -> list[sqlite3.Row]:
     return conn.execute("SELECT * FROM results WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
+
+
+def get_result(conn, result_id: int) -> sqlite3.Row | None:
+    return conn.execute("SELECT * FROM results WHERE id = ?", (result_id,)).fetchone()
+
+
+def get_overrides(conn, result_id: int) -> list[sqlite3.Row]:
+    """A result's human reviews (V5), oldest first; the last one is in force."""
+    return conn.execute(
+        "SELECT * FROM overrides WHERE result_id = ? ORDER BY id", (result_id,)
+    ).fetchall()
 
 
 def get_ai_evaluations(conn, run_id: int) -> list[sqlite3.Row]:

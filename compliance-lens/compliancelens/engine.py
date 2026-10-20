@@ -427,9 +427,15 @@ def validate_rules(rules: list[dict]) -> list[str]:
 
 
 def select_rules(rules: list[dict], rule_ids: list[str] | None) -> list[dict]:
-    """The rules to run: all of them, or only the IDs asked for (in rulebook order)."""
-    if not rule_ids:
+    """The rules to run: all of them (None), or only the IDs asked for (in rulebook order).
+
+    An empty list is an error, never "all": a dashboard with every rule switched off
+    must not run the whole rulebook.
+    """
+    if rule_ids is None:
         return rules
+    if not rule_ids:
+        raise RulebookError(["no rules selected: choose at least one rule"])
     unknown = sorted(set(rule_ids) - {r.get("id") for r in rules})
     if unknown:
         raise RulebookError([f"no rule with id {rule_id}" for rule_id in unknown])

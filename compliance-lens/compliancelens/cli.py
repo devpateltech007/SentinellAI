@@ -27,7 +27,7 @@ from typing import Annotated
 import typer
 from dotenv import load_dotenv
 
-from compliancelens import __version__, engine, evidence, runner
+from compliancelens import __version__, engine, evidence, locking, runner
 from compliancelens.connectors import browser
 from compliancelens.evaluator import ai, answer, prompt, providers, smoke
 from compliancelens.evaluator import settings as ai_settings
@@ -215,6 +215,9 @@ def _run(
     except (OSError, ValueError) as e:  # missing or unreadable rulebook
         typer.echo(f"Cannot load rules from {display_path(rules_file)}: {e}")
         return 2
+    except locking.Busy as e:
+        typer.echo(f"Not started: {e}.")
+        return 1
     except runner.StorageError as e:
         typer.echo(f"Audit not saved: {e}")
         return 1
@@ -277,7 +280,10 @@ def run(
     ] = None,
 ) -> None:
     """Run the audit and save its evidence and results."""
-    raise typer.Exit(_run(rule, rules_file, screenshots, use_ai, cross_check, refresh_ai, ai_model))
+    rule_ids = rule or None  # no --rule: every rule
+    raise typer.Exit(
+        _run(rule_ids, rules_file, screenshots, use_ai, cross_check, refresh_ai, ai_model)
+    )
 
 
 @app.command()

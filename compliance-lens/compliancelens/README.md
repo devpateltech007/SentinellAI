@@ -9,6 +9,9 @@ names can't contain one.) `../audit.py` just starts `cli.main()`.
 | `cli.py` | V2 | The commands (`run`, `history`, `verify`, `login`) and what they print |
 | `runner.py` | V2 | Runs an audit and saves it (files, screenshots, database); verifies a saved run |
 | `engine.py` | V1 | Loads and checks rules (V4: rule kinds, `ai_check`), calls collectors, applies checks, builds verdicts |
+| `locking.py` | V5 | One audit at a time: the lock shared by audits, the dashboard and the experiment's capture |
+| `queries.py` | V5 | What the database says, ready to show: machine and effective verdicts, run states (incl. interrupted), the review queue, run comparison |
+| `review.py` | V5 | Human reviews: checks (note, verdict, complete run, stale form) and saves one append-only row |
 | `evidence.py` | V2 | Evidence files, meta files, screenshot banners (V3), saved documents (V4), manifest, SHA-256 checks |
 | `connectors/` | V1 | Collect evidence from one system each; `browser.py` (V3) takes screenshots; `files.py` (V4) reads policy documents |
 | `storage/` | V2 | SQLite results database |
