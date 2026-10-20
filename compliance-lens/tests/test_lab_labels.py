@@ -197,9 +197,41 @@ def test_agreement_and_finalize():
     assert rows["c5"]["evidence_label"] == "FAIL"  # settled by hand: kept
 
 
+def test_final_labels_need_both_labellers():
+    records = [{"case": {"id": f"c{n}"}, "pixel_sha256": f"c{n}"} for n in range(1, 8)]
+    rows = rows_with(
+        ("c1", "PASS", "PASS", "PASS"),
+        ("c2", "FAIL", "REVIEW", "REVIEW"),  # settled, with a reason below
+        ("c3", "", "PASS", "PASS"),
+        ("c4", "", "", "PASS"),
+        ("c5", "FAIL", "FAIL", "PASS"),
+        ("c6", "FAIL", "PASS", "PASS"),
+        ("c7", "FAIL", "PASS", "FAIL"),
+    )
+    rows["c2"]["adjudication"] = "the toggle is half hidden by the menu"
+    rows["c7"]["adjudication"] = "agreed"  # not a reason
+    with pytest.raises(labels.LabelsError) as e:
+        labels.final_labels(rows, records)
+    problems = str(e.value)
+    assert "c3 has no label from A: both people label every picture" in problems
+    assert "c4 has no label from A and B" in problems
+    assert "c5's final label PASS differs from the FAIL that A and B agreed on" in problems
+    assert "c6: A and B differ (FAIL / PASS) and the adjudication doesn't say why" in problems
+    assert "c7: A and B differ (FAIL / PASS)" in problems  # "agreed" is not a reason
+    good = {k: rows[k] for k in ("c1", "c2")}
+    assert labels.final_labels(good, records[:2]) == {"c1": "PASS", "c2": "REVIEW"}
+
+
+def test_the_labels_hash_ignores_order():
+    one = labels.labels_hash({"a": "PASS", "b": "FAIL"})
+    assert one == labels.labels_hash({"b": "FAIL", "a": "PASS"})
+    assert one != labels.labels_hash({"a": "PASS", "b": "REVIEW"})
+    assert len(one) == 64
+
+
 def test_final_labels_must_be_complete_and_current():
     records = [{"case": {"id": f"c{n}"}, "pixel_sha256": f"c{n}"} for n in range(1, 8)]
-    rows = rows_with(*[(f"c{n}", "", "", "PASS") for n in range(1, 8)])
+    rows = rows_with(*[(f"c{n}", "PASS", "PASS", "PASS") for n in range(1, 8)])
     assert labels.final_labels(rows, records) == {f"c{n}": "PASS" for n in range(1, 8)}
     rows["c1"]["pixel_sha256"] = "x"
     for n in range(2, 8):

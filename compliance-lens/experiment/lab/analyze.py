@@ -19,6 +19,15 @@ numbers would be if medium-confidence answers were not trusted); wrong answers s
 into misread (the AI's `observed` value differs from the API's) and misjudged (it read
 the value right but decided wrong); invalid replies; the code's own accuracy; tokens,
 cost and time. A pilot run has no labels: it is scored against the setup's state.
+
+Honest by construction (V5):
+  - a run is "complete" only with every main case of cases.yaml, every repeat of every
+    case, and no answer that failed to reach the model; otherwise the report says
+    PARTIAL and what is missing;
+  - the labels must be the ones the run was asked against (their hash is in its
+    config), or the analysis refuses;
+  - the cost counts every paid attempt: answers asked again and answers set aside
+    because another model was served, not only the answers in the tables.
 """
 
 import json
@@ -147,18 +156,52 @@ def mistake(rule_id: str, observed: str | None, data: dict) -> str:
 # ----------------------------------------------------------------- analysis ----
 
 
-def load_run(folder: Path) -> tuple[dict, list[dict]]:
+def load_run(folder: Path) -> tuple[dict, list[dict], list[dict], list[dict]]:
+    """The run's config, its answers (the last one per case and repeat), every answer it
+    kept (answers asked again included) and the answers set aside (another model)."""
     config_path = folder / "config.json"
     if not config_path.exists():
         raise AnalysisError(f"{folder} is not an experiment run (no config.json)")
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    answers = list(run.latest(run.read_predictions(folder / "predictions.jsonl")).values())
-    return config, answers
+    every = run.read_predictions(folder / "predictions.jsonl")
+    set_aside = run.read_predictions(run.quarantine_path(folder))
+    return config, list(run.latest(every).values()), every, set_aside
 
 
-def analyze(folder: Path, records: list[dict], rows: dict) -> dict:
-    """Every table for one run, as plain data (see report() for the text)."""
-    config, answers = load_run(folder)
+def completeness(config: dict, answers: list[dict], set_aside: int, expected=None) -> dict:
+    """Whether the run has everything it should: every case (all of cases.yaml's main
+    cases when `expected` is given), every repeat, and no answer that failed to reach
+    the model."""
+    cases = sorted(config["cases"])
+    have = {(a["case_id"], a["repeat"]) for a in answers}
+    missing = [
+        f"{case_id} #{repeat}"
+        for case_id in cases
+        for repeat in range(1, config["repeats"] + 1)
+        if (case_id, repeat) not in have
+    ]
+    errors = sorted(
+        f"{a['case_id']} #{a['repeat']}" for a in answers if a["status"] in run.RETRYABLE
+    )
+    missing_cases = sorted(set(expected) - set(cases)) if expected and not config["pilot"] else []
+    expected_answers = (len(cases) + len(missing_cases)) * config["repeats"]
+    return {
+        "complete": not (missing or errors or missing_cases),
+        "expected_answers": expected_answers,
+        "answers": len(answers) - len(errors),
+        "missing": missing,
+        "errors": errors,
+        "missing_cases": missing_cases,
+        "set_aside": set_aside,
+    }
+
+
+def analyze(folder: Path, records: list[dict], rows: dict, expected=None) -> dict:
+    """Every table for one run, as plain data (see report() for the text).
+
+    `expected` is every main case ID in cases.yaml (for the completeness check).
+    """
+    config, answers, every, set_aside = load_run(folder)
     by_id = {record["case"]["id"]: record for record in records}
     changed = [
         case_id
@@ -178,6 +221,13 @@ def analyze(folder: Path, records: list[dict], rows: dict) -> dict:
             truth_labels, basis = labels.final_labels(rows, chosen), "evidence"
         except labels.LabelsError as e:
             raise AnalysisError(str(e))
+        recorded = config.get("labels_sha256")  # absent in runs made before V5
+        if recorded and labels.labels_hash(truth_labels) != recorded:
+            raise AnalysisError(
+                f"{folder.name}: labels.csv changed since this run was asked (its final labels"
+                " are not the ones the answers were scored for): restore labels.csv, or start"
+                " a new run with the new labels"
+            )
     answers = [a for a in answers if a["case_id"] in truth_labels]
     if not answers:
         raise AnalysisError(f"{folder.name} has no answers yet")
@@ -221,8 +271,10 @@ def analyze(folder: Path, records: list[dict], rows: dict) -> dict:
         (r["case"]["state"], r["code"]["verdict"], truth_labels[r["case"]["id"]]) for r in chosen
     ]
     cost = run._cost(answers)
+    paid = every + set_aside  # every attempt that reached the provider and was paid for
     return {
         "run": folder.name,
+        "status": completeness(config, answers, len(set_aside), expected),
         "model": config["model"],
         "pilot": config["pilot"],
         "basis": basis,
@@ -256,6 +308,8 @@ def analyze(folder: Path, records: list[dict], rows: dict) -> dict:
             "input_tokens": sum(a["input_tokens"] for a in answers),
             "output_tokens": sum(a["output_tokens"] for a in answers),
             "cost_usd": cost,
+            "paid_calls": sum(a["calls"] for a in paid),
+            "paid_cost_usd": run._cost(paid),
             "seconds_per_answer": round(
                 sum(a["elapsed_ms"] for a in answers) / len(answers) / 1000, 2
             ),
@@ -306,6 +360,20 @@ def report(result: dict, agreement: dict | None = None) -> str:
         f" = {_count(result['answers'], 'answer')}, scored against {against}."
         " Rates: % (k/n; 95% interval).",
     ]
+    status = result["status"]
+    if not status["complete"]:
+        gaps = []
+        if status["missing_cases"]:
+            gaps.append(f"{_count(len(status['missing_cases']), 'case')} not captured")
+        if status["missing"]:
+            gaps.append(f"{_count(len(status['missing']), 'answer')} not asked yet")
+        if status["errors"]:
+            gaps.append(f"{_count(len(status['errors']), 'answer')} that failed to reach the model")
+        lines += [
+            "",
+            f"**PARTIAL: {status['answers']} of {status['expected_answers']} answers"
+            f" ({', '.join(gaps)}). These are not the final results.**",
+        ]
     if agreement and agreement["kappa"] is not None:
         lines.append(
             f"Labellers agreed on {agreement['agreed']} of {agreement['both_labelled']} pictures"
@@ -359,28 +427,44 @@ def report(result: dict, agreement: dict | None = None) -> str:
         ),
     ]
     usage = result["usage"]
-    cost = "unknown" if usage["cost_usd"] is None else f"${usage['cost_usd']:.4f}"
+    cost = _money(usage["cost_usd"])
     lines.append(
         f"AI: {usage['calls']} calls, {usage['input_tokens']:,} input and"
         f" {usage['output_tokens']:,} output tokens, {cost},"
         f" {usage['seconds_per_answer']} s per answer."
         f" Statuses: {', '.join(f'{k} {v}' for k, v in result['statuses'].items())}."
     )
+    extra = usage["paid_calls"] - usage["calls"]
+    aside = status["set_aside"]
+    lines.append(
+        f"Paid in all: {_money(usage['paid_cost_usd'])} for {_count(usage['paid_calls'], 'call')}"
+        + (
+            f", including {_count(extra, 'call')} for answers asked again or set aside"
+            + (f" ({aside} set aside: another model was served)" if aside else "")
+            if extra
+            else ""
+        )
+        + "."
+    )
     return "\n".join(lines) + "\n"
 
 
+def _money(value: float | None) -> str:
+    return "unknown" if value is None else f"${value:.4f}"
+
+
 def comparison(results: list[dict]) -> str:
-    """Several runs (models) side by side."""
-    header = ["Run", "Model", *(label for key, label in MEASURES if key in SHORT), "Cost"]
+    """Several runs (models) side by side. The cost is everything paid."""
+    header = ["Run", "Model", *(label for key, label in MEASURES if key in SHORT), "Paid"]
     rows = []
     for result in results:
-        cost = result["usage"]["cost_usd"]
+        name = result["run"] + ("" if result["status"]["complete"] else " (PARTIAL)")
         rows.append(
             [
-                result["run"],
+                name,
                 result["model"],
                 *(result["overall"][key].text() for key in SHORT),
-                "unknown" if cost is None else f"${cost:.4f}",
+                _money(result["usage"]["paid_cost_usd"]),
             ]
         )
     return "\n".join(_table(header, rows)) + "\n"

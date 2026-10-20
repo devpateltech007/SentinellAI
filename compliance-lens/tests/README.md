@@ -38,9 +38,9 @@ served from this computer (`fixtures/browser/`).
 | `test_lab_cases.py` | The research experiment's `cases.yaml` (55 main + 10 pilot cases, 4 PASS and 4 FAIL per rule) and its five rules: every bad case refused, AWS-05 judged on its own bucket |
 | `test_lab_world.py` | The experiment's setup with fake AWS (moto) and recorded GitHub replies: every bad setup refused, password policy, test users with MFA (TOTP codes), test buckets, main's protection rule, organization settings, a whole batch put back, only marked things removed, the audit's token never used for changes |
 | `test_lab_capture.py` | Capturing cases with a fake setup, browser and API: waiting for the state, discarding a case when the API changes during the picture, saved files and hashes, account IDs hidden, settings put back even after a crash, no batch while an audit runs (the shared lock) |
-| `test_lab_labels.py` | `labels.csv`, the labelling packs (nothing in a pack says which case it is), importing them, Cohen's kappa, final labels |
-| `test_lab_run.py` | The AI runs with a fake model: labels first, every case × repeat, resume, retrying errors, a new served model or the $ limit stops the run, no cache, no fallbacks |
-| `test_lab_analyze.py` | The analysis on hand-made answers with known results: every rate, Wilson intervals, misread vs misjudged, consistency, the code's accuracy, the report |
+| `test_lab_labels.py` | `labels.csv`, the labelling packs (nothing in a pack says which case it is), importing them, Cohen's kappa, final labels (both labellers, explained disagreements), the labels' hash |
+| `test_lab_run.py` | The AI runs with a fake model: every case captured and labelled first, the labels' hash in the config, every case × repeat, resume, retrying errors, the $ limit, a new served model's answer set aside (never kept, still paid, asked again on resume), no cache, no fallbacks |
+| `test_lab_analyze.py` | The analysis on hand-made answers with known results: every rate, Wilson intervals, misread vs misjudged, consistency, the code's accuracy, the report; complete vs PARTIAL, changed labels refused, every paid attempt in the cost |
 | `test_lab_cli.py` | `python -m experiment.lab` end to end with fakes for every account |
 | `lab_helpers.py` | Saved experiment cases for the tests above |
 | `fixtures/` | Recorded API replies and the fake website |

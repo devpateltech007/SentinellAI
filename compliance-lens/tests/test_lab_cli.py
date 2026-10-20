@@ -361,12 +361,23 @@ def test_run_and_analyze_the_pilot(records, model, tmp_path):
     assert json.loads((folder / "analysis.json").read_text())["pilot"] is True
 
 
-def test_the_main_run_and_two_models(records, model, monkeypatch):
+def label_everything():
     lab("labels", "init")
     rows = labels.read_labels(labels_path())
     for row in rows.values():
-        row["evidence_label"] = row["state_label"]
+        state = row["state_label"]
+        row.update(evidence_label_a=state, evidence_label_b=state, evidence_label=state)
     labels.write_labels(labels_path(), rows)
+
+
+@pytest.fixture
+def two_main_cases(monkeypatch):
+    """Pretend cases.yaml has only the two main cases the tests captured."""
+    monkeypatch.setattr(cli, "_main_case_ids", lambda: {"gh06-read", "gh06-write"})
+
+
+def test_the_main_run_and_two_models(records, model, two_main_cases):
+    label_everything()
     assert "6 answer(s) asked" in lab("run")
     assert "already there" in lab("run", "--resume")
     lab("run", "--repeats", "1")
@@ -375,6 +386,8 @@ def test_the_main_run_and_two_models(records, model, monkeypatch):
 
 
 def test_run_problems(records, model, monkeypatch):
+    assert "53 of the 55 main cases aren't captured yet" in lab("run", code=2)
+    monkeypatch.setattr(cli, "_main_case_ids", lambda: {"gh06-read", "gh06-write"})
     assert "fixed before the AI runs" in lab("run", code=2)
     monkeypatch.setenv("COMPLIANCELENS_AI_TEMPERATURE", "9")
     assert "COMPLIANCELENS_AI_TEMPERATURE must be a number" in lab("run", "--pilot", code=2)
@@ -419,3 +432,28 @@ def test_capture_and_restore_while_an_audit_runs(monkeypatch, no_sleep):
     with locking.AuditLock():
         out = lab("restore", "--yes", code=1)
     assert "Nothing was changed: an audit (pid " in out
+
+
+def test_a_run_that_was_served_another_model(records, monkeypatch, two_main_cases):
+    served = iter(["m-1", "m-2"])
+
+    class Switching(Model):
+        def send(self, request):
+            reply = super().send(request)
+            return base.AIReply(reply.text, reply.stop, next(served), 1000, 100, {}, elapsed_ms=10)
+
+    monkeypatch.setattr(providers, "get_provider", lambda settings, http_client=None: Switching())
+    for name, value in {
+        "MODEL": "openai/gpt-6-luna",
+        "API_KEY": "k",
+        "PRICE_INPUT": "0.1",
+        "PRICE_OUTPUT": "0.5",
+    }.items():
+        monkeypatch.setenv(f"COMPLIANCELENS_AI_{name}", value)
+    label_everything()
+    out = lab("run", "--repeats", "1", code=1)
+    assert "1 answer(s) set aside: another model was served." in out
+    assert "Stopped: the provider served m-2 instead of m-1" in out
+    out = lab("analyze")
+    assert "**PARTIAL: 1 of 2 answers (1 answer not asked yet)." in out
+    assert "(1 set aside: another model was served)" in out

@@ -66,11 +66,19 @@ def records(tmp_path):
 def rows(records):
     rows, _ = labels.update_rows(records, {})
     for case_id, label in FINAL.items():
-        rows[case_id]["evidence_label"] = label
+        rows[case_id].update(evidence_label_a=label, evidence_label_b=label, evidence_label=label)
     return rows
 
 
-def make_run(tmp_path, records, answers=ANSWERS, pilot=False, name="openai_m-abc"):
+def make_run(
+    tmp_path,
+    records,
+    answers=ANSWERS,
+    pilot=False,
+    name="openai_m-abc",
+    labels_sha256=None,
+    set_aside=(),
+):
     folder = tmp_path / "runs" / name
     folder.mkdir(parents=True)
     chosen = [r for r in records if r["case"]["pilot"] == pilot]
@@ -80,8 +88,12 @@ def make_run(tmp_path, records, answers=ANSWERS, pilot=False, name="openai_m-abc
         "repeats": 2,
         "cases": {r["case"]["id"]: r["pixel_sha256"] for r in chosen},
     }
+    if labels_sha256:
+        config["labels_sha256"] = labels_sha256
     (folder / "config.json").write_text(json.dumps(config))
     (folder / "predictions.jsonl").write_text("".join(json.dumps(a) + "\n" for a in answers))
+    if set_aside:
+        run.quarantine_path(folder).write_text("".join(json.dumps(a) + "\n" for a in set_aside))
     return folder
 
 
@@ -197,12 +209,15 @@ def test_the_report(records, rows, tmp_path):
     assert "| False PASS | 25% (1/4; 5%–70%) |" in text
     assert "Misread (saw a different value than the API's): 1" in text
     assert "AI: 8 calls, 8,000 input and 800 output tokens, $0.0012, 2.0 s per answer." in text
+    assert "Paid in all: $0.0012 for 8 calls." in text
+    assert "PARTIAL" not in text
     plain = analyze.as_json(result)
     assert plain["overall"]["accuracy"]["k"] == 5 and json.dumps(plain)
-    table = analyze.comparison(
-        [result, {**result, "run": "other", "usage": {**result["usage"], "cost_usd": None}}]
-    )
+    other = {**result, "run": "other", "usage": {**result["usage"], "paid_cost_usd": None}}
+    partial = {**result, "run": "half", "status": {**result["status"], "complete": False}}
+    table = analyze.comparison([result, other, partial])
     assert "| other | openai/m |" in table and "unknown |" in table
+    assert "| half (PARTIAL) |" in table and "| Paid |" in table
 
 
 def test_a_pilot_is_scored_against_the_setup(records, tmp_path):
@@ -236,3 +251,70 @@ def test_unknown_cost(records, rows, tmp_path):
     assert result["usage"]["cost_usd"] is None
     assert ", unknown, " in analyze.report(result)
     assert run._cost([]) == 0
+
+
+MAIN = set(FINAL)
+
+
+def test_a_complete_run(records, rows, tmp_path):
+    result = analyze.analyze(make_run(tmp_path, records), records, rows, MAIN)
+    assert result["status"] == {
+        "complete": True,
+        "expected_answers": 8,
+        "answers": 8,
+        "missing": [],
+        "errors": [],
+        "missing_cases": [],
+        "set_aside": 0,
+    }
+
+
+def test_a_partial_run_says_so(records, rows, tmp_path):
+    answers = ANSWERS[:-2] + [
+        answer(
+            "gh01-signin", 1, "NEEDS REVIEW", "GH-01", status="provider_error", calls=0, cost_usd=0
+        )
+    ]
+    folder = make_run(tmp_path, records, answers)
+    result = analyze.analyze(folder, records, rows, MAIN | {"aws05-open", "gh01-off"})
+    status = result["status"]
+    assert not status["complete"]
+    assert status["missing"] == ["gh01-signin #2"] and status["errors"] == ["gh01-signin #1"]
+    assert status["missing_cases"] == ["aws05-open", "gh01-off"]
+    assert (status["answers"], status["expected_answers"]) == (6, 12)
+    text = analyze.report(result)
+    assert (
+        "**PARTIAL: 6 of 12 answers (2 cases not captured, 1 answer not asked yet,"
+        " 1 answer that failed to reach the model). These are not the final results.**"
+    ) in text
+
+
+def test_the_cost_counts_every_paid_attempt(records, rows, tmp_path):
+    retried = answer("gh06-read", 1, "NEEDS REVIEW", "GH-06", status="invalid")  # asked again
+    aside = answer("gh06-write", 2, "PASS", "GH-06", served_model="other")
+    folder = make_run(tmp_path, records, [retried, *ANSWERS], set_aside=[aside])
+    result = analyze.analyze(folder, records, rows, MAIN)
+    usage = result["usage"]
+    assert usage["calls"] == 8 and usage["cost_usd"] == pytest.approx(0.0012)
+    assert usage["paid_calls"] == 10 and usage["paid_cost_usd"] == pytest.approx(0.0015)
+    assert result["status"]["set_aside"] == 1 and result["status"]["complete"]
+    text = analyze.report(result)
+    assert (
+        "Paid in all: $0.0015 for 10 calls, including 2 calls for answers asked again or set"
+        " aside (1 set aside: another model was served)."
+    ) in text
+    no_aside = make_run(tmp_path, records, [retried, *ANSWERS], name="retried")
+    text = analyze.report(analyze.analyze(no_aside, records, rows))
+    assert "including 1 call for answers asked again or set aside." in text
+
+
+def test_changed_labels_are_refused(records, rows, tmp_path):
+    main = [r for r in records if not r["case"]["pilot"]]
+    fixed = labels.labels_hash(labels.final_labels(rows, main))
+    folder = make_run(tmp_path, records, labels_sha256=fixed)
+    assert analyze.analyze(folder, records, rows)["answers"] == 8
+    rows["gh06-write"].update(
+        evidence_label_b="REVIEW", evidence_label="REVIEW", adjudication="cut off"
+    )
+    with pytest.raises(analyze.AnalysisError, match="labels.csv changed since this run"):
+        analyze.analyze(folder, records, rows)
