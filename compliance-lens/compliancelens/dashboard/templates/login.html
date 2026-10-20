@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block main %}
+<section class="narrow">
+  <h1>Sign in</h1>
+  {% if not configured %}
+  <p class="notice bad">No dashboard password is set, so nobody can sign in.
+    Add <code>DASHBOARD_PASSWORD=...</code> to <code>.env</code> and start the dashboard again.</p>
+  {% endif %}
+  {% if error %}<p class="notice bad" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/login">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <label for="password">Admin password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required autofocus>
+    <button type="submit">Sign in</button>
+  </form>
+</section>
+{% endblock %}

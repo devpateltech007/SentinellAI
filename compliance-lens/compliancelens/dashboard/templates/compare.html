@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict, state, scope, counts %}
+{% block main %}
+<h1>Compare runs</h1>
+<form method="get" action="/compare" class="filters">
+  <label>Older <select name="a">{% for r in runs %}<option value="{{ r.id }}"{% if (result and result.older.id == r.id) or (not result and loop.index == 2) %} selected{% endif %}>{{ r.name }} ({{ r.state }}, {{ r.scope }})</option>{% endfor %}</select></label>
+  <label>Newer <select name="b">{% for r in runs %}<option value="{{ r.id }}"{% if (result and result.newer.id == r.id) or (not result and loop.first) %} selected{% endif %}>{{ r.name }} ({{ r.state }}, {{ r.scope }})</option>{% endfor %}</select></label>
+  <button type="submit">Compare</button>
+</form>
+{% if result %}
+<section class="panel">
+  <p><a href="/runs/{{ result.older.id }}">{{ result.older.name }}</a> {{ state(result.older.state) }} {{ scope(result.older) }} {{ counts(result.older.counts.effective) }}</p>
+  <p><a href="/runs/{{ result.newer.id }}">{{ result.newer.name }}</a> {{ state(result.newer.state) }} {{ scope(result.newer) }} {{ counts(result.newer.counts.effective) }}</p>
+  {% if result.notes %}<ul class="notice">{% for n in result.notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+</section>
+<table class="compare">
+  <thead><tr><th>Rule</th><th>Change</th><th>{{ result.older.name }}</th><th>{{ result.newer.name }}</th><th>Details</th></tr></thead>
+  <tbody>
+  {% for row in result.rows %}
+  <tr class="change-{{ row.change|replace(' ', '-') }}">
+    <td>{{ row.rule_id }}<br><span class="hint">{{ row.title or "" }}</span></td>
+    <td>{{ row.change }}</td>
+    <td>{% if row.old %}<a href="/results/{{ row.old.result_id }}">{{ verdict(row.old.effective) }}</a>{% if row.old.reviewed %}<br><span class="hint">audit: {{ row.old.machine }}</span>{% endif %}{% else %}not run{% endif %}</td>
+    <td>{% if row.new %}<a href="/results/{{ row.new.result_id }}">{{ verdict(row.new.effective) }}</a>{% if row.new.reviewed %}<br><span class="hint">audit: {{ row.new.machine }}</span>{% endif %}{% else %}not run{% endif %}</td>
+    <td>{% if row.old and row.new %}{% if row.machine_changed %}audit verdict changed. {% endif %}{% if row.effective_changed and not row.machine_changed %}changed by review. {% endif %}{% if row.reason_changed %}reason changed. {% endif %}{% if row.screenshot_changed %}screenshot differs.{% endif %}{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

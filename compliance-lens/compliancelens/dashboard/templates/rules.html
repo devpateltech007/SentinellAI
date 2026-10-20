@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Rules</h1>
+{% if error %}<p class="notice bad" role="alert">{{ error }}</p>{% endif %}
+{% if problems %}<div class="notice bad"><p>The rulebook has problems:</p><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
+{% if settings_problem %}<p class="notice bad">{{ settings_problem }} Fix or delete the file to change rules here.</p>{% endif %}
+<p>{{ enabled }} of {{ total }} rules are on. Turning a rule off applies to the next audit only (saved in <code>config/{{ settings_path }}</code>);
+  past runs keep the rules they ran. An audit without every rule is <strong>partial</strong> and doesn't set the score.
+  Rule contents are edited in the rulebook (<code>rules/</code>), not here.</p>
+{% for system, rules in groups.items() %}
+<section class="panel">
+  <h2>{{ system }}</h2>
+  <table class="rules">
+    <thead><tr><th>Rule</th><th>Severity</th><th>Judged by</th><th>Check</th><th>Screenshot</th><th>In audits</th></tr></thead>
+    <tbody>
+    {% for rule in rules %}
+    <tr id="{{ rule.id }}"{% if not rule.enabled %} class="off"{% endif %}>
+      <td><strong>{{ rule.id }}</strong><br>{{ rule.title }}</td>
+      <td>{{ rule.severity or "—" }}</td>
+      <td>{{ rule.kind }}</td>
+      <td class="reason">{{ rule.check }}</td>
+      <td>{{ "yes" if rule.screenshot else "no" }}</td>
+      <td>
+        <form method="post" action="/rules/{{ rule.id }}">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          {% if rule.enabled %}
+          <span class="on">On</span> <button type="submit" class="secondary">Turn off</button>
+          {% else %}
+          <input type="hidden" name="enabled" value="true">
+          <span class="offlabel">Off</span> <button type="submit">Turn on</button>
+          {% endif %}
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+{% endblock %}

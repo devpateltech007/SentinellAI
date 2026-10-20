@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import counts, coverage, state, scope %}
+{% block main %}
+<h1>Home</h1>
+{% if latest is none %}
+<section class="panel">
+  <p>No complete full audit yet. <a class="button" href="/run">Run an audit</a></p>
+</section>
+{% else %}
+<section class="panel">
+  <h2>Latest full audit: <a href="/runs/{{ latest.id }}">{{ latest.name }}</a></h2>
+  <p class="score"><span class="big">{{ latest.score|percent }}</span> PASS
+    <span class="hint">(effective PASS out of all {{ latest.counts.total }} results; open reviews count against it)</span></p>
+  <p>After review: {{ counts(latest.counts.effective) }}</p>
+  <p>As the audit decided: {{ counts(latest.counts.machine) }}</p>
+  <dl class="facts">
+    <dt>Finished</dt><dd>{{ latest.finished_at|when }}</dd>
+    <dt>Coverage</dt><dd>{{ coverage(latest) }}</dd>
+    <dt>Open reviews</dt><dd>{% if latest.open %}<a href="/queue?run={{ latest.id }}">{{ latest.open }} to review</a>{% else %}none{% endif %}</dd>
+    <dt>Reviewed</dt><dd>{{ latest.counts.reviewed }} ({{ latest.counts.changed }} changed by a reviewer)</dd>
+    <dt>AI</dt><dd>{% if latest.ai_calls or latest.ai_cache_hits %}{{ latest.ai_calls }} call(s), {{ latest.ai_cache_hits }} from cache, {{ latest.ai_cost_usd|money }}{% else %}not used{% endif %}</dd>
+  </dl>
+  <p><a class="button" href="/run">Run audit</a></p>
+</section>
+{% endif %}
+
+{% if newer %}
+<section class="panel">
+  <h2>Newer runs, not in the score</h2>
+  <p class="hint">Only a complete audit of every rule sets the score above.</p>
+  <ul>
+    {% for run in newer %}
+    <li><a href="/runs/{{ run.id }}">{{ run.name }}</a> {{ state(run.state) }} {{ scope(run) }} · {{ coverage(run) }} · {{ run.started_at|when }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% include "_progress.html" %}
+
+{% if trend %}
+<section class="panel">
+  <h2>Trend (complete full audits)</h2>
+  <table>
+    <thead><tr><th>Run</th><th>Finished</th><th>Score</th><th>PASS</th><th>FAIL</th><th>NEEDS REVIEW</th><th></th></tr></thead>
+    <tbody>
+    {% for run in trend %}
+    <tr>
+      <td><a href="/runs/{{ run.id }}">{{ run.name }}</a></td>
+      <td>{{ run.finished_at|when }}</td>
+      <td><meter min="0" max="1" value="{{ run.score or 0 }}"></meter> {{ run.score|percent }}</td>
+      <td>{{ run.counts.effective.PASS }}</td>
+      <td>{{ run.counts.effective.FAIL }}</td>
+      <td>{{ run.counts.effective["NEEDS REVIEW"] }}</td>
+      <td>{% if run.rulebook_changed %}<span class="tag">rulebook changed</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

@@ -6,7 +6,7 @@ VENV   := .venv
 BIN    := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format audit crosscheck history verify login aitest experiment analyze clean
+.PHONY: help setup test lint format audit crosscheck history verify login aitest dashboard experiment analyze clean
 
 help:  ## Show this list
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
@@ -51,6 +51,9 @@ login:  ## Save a login for screenshots: make login SITE=github (or aws)
 
 aitest:  ## Check the AI model set in .env (one text and one image call)
 	$(BIN)/python audit.py ai-test
+
+dashboard:  ## Web dashboard on http://127.0.0.1:8000 (needs DASHBOARD_PASSWORD in .env)
+	$(BIN)/python -m compliancelens.dashboard
 
 experiment:  ## Research experiment: the AI judges every captured case 3 times (resumes)
 	$(BIN)/python -m experiment.lab run --resume

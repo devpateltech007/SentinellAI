@@ -18,7 +18,7 @@ names can't contain one.) `../audit.py` just starts `cli.main()`.
 | `connectors/` | V1 | Collect evidence from one system each; `browser.py` (V3) takes screenshots; `files.py` (V4) reads policy documents |
 | `storage/` | V2 | SQLite results database |
 | `evaluator/` | V4 | AI checks for screenshots and documents (any model, set in `.env`) |
-| `dashboard/` | V5 | Web dashboard |
+| `dashboard/` | V5 | Web dashboard (FastAPI): pages, sign-in, background audits ([README](dashboard/README.md)) |
 | `reporting/` | V6 | HTML/PDF reports |
 
 Flow: `cli` (or the dashboard) → `run_options` → `runner` → `engine` → `connectors` → `engine` check → `connectors/browser`

@@ -1,0 +1,30 @@
+{% from "_macros.html" import verdict %}
+<section id="progress" class="panel" data-poll="/run/progress" data-active="{{ '1' if job and job.active else '0' }}" aria-live="polite">
+  {% if job is none %}
+  <p>No audit has been started from the dashboard since it started.</p>
+  {% else %}
+  <h2>Audit {% if job.run_id %}{{ job.run_id|run_name }}{% endif %}:
+    {% if job.state == "starting" %}starting{% elif job.state == "running" %}running{% elif job.state == "finished" %}finished{% elif job.state == "refused" %}not started{% else %}failed{% endif %}
+  </h2>
+  {% if job.total %}
+  <p><progress value="{{ job.done }}" max="{{ job.total }}"></progress>
+    {{ job.done }} of {{ job.total }} rules · {{ elapsed|duration }}
+    {% if job.current %}· checking <strong>{{ job.current }}</strong>{% endif %}</p>
+  {% else %}
+  <p>{{ elapsed|duration }}</p>
+  {% endif %}
+  {% if job.finished %}
+  <ul class="ticker">
+    {% for rule_id, value in job.finished %}<li>{{ rule_id }} {{ verdict(value) }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+  {% if job.error %}<p class="notice bad" role="alert">{{ job.error }}</p>{% endif %}
+  {% for warning in job.warnings %}<p class="notice">{{ warning }}</p>{% endfor %}
+  {% if job.skipped %}<p>Turned off (not run): {{ job.skipped|join(", ") }}.</p>{% endif %}
+  {% if job.state == "finished" %}
+  <p><a class="button" href="/runs/{{ job.run_id }}">See the results of {{ job.run_id|run_name }}</a></p>
+  {% elif job.active %}
+  <p class="hint">This page updates by itself. You can leave it: the audit keeps running. <a href="">Refresh</a></p>
+  {% endif %}
+  {% endif %}
+</section>

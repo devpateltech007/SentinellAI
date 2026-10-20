@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict, counts, coverage, state, scope %}
+{% block main %}
+<h1>{{ run.name }} {{ state(run.state) }} {{ scope(run) }}</h1>
+<section class="panel">
+  <p>After review: {{ counts(run.counts.effective) }} · score {{ run.score|percent }}</p>
+  <p>As the audit decided: {{ counts(run.counts.machine) }}</p>
+  <dl class="facts">
+    <dt>Started</dt><dd>{{ run.started_at|when }}</dd>
+    <dt>Finished</dt><dd>{{ run.finished_at|when }}</dd>
+    <dt>Coverage</dt><dd>{{ coverage(run) }}</dd>
+    <dt>Tool</dt><dd>v{{ run.tool_version }}</dd>
+    <dt>AI</dt><dd>{% if run.ai_calls or run.ai_cache_hits %}{{ run.ai_calls }} call(s), {{ run.ai_cache_hits }} from cache, {{ run.ai_cost_usd|money }}{% else %}not used{% endif %}</dd>
+    <dt>Evidence</dt><dd>{% if verify.ok %}<span class="verified">verified: {{ verify.files }} files match their hashes</span>{% else %}<span class="unverified">NOT verified</span>{% endif %}</dd>
+  </dl>
+  {% if not verify.ok %}<ul class="notice bad">{% for p in verify.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+  {% if run.state == "interrupted" %}<p class="notice bad">This run was interrupted before it finished: it is not an audit result.</p>{% endif %}
+  <p>{% if run.open %}<a class="button" href="/queue?run={{ run.id }}">Review {{ run.open }} open result(s)</a>{% endif %}
+    {% if previous %}<a href="/compare?a={{ previous }}&amp;b={{ run.id }}">Compare with {{ previous|run_name }}</a>{% endif %}</p>
+</section>
+
+<form method="get" action="/runs/{{ run.id }}" class="filters" data-autosubmit>
+  <label>Verdict (after review)
+    <select name="verdict"><option value="">all</option>{% for v in VERDICTS %}<option value="{{ v }}"{% if filters.verdict == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+  <label>System
+    <select name="system"><option value="">all</option>{% for s in systems %}<option value="{{ s }}"{% if filters.system == s %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+  <label>Severity
+    <select name="severity"><option value="">all</option>{% for s in severities %}<option value="{{ s }}"{% if filters.severity == s %} selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+  <button type="submit">Filter</button>
+</form>
+
+{% if not results %}
+<p>No results match.</p>
+{% else %}
+<table class="results">
+  <thead><tr><th>Rule</th><th>System</th><th>Severity</th><th>Verdict</th><th>Audit said</th><th>Method</th><th>Confidence</th><th>Reviewed</th><th>Reason</th></tr></thead>
+  <tbody>
+  {% for r in results %}
+  <tr>
+    <td><a href="/results/{{ r.id }}">{{ r.rule_id }}</a><br><span class="hint">{{ r.rule_title or "" }}</span></td>
+    <td>{{ r.system }}</td>
+    <td>{{ r.severity or "—" }}</td>
+    <td>{{ verdict(r.effective_verdict) }}</td>
+    <td>{{ verdict(r.machine_verdict) }}</td>
+    <td>{{ r.method }}</td>
+    <td>{{ r.confidence }}</td>
+    <td>{% if r.reviewed %}yes ({{ r.review_count }}){% else %}no{% endif %}</td>
+    <td class="reason">{{ r.reason }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

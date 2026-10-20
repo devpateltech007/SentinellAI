@@ -7,13 +7,15 @@ defaults to PASS: any error or unclear result becomes NEEDS REVIEW.
 
 This is a 15-week semester project. The full plan is in
 [`../ComplianceLens Project Plan.md`](../ComplianceLens%20Project%20Plan.md).
-**Current version: V4 (AI evaluation), being finished**: 19 rules across AWS, GitHub,
+**Current version: V5 (web dashboard and human review), being built** on V4 (AI
+evaluation, tagged `v4.0`): 19 rules across AWS, GitHub,
 an HR employee list and policy documents. Every run is saved as hashed evidence files
 plus a SQLite history, and `verify` reports any evidence file changed after the audit.
 Rules with a web page also get a screenshot with a banner (rule, UTC time, URL), taken
 with a login you save once by hand. An AI model of your choice (set in `.env`) judges
 what code can't: two settings only shown as screenshots, and three policy documents.
-Anything the AI can't answer clearly is NEEDS REVIEW, never PASS.
+Anything the AI can't answer clearly is NEEDS REVIEW, never PASS. A web dashboard (V5)
+runs audits, shows the evidence and records human reviews without editing any result.
 
 ---
 
@@ -30,6 +32,7 @@ make aitest               # check the AI model and key in .env (V4)
 make audit                # run a real audit
 make history              # list past runs
 make verify RUN=run-0001  # check a run's evidence was not changed
+make dashboard            # the web dashboard on http://127.0.0.1:8000 (V5)
 ```
 
 Without any accounts set up, `make audit` still runs: every rule shows NEEDS REVIEW
@@ -146,6 +149,14 @@ expired login keeps every API verdict and lists the missing screenshots with the
 18. `make aitest`: one made-up policy and one made-up screenshot with known answers.
     It prints the model, cost and time, never the key.
 
+### Dashboard (V5)
+
+19. In `.env`, set `DASHBOARD_PASSWORD` to a long, unique password (see `.env.example`
+    for the optional `DASHBOARD_SESSION_SECRET` and `DASHBOARD_REVIEWER`).
+20. `make dashboard`, then open <http://127.0.0.1:8000> and sign in. The Run audit page
+    lists anything still missing (tokens, logins, AI key) with the command that fixes it.
+    More: [`compliancelens/dashboard/README.md`](compliancelens/dashboard/README.md).
+
 Defaults used in this repo: AWS region `us-east-1`, AWS profile `compliancelens`.
 
 ## Running
@@ -157,6 +168,7 @@ Defaults used in this repo: AWS region `us-east-1`, AWS profile `compliancelens`
 | `make audit` | Run all rules and save the run (`python audit.py run`) |
 | `make crosscheck` | The same, and the AI also reads the code rules' screenshots and says whether it agrees |
 | `make aitest` | Check the AI model and key set in `.env` |
+| `make dashboard` | The web dashboard on <http://127.0.0.1:8000>: run audits, read results, review |
 | `make history` | Past runs, newest first, with PASS / FAIL / NEEDS REVIEW totals |
 | `make verify RUN=run-0007` | Re-hash a run's files and report anything changed or missing |
 | `make login SITE=github` | Log in by hand and save the login for screenshots (`SITE=aws` too) |
@@ -277,12 +289,14 @@ empty placeholders until that version.
 | `compliancelens/connectors/` | V1 | Collects evidence: `aws.py`, `github.py`, `hr.py`, `browser.py` (V3), `files.py` (V4) |
 | `compliancelens/storage/` | V2 | SQLite results database (`db.py`) |
 | `compliancelens/evaluator/` | V4 | AI checks for screenshots and documents (any model, set in `.env`) |
-| `compliancelens/dashboard/` | V5 *later* | Web dashboard with human review |
+| `compliancelens/dashboard/` | V5 | Web dashboard: run audits, results, evidence, reviews ([README](compliancelens/dashboard/README.md)) |
+| `compliancelens/queries.py`, `review.py` | V5 | What the dashboard (and V6 report) reads; human reviews |
+| `compliancelens/locking.py`, `run_options.py`, `config.py` | V5 | One audit at a time; run choices shared by CLI and dashboard; rules turned off |
 | `compliancelens/reporting/` | V6 *later* | HTML/PDF report templates |
 | `rules/` | V1 | The rulebook: one YAML card per rule |
 | `data/` | V2 | Local employee list for HR-01 (**gitignored** except the example) |
 | `tests/` | V1 | pytest tests; `fixtures/` holds recorded API replies and a fake website |
-| `config/` | V6 *later* | Settings file (repo names, region, enabled rules) |
+| `config/` | V5 | `settings.yaml`: rules turned off (**gitignored**; V6 adds repo names, region) |
 | `evidence/` | V1 | Output of every run (**gitignored**) |
 | `compliance.db` | V2 | Run history and AI answers (**gitignored**, created on first run; each upgrade keeps a copy, e.g. `compliance-v2-backup.db`) |
 | `sessions/` | V3 | Saved browser logins (**gitignored**, private files) |
@@ -326,6 +340,9 @@ something that looks like a secret.
   policy documents' text. A local model (`ollama/`, `lmstudio/`) keeps it on this
   computer. The key is never printed, logged or saved, and an Anthropic key is never
   sent to another provider. `--no-ai` makes no AI calls at all.
+- **The dashboard (V5)** listens on this computer only and needs `DASHBOARD_PASSWORD`
+  even there. Anyone who signs in can run audits, see all evidence and record reviews.
+  Details: [`compliancelens/dashboard/README.md`](compliancelens/dashboard/README.md#security).
 
 **Saved browser logins (V3).** `sessions/github.json` and `sessions/aws.json` work like
 passwords: anyone with the file is logged in.
