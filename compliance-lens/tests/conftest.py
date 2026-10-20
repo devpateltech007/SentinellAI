@@ -11,7 +11,7 @@ import httpx2
 import pytest
 import requests.adapters
 
-from compliancelens import evidence
+from compliancelens import evidence, locking
 from compliancelens.connectors import aws, browser, files, github
 from compliancelens.evaluator import ai
 from compliancelens.storage import db
@@ -84,4 +84,5 @@ def no_sleep(monkeypatch):
     monkeypatch.setattr(aws, "_sleep", waits.append)
     monkeypatch.setattr(github, "_sleep", waits.append)
     monkeypatch.setattr(ai, "_sleep", waits.append)
+    monkeypatch.setattr(locking, "_sleep", waits.append)
     return waits

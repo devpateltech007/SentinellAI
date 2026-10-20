@@ -20,7 +20,7 @@ from typing import Annotated
 import typer
 from dotenv import load_dotenv
 
-from compliancelens import engine
+from compliancelens import engine, locking
 from compliancelens.connectors import browser
 from compliancelens.evaluator import settings as ai_settings
 from experiment.lab import PROJECT_ROOT, analyze, capture, cases, labels, labels_path, run, world
@@ -191,6 +191,8 @@ def capture_command(
         outcomes = capture.capture_batch(batch, rules, setup, log=typer.echo)
     except world.SetupError as e:
         _fail(str(e), 1)
+    except locking.Busy as e:
+        _fail(f"Nothing was changed: {e}.", 1)
     saved = sum(o.status == capture.SAVED for o in outcomes)
     typer.echo(f"{saved} of {len(outcomes)} case(s) saved to {capture.cases_dir()}.")
     if saved != len(outcomes):
@@ -215,10 +217,13 @@ def restore(yes: Annotated[bool, typer.Option("--yes", help="Don't ask first.")]
     if not yes and not typer.confirm("Put everything back now?"):
         _fail("Nothing was changed.", 0)
     try:
-        for line in setup.restore():
-            typer.echo(f"  {line}")
+        with locking.AuditLock(locking.EXPERIMENT_CAPTURE):
+            for line in setup.restore():
+                typer.echo(f"  {line}")
     except world.SetupError as e:
         _fail(str(e), 1)
+    except locking.Busy as e:
+        _fail(f"Nothing was changed: {e}.", 1)
     typer.echo("Done: everything is as it was.")
 
 

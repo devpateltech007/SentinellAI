@@ -40,11 +40,12 @@ policies/private/
 # Raw experiment screenshots and results (V4-V6).
 experiment/data/
 
-# Results database (V2), plus SQLite's journal and write-ahead files.
+# Results database (V2), plus SQLite's journal and write-ahead files and the audit lock (V5).
 *.db
 *.db-journal
 *.db-wal
 *.db-shm
+*.db.lock
 *.sqlite
 *.sqlite3
 

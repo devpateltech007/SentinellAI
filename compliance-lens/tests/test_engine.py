@@ -376,6 +376,11 @@ def test_select_rules():
     assert [r["id"] for r in engine.select_rules(rules, ["C", "A"])] == ["A", "C"]
 
 
+def test_selecting_no_rules_is_an_error_not_all_rules():
+    with pytest.raises(engine.RulebookError, match="no rules selected"):
+        engine.select_rules([valid(id="A")], [])
+
+
 def test_select_unknown_rule_is_an_error():
     with pytest.raises(engine.RulebookError, match="no rule with id NOPE"):
         engine.select_rules([valid()], ["NOPE"])

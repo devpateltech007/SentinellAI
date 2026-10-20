@@ -9,6 +9,10 @@ Order of a run:
  4. Write the manifest, then mark the run 'complete' with its totals.
 If saving fails part-way, the run is marked 'failed' so it never looks finished.
 
+Only one audit runs at a time (V5): steps 2 to 4 hold the shared lock of
+locking.py, also taken by the dashboard and the experiment's capture. A run is
+'full' only when it ran every rule in the rulebook; any other choice is 'partial'.
+
 A screenshot problem (no login, expired login, a changed page) never changes an
 API rule's verdict: the API data is the proof and the screenshot supports it. The
 problem is recorded with the result and printed with the fix.
@@ -31,7 +35,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from compliancelens import __version__, engine, evidence
+from compliancelens import __version__, engine, evidence, locking
 from compliancelens.connectors import browser, files
 from compliancelens.evaluator import ai, images
 from compliancelens.evaluator import cache as ai_cache
@@ -409,8 +413,11 @@ def run_audit(
     block record the status 'skipped'. Without `ai_options` the AI checks are off,
     as with --no-ai: document and vision rules are NEEDS REVIEW.
 
+    `rule_ids` None runs every rule; an empty list is refused (a RulebookError).
+
     Raises engine.RulebookError (or OSError/ValueError) for a bad rulebook,
-    and StorageError if the results could not be saved.
+    locking.Busy if another audit or experiment capture is running, and StorageError
+    if the results could not be saved.
     """
     options = ai_options or AIOptions(enabled=False)
     rules = engine.load_rules(rules_file)
@@ -418,14 +425,17 @@ def run_audit(
     if problems:
         raise engine.RulebookError(problems)
     selected = engine.select_rules(rules, rule_ids)
-    scope = db.PARTIAL if rule_ids else db.FULL
+    # IDs are unique (validate_rules), so the same count means every rule ran.
+    scope = db.FULL if len(selected) == len(rules) else db.PARTIAL
 
+    lock = locking.AuditLock(locking.AUDIT).acquire()
     root = evidence.evidence_root()
     started = _now()
-    # Chromium starts only when the first rule needs it (and has a saved login).
-    shooter = browser.Screenshotter() if screenshots else None
-    conn = db.connect()
+    shooter, conn = None, None
     try:
+        # Chromium starts only when the first rule needs it (and has a saved login).
+        shooter = browser.Screenshotter() if screenshots else None
+        conn = db.connect()
         run_id = db.start_run(
             conn,
             started.isoformat(),
@@ -433,7 +443,10 @@ def run_audit(
             __version__,
             Path(rules_file).name,
             evidence.sha256_file(rules_file),
+            [rule["id"] for rule in selected],
+            len(rules),
         )
+        lock.set_run(run_id)
         try:
             run_dir = evidence.create_run_dir(root, started.date(), run_id)
             db.set_run_dir(conn, run_id, _relative(run_dir, root))
@@ -465,9 +478,13 @@ def run_audit(
                 db.fail_run(conn, run_id, _now().isoformat(), str(e))
             raise StorageError(f"{evidence.run_name(run_id)} could not be saved: {e}")
     finally:
-        if shooter is not None:
-            shooter.close()
-        conn.close()
+        try:
+            if shooter is not None:
+                shooter.close()
+            if conn is not None:
+                conn.close()
+        finally:
+            lock.release()
     warnings = list(options.settings.warnings) if ai_summary and options.settings else []
     return RunSummary(run_id, run_dir, scope, audit.results, ai_summary, warnings)
 

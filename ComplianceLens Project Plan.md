@@ -173,7 +173,7 @@ The whole project runs in Python with free or near-free services.
 | CLI | Typer or argparse | Clean audit.py commands | V2 |
 | Screenshots | Playwright | Drives a real browser; saves login sessions | V3 |
 | AI | Claude API or Amazon Bedrock (Nova) | Both read images; pick whichever you have credits for | V4 |
-| Web UI | Streamlit (simple) or FastAPI + HTML (more control) | Streamlit gets a dashboard running in a day | V5 |
+| Web UI | FastAPI + Jinja2 templates + htmx (V5 decision) | Real pages and URLs, a login that survives refresh, live progress; stays in Python and shares Jinja2 with the V6 report | V5 |
 | Reports | Jinja2 HTML templates + WeasyPrint for PDF | One template, two outputs | V6 |
 | Testing | pytest + moto (fake AWS) + recorded API responses | Test without touching real accounts | V1 onward |
 | Version control | Git + GitHub, one branch per version | Shows progress to graders | V1 |
@@ -218,7 +218,7 @@ gantt
 | V5 Dashboard and review | 11–12 | A non-builder can run and review |
 | V6 Reports and polish | 13–14 | PDF report, tests, rehearsed demo |
 | V7 Final presentation | 15 | Live demo and experiment results |
-| Research experiment | 8–14 | AI vs code accuracy, 40 cases |
+| Research experiment | 8–14 | AI vs code accuracy, 55 cases (40 plain + 15 hard) |
 
 If a version runs late, keep its "done when" goal and cut from the stretch list, never from the next version's core.
 
@@ -582,7 +582,7 @@ V5 puts a web page on top of the engine so a non-technical person can run an aud
 - The report shows both the machine verdict and the human verdict.
 - A note is required on every override.
 
-**Framework choice:** start with Streamlit (a dashboard in Python only, about a day to first page). Move to FastAPI + HTML templates only if you need more control over the layout.
+**Framework choice (V5 decision, Oct 2026):** FastAPI with server-rendered Jinja2 pages and htmx for live parts (filters, review form, audit progress), not Streamlit. It gives real URLs, a cookie login that survives a page refresh, and the same templates V6 uses for the report, without a separate JavaScript app. It listens on localhost only, with one admin password and CSRF protection on every form.
 
 **Running audits from the UI.** Run the engine in a background thread and show progress per rule, so the page does not freeze during a 1 to 2 minute run.
 
@@ -590,7 +590,8 @@ V5 puts a web page on top of the engine so a non-technical person can run an aud
 
 - [ ] Home, Results and Rule detail pages
 - [ ] Review queue with approve and override
-- [ ] History and run comparison
+- [ ] History and run comparison (compare two runs by rule ID; moved here from the V7 stretch list)
+- [ ] Rules page: enable or disable rules for future audits (saved in the `config/` file V6 planned, not in the database); a run records exactly which rules and rule definitions it used
 - [ ] Simple login (a single admin password in .env) so the dashboard is not open to anyone
 - [ ] Usability test: a classmate completes a review without help
 - [ ] Research experiment, carried over from V4: capture the 55 cases, two people label them (Cohen's κ), 3 AI answers per case, analysis (the tools and the pilot were done in V4)
@@ -616,7 +617,7 @@ An AI-written executive summary is optional. If you add it, label it as AI-gener
 **Polish:**
 
 - A single command for setup (make setup or a setup script) and a clear README with screenshots. WeasyPrint needs system libraries: on macOS run brew install pango first
-- Config file for repo names, AWS region and enabled rules (no hard-coded values)
+- Config file for repo names, AWS region and enabled rules (no hard-coded values). The enabled rules part is built in V5 (the dashboard's Rules page writes it)
 - Logging to a file, and friendly error messages
 - A full run finishes in under 2 minutes for all rules (about 19)
 
@@ -657,7 +658,7 @@ Week 15 is for the presentation; stretch goals are only attempted if V1 to V6 ar
 | Stretch goal | Effort | Value |
 | --- | --- | --- |
 | Map each rule to CIS / SOC 2 control IDs in the report | Low | Makes the report look like a real audit artifact |
-| Compare with last run (new failures, fixed items) | Low | Shows drift over time |
+| Compare with last run (new failures, fixed items) | Low | Shows drift over time (done in V5 as History → compare two runs) |
 | Scheduled nightly audit + email or Slack alert on new FAIL | Medium | Continuous compliance |
 | AI rule designer: upload a policy document, get draft rule cards to approve | Medium | Mirrors the reference project's designer mode |
 | Third connector: Google Workspace (2-step verification) or Okta | Medium to high | Proves the design scales beyond AWS and GitHub |

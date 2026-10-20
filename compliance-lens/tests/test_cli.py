@@ -13,7 +13,7 @@ import pytest
 from PIL import Image
 from typer.testing import CliRunner
 
-from compliancelens import __version__, cli, engine, evidence, runner
+from compliancelens import __version__, cli, engine, evidence, locking, runner
 from compliancelens.connectors import browser
 from compliancelens.evaluator.providers import base as provider_base
 from compliancelens.storage import db
@@ -119,6 +119,59 @@ def test_single_rule_run_is_partial(rules):
     run, results = stored(1)
     assert run["scope"] == "partial"
     assert [r["rule_id"] for r in results] == ["AWS-02"]
+
+
+def test_naming_every_rule_is_a_full_run(rules):
+    out = audit(rules, "-r", "GH-01", "-r", "AWS-01", "-r", "AWS-02").output
+    assert "Partial run" not in out
+    run, results = stored(1)
+    assert (run["scope"], run["rules_total"]) == ("full", 3)
+    assert json.loads(run["rule_ids"]) == ["AWS-01", "AWS-02", "GH-01"]  # rulebook order
+    assert len(results) == 3
+
+
+def test_a_run_records_the_rules_it_chose(rules):
+    audit(rules, "-r", "GH-01")
+    audit(rules)
+    partial, _ = stored(1)
+    full, _ = stored(2)
+    assert (json.loads(partial["rule_ids"]), partial["rules_total"]) == (["GH-01"], 3)
+    assert (json.loads(full["rule_ids"]), full["scope"]) == (["AWS-01", "AWS-02", "GH-01"], "full")
+
+
+def test_an_audit_is_refused_while_another_runs(rules, no_sleep):
+    with locking.AuditLock(locking.EXPERIMENT_CAPTURE):
+        result = invoke("run", "--rules-file", rules)
+    assert result.exit_code == 1
+    assert "Not started: an experiment capture (pid " in result.output
+    assert "is already running: wait for it to finish." in result.output
+    assert runner.history() == []  # nothing recorded, no evidence folder
+    assert audit(rules).exit_code == 0  # free again afterwards
+
+
+def test_the_lock_names_the_run_and_is_let_go_after_it(rules):
+    seen = []
+    summary = runner.run_audit(rules, on_result=lambda r: seen.append(locking.holder()))
+    assert {(h["purpose"], h["run_id"]) for h in seen} == {("audit", summary.run_id)}
+    assert locking.holder() is None
+
+
+def test_the_lock_is_let_go_when_saving_fails(rules, monkeypatch):
+    def broken(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(evidence, "write_manifest", broken)
+    with pytest.raises(runner.StorageError):
+        runner.run_audit(rules)
+    assert locking.holder() is None
+
+
+def test_a_bad_rulebook_never_takes_the_lock(tmp_path, monkeypatch):
+    monkeypatch.setattr(locking.AuditLock, "acquire", lambda self: pytest.fail("locked"))
+    path = tmp_path / "rules.yaml"
+    path.write_text("- {id: X-01}\n")
+    with pytest.raises(engine.RulebookError):
+        runner.run_audit(path)
 
 
 def test_rule_option_can_repeat(rules):
