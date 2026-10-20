@@ -22,7 +22,7 @@
     <td>{{ row.change }}</td>
     <td>{% if row.old %}<a href="/results/{{ row.old.result_id }}">{{ verdict(row.old.effective) }}</a>{% if row.old.reviewed %}<br><span class="hint">audit: {{ row.old.machine }}</span>{% endif %}{% else %}not run{% endif %}</td>
     <td>{% if row.new %}<a href="/results/{{ row.new.result_id }}">{{ verdict(row.new.effective) }}</a>{% if row.new.reviewed %}<br><span class="hint">audit: {{ row.new.machine }}</span>{% endif %}{% else %}not run{% endif %}</td>
-    <td>{% if row.old and row.new %}{% if row.machine_changed %}audit verdict changed. {% endif %}{% if row.effective_changed and not row.machine_changed %}changed by review. {% endif %}{% if row.reason_changed %}reason changed. {% endif %}{% if row.screenshot_changed %}screenshot differs.{% endif %}{% endif %}</td>
+    <td>{% if row.old and row.new %}{% if row.machine_changed %}audit verdict changed. {% endif %}{% if row.effective_changed and not row.machine_changed %}changed by review. {% endif %}{% if row.reason_changed %}reason changed.{% endif %}{% endif %}</td>
   </tr>
   {% endfor %}
   </tbody>

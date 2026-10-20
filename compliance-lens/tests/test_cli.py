@@ -844,7 +844,7 @@ def test_document_rules_save_the_exact_document(document_rules, temp_storage):
     out = audit(document_rules, "--no-screenshots", "--no-ai").output
     assert (
         "[NEEDS REVIEW] DOC-01  Password policy requires 12+ characters\n"
-        "       AI checks are turned off (--no-ai)\n       ai-text · disabled"
+        "       the AI was turned off for this audit\n       ai-text · disabled"
     ) in out
     assert "[NEEDS REVIEW] DOC-09  A policy that is not there\n       the document was not" in out
     assert "missing-policy.md not found in policies/examples/compliant" in out
