@@ -12,6 +12,15 @@ If saving fails part-way, the run is marked 'failed' so it never looks finished.
 Only one audit runs at a time (V5): steps 2 to 4 hold the shared lock of
 locking.py, also taken by the dashboard and the experiment's capture. A run is
 'full' only when it ran every rule in the rulebook; any other choice is 'partial'.
+Rules turned off in config/settings.yaml are left out unless named (run_options.py).
+
+The rulebook is read once (V5): the rules that run, the hash recorded and the copy
+saved in the run folder (rulebook.yaml, in the manifest and checked by verify) all
+come from the same bytes, so a past result can be read against the rule as it was.
+
+Progress (V5): `on_event` hears when the run is recorded, when each rule starts and
+finishes, and when the run finishes or fails, for the dashboard's progress display.
+A broken listener never stops the audit; it becomes a warning.
 
 A screenshot problem (no login, expired login, a changed page) never changes an
 API rule's verdict: the API data is the proof and the screenshot supports it. The
@@ -63,6 +72,25 @@ class AIOptions:
     make_provider: Callable | None = None  # tests: a fake model
 
 
+# Progress events (V5), in the order they happen.
+RUN_STARTED, RULE_STARTED, RULE_FINISHED = "run_started", "rule_started", "rule_finished"
+RUN_FINISHED, RUN_FAILED = "run_finished", "run_failed"
+
+
+@dataclass(frozen=True)
+class Progress:
+    """One step of a run, for a progress display."""
+
+    kind: str
+    run_id: int
+    total: int  # rules in this run
+    done: int  # rules finished so far
+    at: str  # UTC time of the event
+    rule_id: str | None = None  # rule_started / rule_finished
+    verdict: str | None = None  # rule_finished
+    error: str | None = None  # run_failed
+
+
 @dataclass
 class RunSummary:
     run_id: int
@@ -71,6 +99,7 @@ class RunSummary:
     results: list[dict]
     ai: dict | None = None  # AI totals of the run, when any AI check ran
     warnings: list[str] = field(default_factory=list)
+    skipped: list[str] = field(default_factory=list)  # turned off in config/settings.yaml
 
     @property
     def name(self) -> str:
@@ -400,33 +429,72 @@ class _Audit:
         return summary
 
 
+class _Events:
+    """Sends progress events; a listener that fails is dropped with a warning."""
+
+    def __init__(self, listener: Callable[[Progress], None] | None, total: int):
+        self.listener, self.total, self.done, self.warnings = listener, total, 0, []
+        self.run_id = 0
+
+    def send(self, kind: str, **values) -> None:
+        if self.listener is None:
+            return
+        event = Progress(kind, self.run_id, self.total, self.done, _now().isoformat(), **values)
+        try:
+            self.listener(event)
+        except Exception as e:
+            self.listener = None
+            self.warnings.append(f"progress display stopped: {e}")
+
+
+def choose_rules(rules: list[dict], rule_ids, disabled=()) -> tuple[list[dict], list[str]]:
+    """The rules to run and the IDs left out because they are turned off.
+
+    Named rules (`rule_ids`) always run; otherwise every rule not in `disabled`.
+    Raises engine.RulebookError when nothing would run.
+    """
+    if rule_ids is not None:
+        return engine.select_rules(rules, rule_ids), []
+    off = set(disabled)
+    skipped = [rule["id"] for rule in rules if rule["id"] in off]
+    if len(skipped) == len(rules):
+        raise engine.RulebookError(["every rule is turned off: turn at least one on"])
+    return [rule for rule in rules if rule["id"] not in off], skipped
+
+
 def run_audit(
     rules_file: Path,
     rule_ids: list[str] | None = None,
     on_result: Callable[[dict], None] | None = None,
     screenshots: bool = True,
     ai_options: AIOptions | None = None,
+    disabled=(),
+    on_event: Callable[[Progress], None] | None = None,
 ) -> RunSummary:
     """Run the rules, save everything, and return the summary.
 
     With `screenshots=False` no browser is started; rules with a screenshot
     block record the status 'skipped'. Without `ai_options` the AI checks are off,
-    as with --no-ai: document and vision rules are NEEDS REVIEW.
+    as with --no-ai: document and vision rules are NEEDS REVIEW. Front ends build
+    their options with run_options.prepare() instead of calling this directly.
 
-    `rule_ids` None runs every rule; an empty list is refused (a RulebookError).
+    `rule_ids` None runs every rule not in `disabled`; an empty list is refused
+    (a RulebookError), never taken as "all".
 
     Raises engine.RulebookError (or OSError/ValueError) for a bad rulebook,
     locking.Busy if another audit or experiment capture is running, and StorageError
     if the results could not be saved.
     """
     options = ai_options or AIOptions(enabled=False)
-    rules = engine.load_rules(rules_file)
+    rulebook = Path(rules_file).read_bytes()  # the only read: what runs is what is saved
+    rules = engine.parse_rules(rulebook.decode("utf-8"), rules_file)
     problems = engine.validate_rules(rules)
     if problems:
         raise engine.RulebookError(problems)
-    selected = engine.select_rules(rules, rule_ids)
+    selected, skipped = choose_rules(rules, rule_ids, disabled)
     # IDs are unique (validate_rules), so the same count means every rule ran.
     scope = db.FULL if len(selected) == len(rules) else db.PARTIAL
+    events = _Events(on_event, len(selected))
 
     lock = locking.AuditLock(locking.AUDIT).acquire()
     root = evidence.evidence_root()
@@ -442,17 +510,26 @@ def run_audit(
             scope,
             __version__,
             Path(rules_file).name,
-            evidence.sha256_file(rules_file),
+            evidence.sha256_bytes(rulebook),
             [rule["id"] for rule in selected],
             len(rules),
         )
         lock.set_run(run_id)
+        events.run_id = run_id
+        events.send(RUN_STARTED)
         try:
             run_dir = evidence.create_run_dir(root, started.date(), run_id)
-            db.set_run_dir(conn, run_id, _relative(run_dir, root))
+            copy = evidence.write_rulebook(run_dir, rulebook)
+            db.set_run_dir(
+                conn, run_id, _relative(run_dir, root), _relative(run_dir / copy["path"], root)
+            )
             audit = _Audit(conn, run_id, run_dir, root, shooter, options)
+            audit.saved.append(copy)
             for rule in selected:
+                events.send(RULE_STARTED, rule_id=rule["id"])
                 result = audit.process(rule)
+                events.done += 1
+                events.send(RULE_FINISHED, rule_id=rule["id"], verdict=result["verdict"])
                 if on_result:
                     on_result(result)
             ai_summary = audit.ai_summary()
@@ -476,7 +553,9 @@ def run_audit(
             # The database itself may be what broke; the original error matters more.
             with contextlib.suppress(Exception):
                 db.fail_run(conn, run_id, _now().isoformat(), str(e))
+            events.send(RUN_FAILED, error=str(e))
             raise StorageError(f"{evidence.run_name(run_id)} could not be saved: {e}")
+        events.send(RUN_FINISHED)
     finally:
         try:
             if shooter is not None:
@@ -486,7 +565,9 @@ def run_audit(
         finally:
             lock.release()
     warnings = list(options.settings.warnings) if ai_summary and options.settings else []
-    return RunSummary(run_id, run_dir, scope, audit.results, ai_summary, warnings)
+    return RunSummary(
+        run_id, run_dir, scope, audit.results, ai_summary, warnings + events.warnings, skipped
+    )
 
 
 def history(limit: int = 20) -> list[dict]:
@@ -528,6 +609,8 @@ def verify(name: str) -> tuple[dict, evidence.VerifyReport]:
             db_files[Path(row["screenshot_path"]).name] = row["screenshot_sha256"]
         if row["source_path"]:  # V4; only document rules whose file was read
             db_files[Path(row["source_path"]).name] = row["source_sha256"]
+    if run["rulebook_path"]:  # V5: the rulebook copy must be the one whose hash was recorded
+        db_files[Path(run["rulebook_path"]).name] = run["rules_sha256"]
     for row in evaluations:  # V4: the AI's records and the pictures it was sent
         db_files[Path(row["replies_path"]).name] = row["replies_sha256"]
         if row["input_path"]:

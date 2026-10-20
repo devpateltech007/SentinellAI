@@ -411,7 +411,8 @@ def test_run_saves_stamped_screenshots(screenshot_rules, temp_storage):
     assert meta["requested_url"] == "https://github.com/a/b"
     assert json.loads((folder / "GH-06.json").read_text()) == {"screenshot_only": True}
     manifest = json.loads((folder / "manifest.json").read_text())
-    assert [f["path"] for f in manifest["files"]][:3] == [
+    assert [f["path"] for f in manifest["files"]][:4] == [
+        "rulebook.yaml",
         "GH-01.json",
         "GH-01.meta.json",
         "GH-01.png",
@@ -419,7 +420,7 @@ def test_run_saves_stamped_screenshots(screenshot_rules, temp_storage):
 
     result = invoke("verify", "run-0001")
     assert result.exit_code == 0, result.output
-    assert "OK: 10 files match" in result.output  # 4 JSON + 4 meta + 2 PNG
+    assert "OK: 11 files match" in result.output  # rulebook + 4 JSON + 4 meta + 2 PNG
 
 
 def test_verify_catches_edited_screenshot(screenshot_rules, temp_storage):
@@ -565,7 +566,7 @@ def test_verify_unchanged_run(rules):
     audit(rules)
     result = invoke("verify", "run-0001")
     assert result.exit_code == 0, result.output
-    assert "OK: 6 files match their recorded SHA-256 hashes." in result.output
+    assert "OK: 7 files match their recorded SHA-256 hashes." in result.output
 
 
 def test_verify_catches_edited_evidence(rules, temp_storage):
@@ -877,7 +878,7 @@ def test_document_rules_save_the_exact_document(document_rules, temp_storage):
 
     result = invoke("verify", "run-0001")
     assert result.exit_code == 0, result.output
-    assert "OK: 14 files match" in result.output  # 4 rules x 2 + 2 documents + 4 AI records
+    assert "OK: 15 files match" in result.output  # rulebook + 4 rules x 2 + 2 docs + 4 AI records
 
 
 def test_verify_catches_an_edited_document(document_rules, temp_storage):

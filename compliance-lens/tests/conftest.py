@@ -11,7 +11,7 @@ import httpx2
 import pytest
 import requests.adapters
 
-from compliancelens import evidence, locking
+from compliancelens import config, evidence, locking
 from compliancelens.connectors import aws, browser, files, github
 from compliancelens.evaluator import ai
 from compliancelens.storage import db
@@ -41,7 +41,8 @@ def fake_credentials(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def temp_storage(tmp_path, monkeypatch):
-    """Every test gets its own empty database, evidence, sessions, policies and experiment folders.
+    """Every test gets its own empty database, evidence, sessions, policies, settings and
+    experiment folders.
 
     The sessions folder matters most: with your real sessions/ a test could open
     your real GitHub or AWS pages. Tests that read the sample policies point
@@ -51,6 +52,8 @@ def temp_storage(tmp_path, monkeypatch):
     monkeypatch.setenv(db.ENV_VAR, str(tmp_path / "compliance.db"))
     monkeypatch.setenv(browser.ENV_VAR, str(tmp_path / "sessions"))
     monkeypatch.setenv(files.ENV_VAR, str(tmp_path / "policies"))
+    # Which rules are turned off (V5): never your real config/settings.yaml.
+    monkeypatch.setenv(config.ENV_VAR, str(tmp_path / "config" / "settings.yaml"))
     # The research experiment's pictures, answers and labels (never experiment/labels.csv).
     monkeypatch.setenv(lab.DATA_ENV, str(tmp_path / "experiment"))
     monkeypatch.setenv(lab.LABELS_ENV, str(tmp_path / "experiment" / "labels.csv"))

@@ -18,7 +18,7 @@ The dashboard's read views (both verdicts, the review queue, comparisons) are in
 
 | Table | Columns |
 | --- | --- |
-| `runs` | id, started_at, finished_at, **status** (running / complete / failed), **scope** (full / partial), tool_version, rules_file, rules_sha256, run_dir, manifest_path, manifest_sha256, pass_count, fail_count, review_count, error, and (V4) ai_calls, ai_cache_hits, ai_input_tokens, ai_output_tokens, ai_cost_usd (NULL = a price was unknown), ai_settings, and (V5) rule_ids (JSON list of the rules the run chose), rules_total (rules in the rulebook); both NULL for older runs |
+| `runs` | id, started_at, finished_at, **status** (running / complete / failed), **scope** (full / partial), tool_version, rules_file, rules_sha256, run_dir, manifest_path, manifest_sha256, pass_count, fail_count, review_count, error, and (V4) ai_calls, ai_cache_hits, ai_input_tokens, ai_output_tokens, ai_cost_usd (NULL = a price was unknown), ai_settings, and (V5) rule_ids (JSON list of the rules the run chose), rules_total (rules in the rulebook), rulebook_path (the copy of the rulebook saved in the run folder; its hash is rules_sha256, and `verify` checks it); all NULL for older runs |
 | `results` | id, run_id, rule_id, rule_title, severity, collector, verdict, method, reason, confidence, collected_at, evidence_path, sha256, meta_path, meta_sha256, (V3) screenshot_status, screenshot_path, screenshot_sha256, screenshot_raw_sha256, screenshot_url, screenshot_captured_at, and (V4) source_path, source_sha256 — one row per rule per run |
 | `overrides` | id, result_id, new_verdict, reviewer, note, created_at: human reviews (V5). A review never edits a result; the latest row (highest id) is the result's effective verdict |
 | `ai_evaluations` | V4: one row per AI evaluation of a result and **role** (`primary` gave a document or vision rule's verdict; `cross_check` only compared a code verdict with the screenshot): method, status, verdict, model_verdict, confidence, reason, quote, observed, comparison, the model settings, prompt/schema/prep versions, input hashes, cache key and origin, attempts, tokens, cost (NULL = unknown), time, the replies file and its hash |
@@ -44,7 +44,7 @@ The dashboard's read views (both verdicts, the review queue, comparisons) are in
   columns, in one transaction. Old runs get 0 AI calls and empty document columns, and
   still verify. A new database and an upgraded one have exactly the same tables.
 - **Upgrade from V4:** the first V5 command that opens a schema 3 database copies it to
-  `compliance-v3-backup.db`, then adds `rule_ids`/`rules_total` and the append-only
+  `compliance-v3-backup.db`, then adds `rule_ids`/`rules_total`/`rulebook_path` and the append-only
   triggers, in one transaction. Checked on a copy of the real database (Oct 19): 41 runs,
   254 results, 90 AI evaluations and 22 cached answers kept, all 41 runs verify.
 - **Append-only (V5):** triggers refuse editing or deleting a review, a review without a

@@ -71,11 +71,13 @@ RUN_AI_COLUMNS = """
     ai_cost_usd       REAL DEFAULT 0,
     ai_settings       TEXT"""
 
-# V5 run columns: the rule IDs the run chose (a JSON list, in rulebook order) and how
-# many rules the rulebook had, so a partial run shows its coverage. NULL for older runs.
+# V5 run columns: the rule IDs the run chose (a JSON list, in rulebook order), how many
+# rules the rulebook had (so a partial run shows its coverage), and the copy of the
+# rulebook saved in the run folder (its hash is rules_sha256). NULL for older runs.
 RUN_SELECTION_COLUMNS = """
     rule_ids          TEXT,
-    rules_total       INTEGER"""
+    rules_total       INTEGER,
+    rulebook_path     TEXT"""
 
 # V5: the record is append-only. A human review adds a row to overrides and never edits
 # or removes one; a result is never edited or removed; a finished run is never edited.
@@ -361,9 +363,13 @@ def start_run(
     return cursor.lastrowid
 
 
-def set_run_dir(conn, run_id: int, run_dir: str) -> None:
+def set_run_dir(conn, run_id: int, run_dir: str, rulebook_path: str | None = None) -> None:
+    """Record the run's folder and (V5) the rulebook copy saved in it."""
     with conn:
-        conn.execute("UPDATE runs SET run_dir = ? WHERE id = ?", (run_dir, run_id))
+        conn.execute(
+            "UPDATE runs SET run_dir = ?, rulebook_path = ? WHERE id = ?",
+            (run_dir, rulebook_path, run_id),
+        )
 
 
 def add_result(

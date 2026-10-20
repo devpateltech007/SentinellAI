@@ -46,6 +46,9 @@ experiment/data/
 *.db-wal
 *.db-shm
 *.db.lock
+
+# Local settings (V5): which rules are turned off (config/README.md).
+config/settings.yaml
 *.sqlite
 *.sqlite3
 
