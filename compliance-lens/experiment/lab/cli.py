@@ -230,6 +230,12 @@ def restore(yes: Annotated[bool, typer.Option("--yes", help="Don't ask first.")]
 # ------------------------------------------------------------------- labels ----
 
 
+def _main_case_ids() -> set[str]:
+    """Every main case in cases.yaml: the main run needs them all."""
+    found, _ = _load()
+    return {case.id for case in found}
+
+
 def _records() -> list[dict]:
     try:
         return capture.load_captured()
@@ -354,6 +360,7 @@ def run_command(
             retry_errors=retry_errors,
             max_cost=max_cost,
             log=typer.echo,
+            expected=None if pilot else _main_case_ids(),
         )
     except (run.RunError, labels.LabelsError) as e:
         _fail(str(e))
@@ -361,6 +368,8 @@ def run_command(
     typer.echo(
         f"{report.asked} answer(s) asked, {report.skipped} already there; the run has cost {cost}."
     )
+    if report.quarantined:
+        typer.echo(f"{report.quarantined} answer(s) set aside: another model was served.")
     typer.echo(f"Saved in {report.folder}")
     if report.stopped:
         _fail(f"Stopped: {report.stopped}", 1)
@@ -385,10 +394,11 @@ def analyze_command(
     records = _records()
     rows = labels.read_labels(labels_path())
     agreement = labels.agreement(rows)
+    expected = _main_case_ids()
     results, text = [], []
     for folder in folders:
         try:
-            result = analyze.analyze(Path(folder), records, rows)
+            result = analyze.analyze(Path(folder), records, rows, expected)
         except analyze.AnalysisError as e:
             _fail(str(e), 1)
         results.append(result)

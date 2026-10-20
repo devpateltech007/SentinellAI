@@ -26,15 +26,23 @@ base permission. The AI gets each rule's own `ai_check` from the rulebook, word 
    setup made true) and two **evidence labels** (what the picture shows: PASS, FAIL or
    REVIEW), by two people separately; the second labeller sees only the shuffled pictures
    and the rule's conditions. Agreement is Cohen's κ, computed before they talk; then they
-   settle disagreements (unsettled → REVIEW).
+   settle disagreements (unsettled → REVIEW). A final label counts only with both A's and
+   B's labels, and a disagreement only with the reason written in `adjudication` (V5).
 4. **Runs:** the AI judges every picture **3 times** (fresh answers: no cache, no refusal
-   fallbacks), with fixed settings; every attempt is saved. A run stops if the provider
-   starts serving another model or the $ limit is reached, and can be resumed.
+   fallbacks), with fixed settings; every attempt is saved. The main run starts only when
+   **all 55 cases are captured** and labelled, and its config records the **hash of the
+   final labels** (changed labels make a new run). A run stops if the $ limit is reached,
+   or if the provider starts serving another model: that answer is **set aside**
+   (`quarantine.jsonl`, never in the results, still counted in the cost) and `--resume`
+   asks for it again.
 5. **Analysis** (from the saved answers only, so anyone can repeat it): accuracy, decided
    accuracy, coverage, **false PASS** (the dangerous error), false FAIL, review recall,
    PASS on unclear pictures, consistency over repeats, by rule / kind / confidence,
    "medium confidence → review", misread vs misjudged, invalid replies, the code's own
-   accuracy, tokens, cost and time; every rate with a 95% Wilson interval.
+   accuracy, tokens, cost and time; every rate with a 95% Wilson interval. It says
+   **PARTIAL** unless every case has every repeat with no failed call, refuses if
+   `labels.csv` changed since the run, and the cost counts **every paid attempt**
+   (answers asked again or set aside too).
 
 The code's verdict for each case comes from the same engine check an audit uses, on the
 API data saved with the picture (GH-06 through `github.org_settings`; AWS-05 only for the
@@ -93,7 +101,7 @@ read-only ones:
 | `lab/` | The code (`python -m experiment.lab`) | yes |
 | `data/cases/<id>/` | `page.png` (what the AI sees), `api.json`, `case.json` | **no** |
 | `data/packs/` | Labelling pages and their keys | **no** |
-| `data/runs/<model>-<hash>/` | `config.json`, `predictions.jsonl`, `replies/`, `analysis.json` | **no** |
+| `data/runs/<model>-<hash>/` | `config.json`, `predictions.jsonl`, `quarantine.jsonl` (if any), `replies/`, `analysis.json` | **no** |
 
 **Never commit `data/`:** the pictures show the real accounts. Share labelling packs
 privately. Results tables and charts for the write-up go in `docs/`.

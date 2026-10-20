@@ -6,15 +6,20 @@ names the run's folder, data/runs/<model>-<hash>/, so answers from different set
 never mix. There is no cache (every answer is fresh) and no refusal fallback (the
 model under test answers alone); every attempt is saved.
 
-    config.json        the fixed settings (no key)
+    config.json        the fixed settings (no key); for the main run also the hash of
+                       the final labels it was asked against
     predictions.jsonl  one line per answer: case, repeat, verdict, status, usage...
+    quarantine.jsonl   answers set aside: the provider served another model (V5)
     replies/           the full record of each answer, with every attempt
 
 A run can be stopped and resumed (--resume). It stops by itself when the $ limit is
-reached or when the provider starts serving a different model.
+reached or when the provider starts serving a different model. That answer is set
+aside in quarantine.jsonl, never mixed into the results (its cost still counts), and
+--resume asks for it again.
 
-The main run needs the final labels first (they are fixed before the AI runs); the
-pilot runs on its own pilot cases and needs none.
+The main run needs every main case captured and their final labels first (both are
+fixed before the AI runs, so neither can follow its answers); the pilot runs on its
+own pilot cases and needs neither.
 """
 
 import dataclasses
@@ -44,15 +49,19 @@ class RunReport:
     skipped: int = 0  # answers already in the run
     stopped: str | None = None  # why the run stopped early
     cost_usd: float | None = 0.0  # the whole run so far; None if a price is unknown
+    quarantined: int = 0  # answers set aside so far (another served model)
 
 
 def runs_dir() -> Path:
     return data_dir() / "runs"
 
 
-def run_config(settings, records: list[dict], repeats: int, pilot: bool) -> dict:
-    """Everything that fixes the run's answers (never the key)."""
-    return {
+def run_config(
+    settings, records: list[dict], repeats: int, pilot: bool, labels_sha256: str | None = None
+) -> dict:
+    """Everything that fixes the run's answers (never the key). The main run also names
+    the final labels it is asked against, so changed labels make a new run (V5)."""
+    config = {
         "model": settings.name,
         "settings": settings.identity(),
         "versions": ai.versions(),
@@ -68,6 +77,9 @@ def run_config(settings, records: list[dict], repeats: int, pilot: bool) -> dict
             for r in sorted(records, key=lambda r: r["case"]["id"])
         },
     }
+    if not pilot:  # pilot configs stay as they were, so the pilot's folder still matches
+        config["labels_sha256"] = labels_sha256
+    return config
 
 
 def config_hash(config: dict) -> str:
@@ -80,17 +92,42 @@ def folder_name(config: dict) -> str:
     return f"{model}-{'pilot-' if config['pilot'] else ''}{config_hash(config)[:10]}"
 
 
-def choose(records: list[dict], rows: dict, pilot: bool) -> list[dict]:
+def choose(
+    records: list[dict], rows: dict, pilot: bool, expected: set[str] | None = None
+) -> tuple[list[dict], str | None]:
+    """The cases to run and (main run) the hash of their final labels.
+
+    `expected` (main run) is every main case in cases.yaml: all of them must be captured
+    first, because the run's folder is named after the cases it has.
+    """
     chosen = [r for r in records if r["case"]["pilot"] == pilot]
     if not chosen:
         what = "pilot cases" if pilot else "cases"
         raise RunError(f"no captured {what} yet: capture them first")
-    if not pilot:
-        try:
-            labels.final_labels(rows, chosen)
-        except labels.LabelsError as e:
-            raise RunError(f"{e}. The labels are fixed before the AI runs.")
-    return chosen
+    if pilot:
+        return chosen, None
+    if expected is not None:
+        have = {r["case"]["id"] for r in chosen}
+        missing, unknown = sorted(expected - have), sorted(have - expected)
+        if missing:
+            shown = ", ".join(missing[:5]) + (
+                f" and {len(missing) - 5} more" if missing[5:] else ""
+            )
+            raise RunError(
+                f"{len(missing)} of the {len(expected)} main cases aren't captured yet ({shown}):"
+                " capture every case before the first answer"
+            )
+        if unknown:
+            raise RunError(f"captured cases not in cases.yaml: {', '.join(unknown)}")
+    try:
+        final = labels.final_labels(rows, chosen)
+    except labels.LabelsError as e:
+        raise RunError(f"{e}. The labels are fixed before the AI runs.")
+    return chosen, labels.labels_hash(final)
+
+
+def quarantine_path(folder: Path) -> Path:
+    return folder / "quarantine.jsonl"
 
 
 def read_predictions(path: Path) -> list[dict]:
@@ -157,9 +194,10 @@ def run_experiment(
     root: Path | None = None,
     make_provider=None,
     log=print,
+    expected: set[str] | None = None,
 ) -> RunReport:
-    chosen = choose(records, rows, pilot)
-    config = run_config(settings, chosen, repeats, pilot)
+    chosen, labels_sha256 = choose(records, rows, pilot, expected)
+    config = run_config(settings, chosen, repeats, pilot, labels_sha256)
     folder = (root or runs_dir()) / folder_name(config)
     path = folder / "predictions.jsonl"
     if folder.exists():
@@ -172,14 +210,15 @@ def run_experiment(
         evidence.write_atomic(folder / "config.json", evidence.to_json_bytes(config))
 
     history = read_predictions(path)
+    set_aside = read_predictions(quarantine_path(folder))
     done = latest(history)
     run_settings = dataclasses.replace(
         settings, max_calls_per_run=MAX_CALLS, max_cost_per_run=max_cost
     )
     evaluator = ai.Evaluator(run_settings, cache=None, fallbacks=False, make_provider=make_provider)
-    evaluator.budget.spent = sum(p["cost_usd"] or 0 for p in history)
+    evaluator.budget.spent = sum(p["cost_usd"] or 0 for p in history + set_aside)
     served = next((p["served_model"] for p in history if p["served_model"]), None)
-    report = RunReport(folder)
+    report = RunReport(folder, quarantined=len(set_aside))
     pages = {}
     for repeat in range(1, repeats + 1):
         for record in chosen:
@@ -193,24 +232,33 @@ def run_experiment(
             log(f"  {case_id} #{repeat}")
             outcome = evaluator.screenshot(record["rule"], pages[case_id])
             line = prediction(record, repeat, outcome)
-            number = sum(1 for p in history if (p["case_id"], p["repeat"]) == (case_id, repeat))
+            number = sum(
+                1 for p in history + set_aside if (p["case_id"], p["repeat"]) == (case_id, repeat)
+            )  # a set-aside answer's reply file is kept, never overwritten
             reply = {"case_id": case_id, "repeat": repeat, **outcome.record()}
             name = f"{case_id}-r{repeat}{f'-{number + 1}' if number else ''}.json"
             evidence.write_atomic(folder / "replies" / name, evidence.to_json_bytes(reply))
+            report.asked += 1
+            if line["served_model"] and served and line["served_model"] != served:
+                # Another model answered: set aside (still paid for), never in the results.
+                _append(quarantine_path(folder), {**line, "expected_model": served})
+                set_aside.append(line)
+                report.quarantined += 1
+                report.stopped = (
+                    f"the provider served {line['served_model']} instead of {served}: that"
+                    " answer was set aside (quarantine.jsonl) and the run stopped, because a"
+                    " run never mixes two models"
+                )
+                report.cost_usd = _cost(history + set_aside)
+                return report
             _append(path, line)
             history.append(line)
-            report.asked += 1
             log(f"    {line['verdict']} ({line['status']}, {line['confidence'] or '-'})")
             if outcome.status in (ai.BUDGET_EXHAUSTED, ai.NOT_CONFIGURED, ai.NOT_INSTALLED):
                 report.stopped = f"{outcome.reason} (fix it, then add --resume --retry-errors)"
-            elif line["served_model"] and served and line["served_model"] != served:
-                report.stopped = (
-                    f"the provider served {line['served_model']} instead of {served}: a run"
-                    " never mixes two models"
-                )
             served = served or line["served_model"]
             if report.stopped:
-                report.cost_usd = _cost(history)
+                report.cost_usd = _cost(history + set_aside)
                 return report
-    report.cost_usd = _cost(history)
+    report.cost_usd = _cost(history + set_aside)
     return report

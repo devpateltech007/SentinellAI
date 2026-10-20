@@ -13,6 +13,10 @@ REVIEW means "a careful person could not tell from this picture alone" (cut off,
 covered, still loading, the sign-in page...). The labels are fixed before the AI
 runs, so they can't be nudged by its answers.
 
+A final label counts only when both people labelled the picture (V5): A and B agree
+and the final label is theirs, or they differ and the adjudication says why. The
+labels a run used are fixed by their hash (labels_hash), recorded with the run.
+
 Each labeller gets a pack: a web page with the pictures in their own random order,
 under random codes, and the rule's conditions; it saves a CSV of code,label. The
 key from codes to cases stays in data/packs/ and is never in the pack.
@@ -332,15 +336,32 @@ def finalize(rows: dict[str, dict]) -> list[str]:
     return sorted(open_cases)
 
 
+def _label_problem(case_id: str, row: dict | None) -> str | None:
+    """Why a case's final label can't be used yet, or None."""
+    if row is None or not row["evidence_label"]:
+        return f"{case_id} has no final label"
+    a, b, final = row["evidence_label_a"], row["evidence_label_b"], row["evidence_label"]
+    if not (a and b):
+        missing = " and ".join(x for x, label in (("A", a), ("B", b)) if not label)
+        return f"{case_id} has no label from {missing}: both people label every picture"
+    if a == b and final != a:
+        return f"{case_id}'s final label {final} differs from the {a} that A and B agreed on"
+    if a != b and row["adjudication"].strip() in ("", "agreed"):
+        return f"{case_id}: A and B differ ({a} / {b}) and the adjudication doesn't say why"
+    return None
+
+
 def final_labels(rows: dict[str, dict], records: list[dict]) -> dict[str, str]:
     """Each main case's final label, checked against the captured pictures. Raises
-    LabelsError if any case is unlabelled or its picture changed after labelling."""
+    LabelsError if any case lacks a label from A, B or the final one, a disagreement
+    isn't explained, or its picture changed after labelling."""
     problems, final = [], {}
     for record in records:
         case_id = record["case"]["id"]
         row = rows.get(case_id)
-        if row is None or not row["evidence_label"]:
-            problems.append(f"{case_id} has no final label")
+        problem = _label_problem(case_id, row)
+        if problem:
+            problems.append(problem)
         elif row["pixel_sha256"] != record["pixel_sha256"]:
             problems.append(f"{case_id}'s picture changed after it was labelled")
         else:
@@ -351,3 +372,9 @@ def final_labels(rows: dict[str, dict], records: list[dict]) -> dict[str, str]:
         )
         raise LabelsError(f"the labels are not ready: {shown}")
     return final
+
+
+def labels_hash(final: dict[str, str]) -> str:
+    """The SHA-256 of a run's final labels ({case ID: label}), whatever their order."""
+    text = json.dumps(final, sort_keys=True, separators=(",", ":"))
+    return evidence.sha256_bytes(text.encode("utf-8"))

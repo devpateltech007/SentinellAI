@@ -78,9 +78,11 @@ def records(tmp_path):
 
 
 def labelled(records):
+    """Both people labelled every picture as its state, and agreed."""
     rows, _ = labels.update_rows(records, {})
     for row in rows.values():
-        row["evidence_label"] = row["state_label"]
+        state = row["state_label"]
+        row.update(evidence_label_a=state, evidence_label_b=state, evidence_label=state)
     return rows
 
 
@@ -184,11 +186,29 @@ def test_errors_are_kept_and_can_be_asked_again(records, settings, model, tmp_pa
     assert (report.folder / "replies" / "aws01-len8-r1-2.json").exists()  # both kept
 
 
-def test_a_different_served_model_stops_the_run(records, settings, model, tmp_path):
+def test_a_different_served_model_is_set_aside(records, settings, model, tmp_path):
+    rows = labelled(records)
     model.queue = [None, "gpt-6-luna-2026-10-15"]
-    report = go(records, labelled(records), settings, model, tmp_path, repeats=1)
-    assert report.asked == 2
+    report = go(records, rows, settings, model, tmp_path, repeats=1)
+    assert report.asked == 2 and report.quarantined == 1
     assert "served gpt-6-luna-2026-10-15 instead of gpt-6-luna-2026-09-01" in report.stopped
+    assert "set aside (quarantine.jsonl)" in report.stopped
+    assert report.cost_usd == pytest.approx(2 * 0.00015)  # the set-aside answer was paid for
+    kept = run.read_predictions(report.folder / "predictions.jsonl")
+    [aside] = run.read_predictions(run.quarantine_path(report.folder))
+    assert [p["case_id"] for p in kept] == ["aws01-len8"]  # cases run in ID order
+    assert aside["case_id"] == "gh06-read" and aside["expected_model"] == "gpt-6-luna-2026-09-01"
+    # Resumed while the provider still serves the new model: set aside again, file kept.
+    again = go(records, rows, settings, model, tmp_path, repeats=1, resume=True)
+    assert again.quarantined == 2 and again.cost_usd == pytest.approx(3 * 0.00015)
+    names = sorted(p.name for p in (report.folder / "replies").iterdir())
+    assert names == ["aws01-len8-r1.json", "gh06-read-r1-2.json", "gh06-read-r1.json"]
+    # Back to the run's model: the missing answer is asked, nothing set aside is used.
+    model.served = "gpt-6-luna-2026-09-01"
+    done = go(records, rows, settings, model, tmp_path, repeats=1, resume=True)
+    assert (done.stopped, done.asked, done.skipped, done.quarantined) == (None, 2, 1, 2)
+    kept = run.read_predictions(report.folder / "predictions.jsonl")
+    assert {p["served_model"] for p in kept} == {"gpt-6-luna-2026-09-01"}
 
 
 def test_the_cost_limit_stops_the_run(records, settings, model, tmp_path):
@@ -217,6 +237,37 @@ def test_an_unknown_price_makes_the_cost_unknown(records, model, tmp_path):
     )
     report = go(records, labelled(records), settings, model, tmp_path, repeats=1)
     assert report.cost_usd is None
+
+
+def test_the_main_run_needs_every_case_captured(records, settings, model, tmp_path):
+    rows = labelled(records)
+    main = {"gh06-read", "gh06-write", "aws01-len8"}
+    more = main | {f"aws05-{n}" for n in range(7)}
+    with pytest.raises(
+        run.RunError,
+        match="7 of the 10 main cases aren't captured yet"
+        r" \(aws05-0, aws05-1, aws05-2, aws05-3, aws05-4 and 2 more\)",
+    ):
+        go(records, rows, settings, model, tmp_path, expected=more)
+    with pytest.raises(run.RunError, match="captured cases not in cases.yaml: aws01-len8"):
+        go(records, rows, settings, model, tmp_path, expected=main - {"aws01-len8"})
+    assert go(records, rows, settings, model, tmp_path, expected=main, repeats=1).asked == 3
+    assert model.calls == 3
+
+
+def test_the_labels_are_part_of_the_run(records, settings, model, tmp_path):
+    rows = labelled(records)
+    first = go(records, rows, settings, model, tmp_path, repeats=1)
+    config = json.loads((first.folder / "config.json").read_text())
+    main = [r for r in records if not r["case"]["pilot"]]
+    assert config["labels_sha256"] == labels.labels_hash(labels.final_labels(rows, main))
+    rows["gh06-write"].update(
+        evidence_label_b="REVIEW", evidence_label="REVIEW", adjudication="the value is half covered"
+    )
+    second = go(records, rows, settings, model, tmp_path, repeats=1)  # a new run, no --resume
+    assert second.folder != first.folder
+    pilot = go(records, {}, settings, model, tmp_path, pilot=True, repeats=1)
+    assert "labels_sha256" not in json.loads((pilot.folder / "config.json").read_text())
 
 
 def test_config_hash_is_stable(records, settings):
