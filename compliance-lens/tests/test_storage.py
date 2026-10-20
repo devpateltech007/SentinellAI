@@ -407,7 +407,7 @@ def structure(conn) -> dict:
 
 
 def test_new_database_has_the_v4_tables_and_columns(conn):
-    assert columns(conn, "runs")[-8:-2] == RUN_AI_COLUMNS
+    assert columns(conn, "runs")[-9:-3] == RUN_AI_COLUMNS
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"ai_evaluations", "ai_cache"} <= tables
 
@@ -578,7 +578,7 @@ def test_the_ai_cache_keeps_one_answer_per_key(conn, result_id):
 
 # --- schema 4: run selection, append-only record, WAL (V5) -------------------------
 
-RUN_SELECTION_COLUMNS = ["rule_ids", "rules_total"]
+RUN_SELECTION_COLUMNS = ["rule_ids", "rules_total", "rulebook_path"]
 TRIGGERS = {
     "overrides_are_never_edited",
     "overrides_are_never_deleted",
@@ -595,7 +595,7 @@ def triggers(conn):
 
 def test_new_database_has_the_v5_columns_and_triggers(conn):
     assert db.SCHEMA_VERSION == 4
-    assert columns(conn, "runs")[-2:] == RUN_SELECTION_COLUMNS
+    assert columns(conn, "runs")[-3:] == RUN_SELECTION_COLUMNS
     assert triggers(conn) == TRIGGERS
 
 
@@ -622,7 +622,7 @@ def test_start_run_records_the_chosen_rules(conn):
     )
     run = db.get_run(conn, run_id)
     assert (run["rule_ids"], run["rules_total"]) == ('["AWS-02", "GH-01"]', 19)
-    assert [db.get_run(conn, start(conn))[c] for c in RUN_SELECTION_COLUMNS] == [None, None]
+    assert [db.get_run(conn, start(conn))[c] for c in RUN_SELECTION_COLUMNS] == [None] * 3
 
 
 def test_v3_database_is_upgraded_and_keeps_its_history(temp_storage):

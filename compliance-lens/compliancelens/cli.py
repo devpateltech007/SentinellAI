@@ -27,7 +27,7 @@ from typing import Annotated
 import typer
 from dotenv import load_dotenv
 
-from compliancelens import __version__, engine, evidence, locking, runner
+from compliancelens import __version__, config, engine, evidence, locking, run_options, runner
 from compliancelens.connectors import browser
 from compliancelens.evaluator import ai, answer, prompt, providers, smoke
 from compliancelens.evaluator import settings as ai_settings
@@ -163,26 +163,37 @@ def display_path(path: Path) -> str:
         return str(path)
 
 
-def _ai_options(
-    use_ai: bool, cross_check: bool, refresh_ai: bool, ai_model: str | None, screenshots: bool
-) -> runner.AIOptions | int:
-    """The run's AI options, or exit code 2 after saying what is wrong."""
-    if not use_ai and (cross_check or refresh_ai or ai_model):
-        typer.echo("--no-ai can't be used with --cross-check, --refresh-ai or --ai-model.")
-        return 2
-    if cross_check and not screenshots:
-        typer.echo("--cross-check reads screenshots: leave out --no-screenshots.")
-        return 2
-    if not use_ai:
-        return runner.AIOptions(enabled=False)
+# The shared checks (run_options.py) name the problem; the command line names its flags.
+OPTION_MESSAGES = {
+    run_options.NO_AI_CONFLICT: "--no-ai can't be used with --cross-check, --refresh-ai or"
+    " --ai-model.",
+    run_options.CROSS_CHECK_NEEDS_SCREENSHOTS: "--cross-check reads screenshots: leave out"
+    " --no-screenshots.",
+    run_options.AI_SETTINGS: "The AI settings in .env have problems (fix them, or run with"
+    " --no-ai):",
+}
+
+
+def _options(rule_ids, screenshots, use_ai, cross_check, refresh_ai, ai_model):
+    """The run's checked options, or exit code 2 after saying what is wrong."""
     try:
-        settings = ai_settings.resolve(model=ai_model)
-    except ai_settings.AISettingsError as e:
-        typer.echo("The AI settings in .env have problems (fix them, or run with --no-ai):")
-        for problem in e.problems:
-            typer.echo(f"  - {problem}")
+        return run_options.prepare(
+            rule_ids,
+            screenshots=screenshots,
+            use_ai=use_ai,
+            cross_check=cross_check,
+            refresh_ai=refresh_ai,
+            ai_model=ai_model,
+        )
+    except run_options.OptionsError as e:
+        heading = OPTION_MESSAGES.get(e.code)
+        if heading is None:  # settings file
+            heading = f"{display_path(config.settings_path())} has problems:"
+        typer.echo(heading)
+        if e.code in (run_options.AI_SETTINGS, run_options.SETTINGS_FILE):
+            for problem in e.problems:
+                typer.echo(f"  - {problem}")
         return 2
-    return runner.AIOptions(settings=settings, refresh=refresh_ai, cross_check=cross_check)
 
 
 def _run(
@@ -196,16 +207,12 @@ def _run(
 ) -> int:
     now = datetime.datetime.now(datetime.UTC)
     typer.echo(f"ComplianceLens v{__version__} audit  {now:%Y-%m-%d %H:%M} UTC")
-    options = _ai_options(use_ai, cross_check, refresh_ai, ai_model, screenshots)
+    options = _options(rule_ids, screenshots, use_ai, cross_check, refresh_ai, ai_model)
     if isinstance(options, int):
         return options
     try:
-        summary = runner.run_audit(
-            rules_file,
-            rule_ids,
-            on_result=lambda r: typer.echo(format_result(r)),
-            screenshots=screenshots,
-            ai_options=options,
+        summary = run_options.run(
+            rules_file, options, on_result=lambda r: typer.echo(format_result(r))
         )
     except engine.RulebookError as e:
         typer.echo(f"Rulebook {display_path(rules_file)} has problems:")
@@ -225,6 +232,11 @@ def _run(
     typer.echo(format_totals(summary))
     for line in format_screenshots(summary) + format_ai_summary(summary):
         typer.echo(line)
+    if summary.skipped:
+        typer.echo(
+            f"Turned off in {display_path(config.settings_path())} (not run):"
+            f" {', '.join(summary.skipped)}."
+        )
     if summary.scope != db.FULL:
         typer.echo(f"Partial run ({len(summary.results)} rule(s)); not a full audit score.")
     typer.echo(f"Check the evidence later with:  python audit.py verify {summary.name}")

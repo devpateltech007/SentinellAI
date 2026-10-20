@@ -18,6 +18,7 @@ evidence/
                          timestamp, tool version, evidence file name + sha256
       AWS-02.png         V3: the page screenshot with a banner on top
       DOC-01.source.pdf  V4: the exact policy document a document rule read
+      rulebook.yaml      V5: the exact rulebook the run read (its hash is in compliance.db)
       manifest.json      run ID, start/finish times, tool version, every file + sha256 + size
 ```
 

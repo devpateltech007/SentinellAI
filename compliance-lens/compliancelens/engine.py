@@ -311,12 +311,18 @@ def run_rule(rule: dict) -> dict:
 
 def load_rules(path) -> list[dict]:
     """Read a rulebook YAML file: a list of rule cards. Raises OSError or ValueError."""
+    return parse_rules(Path(path).read_text(), path)
+
+
+def parse_rules(text: str, name) -> list[dict]:
+    """A rulebook's text as a list of rule cards (`name` is only for messages).
+    Raises ValueError. The runner reads the file once and parses the same bytes it saves."""
     try:
-        rules = yaml.safe_load(Path(path).read_text())
+        rules = yaml.safe_load(text)
     except yaml.YAMLError as e:
-        raise ValueError(f"{path} is not valid YAML: {e}")
+        raise ValueError(f"{name} is not valid YAML: {e}")
     if not isinstance(rules, list) or not all(isinstance(r, dict) for r in rules):
-        raise ValueError(f"{path} must contain a list of rule cards")
+        raise ValueError(f"{name} must contain a list of rule cards")
     return rules
 
 

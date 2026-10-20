@@ -169,19 +169,22 @@ More options:
 
 ```bash
 python audit.py                     # same as `run`
-python audit.py run --rule AWS-02   # one rule (repeat --rule for more); marked "partial"
+python audit.py run --rule AWS-02   # one rule (repeat --rule for more); "partial" unless every rule is named
 python audit.py run --no-screenshots   # API checks only: no browser, no screenshots
 python audit.py run --no-ai         # no AI calls: AI rules are NEEDS REVIEW
 python audit.py run --cross-check   # the AI also reads code rules' screenshots (verdicts unchanged)
 python audit.py run --refresh-ai    # ask the AI again instead of reusing cached answers
 python audit.py run --ai-model openai/<model>   # another model, for this run only
 python audit.py history --limit 5
+# Rules turned off in config/settings.yaml (disabled_rules) are left out and named;
+# a run without every rule is "partial". See config/README.md.
 python audit.py --help
 ```
 
 Exit codes: `0` done (FAIL verdicts are results, not errors), `1` verify found a problem,
-the run could not be saved or a login was not saved, `2` a configuration or usage error
-(broken rulebook, unknown rule, run or site, Chromium not installed).
+the run could not be saved, a login was not saved, or another audit (or the experiment's
+capture) is running, `2` a configuration or usage error (broken rulebook or settings file,
+unknown rule, run or site, every rule turned off, Chromium not installed).
 
 Example run (shortened):
 

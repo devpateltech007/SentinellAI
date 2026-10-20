@@ -939,7 +939,7 @@ def test_audit_saves_stamped_screenshots_that_verify(logged_in, server, tmp_path
 
     _, report = runner.verify(summary.name)
     assert report.ok, report.problems
-    assert report.files_checked == 5  # 2 JSON + 2 meta + 1 PNG
+    assert report.files_checked == 6  # rulebook + 2 JSON + 2 meta + 1 PNG
     png.write_bytes(png.read_bytes() + b"x")
     _, report = runner.verify(summary.name)
     assert not report.ok

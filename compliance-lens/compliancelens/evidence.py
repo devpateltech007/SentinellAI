@@ -40,6 +40,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Override with COMPLIANCELENS_EVIDENCE_DIR (tests use a temporary folder).
 ENV_VAR = "COMPLIANCELENS_EVIDENCE_DIR"
 MANIFEST = "manifest.json"
+RULEBOOK = "rulebook.yaml"  # V5: the exact rulebook a run read
 MANIFEST_VERSION = 1
 # Files the operating system drops into folders by itself; verify ignores them.
 IGNORED_FILES = {".DS_Store", "Thumbs.db", "desktop.ini"}
@@ -248,6 +249,12 @@ def write_source(run_dir: Path, rule_id: str, data: bytes, document_name: str) -
     if suffix not in SOURCE_SUFFIXES:
         raise ValueError(f"not a policy document type: {document_name!r}")
     return write_file(run_dir, f"{safe_name(rule_id)}.source{suffix}", data)
+
+
+def write_rulebook(run_dir: Path, data: bytes) -> dict:
+    """V5: write rulebook.yaml, the exact bytes of the rulebook the run read. Returns
+    its manifest entry. Its hash is also the run's rules_sha256 in the database."""
+    return write_file(run_dir, RULEBOOK, data)
 
 
 def write_manifest(run_dir: Path, run_info: dict, files: list[dict]) -> str:
