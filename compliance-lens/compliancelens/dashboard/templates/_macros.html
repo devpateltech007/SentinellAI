@@ -1,0 +1,19 @@
+{% macro verdict(value) %}<span class="verdict {{ value|verdict_class }}">{{ value or "—" }}</span>{% endmacro %}
+
+{% macro state(value) %}<span class="state state-{{ value }}">{{ value }}</span>{% endmacro %}
+
+{% macro counts(c) %}
+<span class="counts">
+  <span class="verdict pass">{{ c.PASS }} PASS</span>
+  <span class="verdict fail">{{ c.FAIL }} FAIL</span>
+  <span class="verdict review">{{ c["NEEDS REVIEW"] }} NEEDS REVIEW</span>
+</span>
+{% endmacro %}
+
+{% macro coverage(run) %}
+{% if run.coverage.rulebook %}{{ run.coverage.results }} of {{ run.coverage.rulebook }} rules{% else %}{{ run.coverage.results }} rules (rulebook size not recorded){% endif %}
+{% endmacro %}
+
+{% macro scope(run) %}
+{% if run.scope == "full" %}<span class="scope">full</span>{% else %}<span class="scope partial">partial</span>{% endif %}
+{% endmacro %}

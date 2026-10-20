@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block main %}
+<h1>Run audit</h1>
+{% if error %}
+<div class="notice bad" role="alert"><p>{{ error }}</p>
+  {% if problems %}<ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+</div>
+{% endif %}
+
+{% include "_progress.html" %}
+
+<section class="panel">
+  <h2>Start a new audit</h2>
+  {% if rule_problems %}
+  <div class="notice bad"><p>The rulebook can't be used:</p><ul>{% for p in rule_problems %}<li>{{ p }}</li>{% endfor %}</ul></div>
+  {% elif settings_problem %}
+  <p class="notice bad">config/settings.yaml has a problem: {{ settings_problem }}</p>
+  {% else %}
+  <p>{{ enabled|length }} of {{ rules_total }} rules are turned on{% if enabled|length < rules_total %} (a <strong>partial</strong> audit: it won't set the score){% endif %}. <a href="/rules">Change on the Rules page</a>.</p>
+  {% endif %}
+  <form method="post" action="/run" class="options">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label><input type="checkbox" name="screenshots" value="true" checked> Take screenshots (uses the saved logins)</label>
+    <label><input type="checkbox" name="ai" value="true" checked> Let the AI judge documents and screenshots</label>
+    <details>
+      <summary>Advanced</summary>
+      <label><input type="checkbox" name="cross_check" value="true"> Cross-check: the AI also reads code rules' screenshots (never changes a verdict)</label>
+      <label><input type="checkbox" name="refresh_ai" value="true"> Ask the AI again instead of reusing saved answers (costs money)</label>
+    </details>
+    <button type="submit"{% if job and job.active %} disabled{% endif %}>Run audit</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Before you run</h2>
+  <p class="hint">Missing items don't stop the audit: the rules they affect become NEEDS REVIEW with the reason.</p>
+  <ul class="checks">
+    {% for c in checks %}
+    <li class="{{ 'ok' if c.ok else 'bad' }}"><strong>{{ "OK" if c.ok else "Missing" }} · {{ c.what }}:</strong> {{ c.detail }}{% if c.fix and not c.ok %}<br><span class="fix">Fix: <code>{{ c.fix }}</code></span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

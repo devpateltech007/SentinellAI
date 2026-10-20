@@ -7,12 +7,14 @@ real compliance.db, evidence/, sessions/ or policies folder, and that no test re
 import os
 
 import botocore.httpsession
+import httpx
 import httpx2
 import pytest
 import requests.adapters
 
 from compliancelens import config, evidence, locking
 from compliancelens.connectors import aws, browser, files, github
+from compliancelens.dashboard import auth as dashboard_auth
 from compliancelens.evaluator import ai
 from compliancelens.storage import db
 from experiment import lab
@@ -34,7 +36,7 @@ def fake_credentials(monkeypatch):
     # tests set their own.
     for name in list(os.environ):
         if name.startswith(
-            ("COMPLIANCELENS_AI_", "COMPLIANCELENS_SETUP_", "ANTHROPIC_", "OPENAI_")
+            ("COMPLIANCELENS_AI_", "COMPLIANCELENS_SETUP_", "ANTHROPIC_", "OPENAI_", "DASHBOARD_")
         ):
             monkeypatch.delenv(name)
 
@@ -78,6 +80,8 @@ def no_network(monkeypatch):
     monkeypatch.setattr(botocore.httpsession.URLLib3Session, "send", blocked)
     monkeypatch.setattr(httpx2.HTTPTransport, "handle_request", blocked)
     monkeypatch.setattr(httpx2.AsyncHTTPTransport, "handle_async_request", blocked)
+    # httpx (V5) is only for the dashboard's in-process TestClient, never the network.
+    monkeypatch.setattr(httpx.HTTPTransport, "handle_request", blocked)
 
 
 @pytest.fixture(autouse=True)
@@ -88,4 +92,5 @@ def no_sleep(monkeypatch):
     monkeypatch.setattr(github, "_sleep", waits.append)
     monkeypatch.setattr(ai, "_sleep", waits.append)
     monkeypatch.setattr(locking, "_sleep", waits.append)
+    monkeypatch.setattr(dashboard_auth, "_sleep", waits.append)
     return waits

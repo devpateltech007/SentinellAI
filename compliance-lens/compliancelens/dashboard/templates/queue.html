@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict, state, scope %}
+{% block main %}
+<h1>Review queue</h1>
+{% if done %}<p class="notice good" role="status">Nothing left to review in this run.</p>{% endif %}
+{% if not runs %}
+<section class="panel"><p>No complete audits yet, so nothing to review.</p></section>
+{% else %}
+<form method="get" action="/queue" class="filters" data-autosubmit>
+  <label>Run
+    <select name="run">{% for r in runs %}<option value="{{ r.id }}"{% if run and run.id == r.id %} selected{% endif %}>{{ r.name }} ({{ r.scope }}, {{ r.open }} open)</option>{% endfor %}</select></label>
+  <button type="submit">Show</button>
+</form>
+{% if run %}
+<p>{{ run.name }} {{ state(run.state) }} {{ scope(run) }}: <strong>{{ items|length }}</strong> result(s) still NEEDS REVIEW.</p>
+{% if run.status != "complete" %}<p class="notice">This run did not finish, so it can't be reviewed.</p>{% endif %}
+{% if items %}
+<p><a class="button" href="/results/{{ items[0].id }}?queue=1">Start with {{ items[0].rule_id }}</a></p>
+<table>
+  <thead><tr><th>Rule</th><th>System</th><th>Audit said</th><th>Reason</th><th>Reviewed before</th></tr></thead>
+  <tbody>
+  {% for r in items %}
+  <tr>
+    <td><a href="/results/{{ r.id }}?queue=1">{{ r.rule_id }}</a><br><span class="hint">{{ r.rule_title or "" }}</span></td>
+    <td>{{ r.system }}</td>
+    <td>{{ verdict(r.machine_verdict) }}</td>
+    <td class="reason">{{ r.reason }}</td>
+    <td>{% if r.reviewed %}kept open: {{ r.review_note }}{% else %}no{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endif %}
+{% endif %}
+{% endblock %}

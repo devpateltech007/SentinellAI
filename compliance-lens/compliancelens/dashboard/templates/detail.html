@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% from "_macros.html" import verdict, state %}
+{% block main %}
+<p><a href="/runs/{{ run.id }}">← {{ run.name }}</a>{% if queue %} · <a href="/queue?run={{ run.id }}">Review queue</a>{% if next_item %} · <a href="/results/{{ next_item }}?queue=1">Next open result →</a>{% endif %}{% endif %}</p>
+<h1>{{ r.rule_id }} · {{ r.rule_title or "" }}</h1>
+{% if saved %}<p class="notice good" role="status">Review saved.</p>{% endif %}
+
+<section class="panel">
+  <p class="verdicts">Verdict: {{ verdict(r.effective_verdict) }}
+    {% if r.reviewed %}<span class="hint">(set by a reviewer; the audit said {{ verdict(r.machine_verdict) }})</span>{% else %}<span class="hint">(as the audit decided)</span>{% endif %}</p>
+  <dl class="facts">
+    <dt>Reason</dt><dd>{{ r.reason }}</dd>
+    <dt>Method</dt><dd>{{ r.method }}{% if r.method in ("ai-text", "ai-vision") %} (AI-generated verdict){% endif %}</dd>
+    <dt>Confidence</dt><dd>{{ r.confidence }}</dd>
+    <dt>System · severity</dt><dd>{{ r.system }} · {{ r.severity or "—" }}</dd>
+    <dt>Collected</dt><dd>{{ r.collected_at|when }}</dd>
+    <dt>Run</dt><dd>{{ run.name }} {{ state(run.state) }}</dd>
+  </dl>
+</section>
+
+<section class="panel">
+  <h2>Review</h2>
+  {% if error %}<p class="notice bad" role="alert">{{ error }}</p>{% endif %}
+  {% if r.reviews %}
+  <ol class="reviews">
+    {% for rv in r.reviews %}
+    <li>{{ rv.created_at|when }} · {{ rv.reviewer }} → {{ verdict(rv.new_verdict) }}<br><span class="note">{{ rv.note }}</span></li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p>Not reviewed yet.</p>
+  {% endif %}
+  {% if run.status != "complete" %}
+  <p class="notice">This run did not finish, so its results can't be reviewed.</p>
+  {% else %}
+  <form method="post" action="/results/{{ r.id }}/review" class="review">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="seen" value="{{ r.review_id if r.review_id is not none else '' }}">
+    {% if queue %}<input type="hidden" name="queue" value="true">{% endif %}
+    <label for="note">Note (required): what you checked and why</label>
+    <textarea id="note" name="note" required maxlength="2000" rows="3">{{ note }}</textarea>
+    <div class="actions">
+    {% if r.effective_verdict == "NEEDS REVIEW" %}
+      <button type="submit" name="action" value="PASS">Mark PASS</button>
+      <button type="submit" name="action" value="FAIL">Mark FAIL</button>
+      <button type="submit" name="action" value="NEEDS REVIEW" class="secondary">Keep NEEDS REVIEW</button>
+    {% else %}
+      <button type="submit" name="action" value="approve">Approve {{ r.effective_verdict }}</button>
+      {% for v in VERDICTS if v != r.effective_verdict %}
+      <button type="submit" name="action" value="{{ v }}" class="secondary">{% if v == "NEEDS REVIEW" %}Reopen as NEEDS REVIEW{% else %}Change to {{ v }}{% endif %}</button>
+      {% endfor %}
+    {% endif %}
+    </div>
+  </form>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>Evidence</h2>
+  <p>Integrity of {{ run.name }}:
+    {% if verify.ok %}<span class="verified">verified ({{ verify.files }} files match their hashes)</span>
+    {% else %}<span class="unverified">NOT verified</span>{% endif %}</p>
+  {% if mine %}<ul class="notice bad">{% for p in mine %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+  <dl class="facts hashes">
+    <dt>Evidence file</dt><dd><a href="/evidence/{{ r.evidence_path }}">{{ r.evidence_path }}</a><br><code>{{ r.sha256 }}</code></dd>
+    {% if r.screenshot_path %}<dt>Screenshot</dt><dd><a href="/evidence/{{ r.screenshot_path }}">{{ r.screenshot_path }}</a><br><code>{{ r.screenshot_sha256 }}</code></dd>{% endif %}
+    {% if r.source_path %}<dt>Policy document</dt><dd><a href="/evidence/{{ r.source_path }}">{{ r.source_path }}</a><br><code>{{ r.source_sha256 }}</code></dd>{% endif %}
+  </dl>
+  {% if r.screenshot_status and not r.screenshot_path %}<p class="notice">No screenshot: {{ r.screenshot_status }}.</p>{% endif %}
+  {% if r.screenshot_path %}
+  <figure><a href="/evidence/{{ r.screenshot_path }}"><img src="/evidence/{{ r.screenshot_path }}" alt="Screenshot of {{ r.rule_id }} taken {{ r.screenshot_captured_at|when }}"></a>
+    <figcaption>Taken {{ r.screenshot_captured_at|when }} from {{ r.screenshot_url or "—" }}. Opens full size.</figcaption></figure>
+  {% endif %}
+  {% if document is not none %}
+  <h3>Text read from the document</h3>
+  <pre class="text">{{ document }}</pre>
+  {% endif %}
+  <h3>Collected data</h3>
+  {% if data_problem %}<p class="notice bad">Not available: {{ data_problem }}.</p>{% else %}<pre>{{ data|pretty }}</pre>{% endif %}
+</section>
+
+{% if r.ai %}
+<section class="panel">
+  <h2>AI</h2>
+  {% for a in r.ai %}
+  <article class="ai">
+    <h3>{{ "Verdict" if a.role == "primary" else "Cross-check (never changes the verdict)" }}: {{ verdict(a.verdict) }} <span class="hint">{{ a.status }}</span></h3>
+    {% if a.role == "cross_check" %}<p>Comparison with the code: <strong>{{ a.comparison or "—" }}</strong></p>{% endif %}
+    <dl class="facts">
+      <dt>Model answer</dt><dd>{{ a.model_verdict or "—" }}, confidence {{ a.confidence or "—" }}</dd>
+      <dt>Reason</dt><dd>{{ a.reason or "—" }}</dd>
+      <dt>Quote</dt><dd>{{ a.quote or "—" }}</dd>
+      <dt>Observed</dt><dd>{{ a.observed or "—" }}</dd>
+      <dt>Model</dt><dd>{{ a.provider or "?" }}/{{ a.model or "?" }}{% if a.served_model %} (served: {{ a.served_model }}){% endif %}</dd>
+      <dt>Answer from</dt><dd>{% if a.from_cache %}the cache ({{ a.cache_source or "an earlier run" }}){% else %}a new call, {{ a.attempts }} attempt(s){% endif %}</dd>
+      <dt>Usage</dt><dd>{{ a.input_tokens if a.input_tokens is not none else "?" }} in / {{ a.output_tokens if a.output_tokens is not none else "?" }} out tokens, {{ a.cost_usd|money }}</dd>
+      {% if a.input_path %}<dt>Picture sent</dt><dd><a href="/evidence/{{ a.input_path }}">{{ a.input_path }}</a></dd>{% endif %}
+      {% if a.replies_path %}<dt>Full record</dt><dd><a href="/evidence/{{ a.replies_path }}">{{ a.replies_path }}</a></dd>{% endif %}
+    </dl>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="panel">
+  <h2>The rule, as this run read it</h2>
+  {% if card %}<pre>{{ card }}</pre>{% else %}<p class="notice">{{ card_problem }}</p>{% endif %}
+</section>
+{% endblock %}

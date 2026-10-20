@@ -159,6 +159,11 @@ def count_runs(conn) -> int:
     return conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
 
 
+def previous_run_id(conn, run_id: int) -> int | None:
+    """The run just before this one (any state), or None."""
+    return conn.execute("SELECT MAX(id) FROM runs WHERE id < ?", (run_id,)).fetchone()[0]
+
+
 def latest_full_run(conn, holder=_UNSET) -> dict | None:
     """The newest complete full audit: what the home page scores. A newer partial,
     failed or running one is shown beside it, never instead of it."""

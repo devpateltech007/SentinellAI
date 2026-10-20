@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import counts, coverage, state, scope %}
+{% block main %}
+<h1>History</h1>
+<p>{{ total }} run(s). <a href="/compare">Compare two runs</a></p>
+{% if not runs %}
+<section class="panel"><p>No audits recorded yet. <a class="button" href="/run">Run an audit</a></p></section>
+{% else %}
+<table>
+  <thead><tr><th>Run</th><th>Started</th><th>State</th><th>Scope</th><th>After review</th><th>Open</th><th>Coverage</th><th>AI cost</th><th></th></tr></thead>
+  <tbody>
+  {% for run in runs %}
+  <tr>
+    <td><a href="/runs/{{ run.id }}">{{ run.name }}</a></td>
+    <td>{{ run.started_at|when }}</td>
+    <td>{{ state(run.state) }}</td>
+    <td>{{ scope(run) }}</td>
+    <td>{{ counts(run.counts.effective) }}</td>
+    <td>{{ run.open }}</td>
+    <td>{{ coverage(run) }}</td>
+    <td>{{ run.ai_cost_usd|money if run.ai_calls else "—" }}</td>
+    <td>{% if not loop.last %}<a href="/compare?a={{ runs[loop.index].id }}&amp;b={{ run.id }}">compare with {{ runs[loop.index].name }}</a>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<nav class="pager" aria-label="Pages">
+  {% if page_number > 1 %}<a href="/runs?page={{ page_number - 1 }}">Newer</a>{% endif %}
+  <span>Page {{ page_number }} of {{ pages_total }}</span>
+  {% if page_number < pages_total %}<a href="/runs?page={{ page_number + 1 }}">Older</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}
