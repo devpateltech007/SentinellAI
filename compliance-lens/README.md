@@ -7,8 +7,8 @@ defaults to PASS: any error or unclear result becomes NEEDS REVIEW.
 
 This is a 15-week semester project. The full plan is in
 [`../ComplianceLens Project Plan.md`](../ComplianceLens%20Project%20Plan.md).
-**Current version: V5 (web dashboard and human review), being built** on V4 (AI
-evaluation, tagged `v4.0`): 19 rules across AWS, GitHub,
+**Current version: V5 (web dashboard and human review), tagged `v5.0`** (version
+0.5.0): 19 rules across AWS, GitHub,
 an HR employee list and policy documents. Every run is saved as hashed evidence files
 plus a SQLite history, and `verify` reports any evidence file changed after the audit.
 Rules with a web page also get a screenshot with a banner (rule, UTC time, URL), taken
@@ -201,7 +201,7 @@ unknown rule, run or site, every rule turned off, Chromium not installed).
 Example run (shortened):
 
 ```
-ComplianceLens v0.4.0 audit  2026-10-29 14:02 UTC
+ComplianceLens v0.5.0 audit  2026-10-29 14:02 UTC
 [PASS] AWS-01  Password policy requires 12+ characters
        MinimumPasswordLength = 14 (expected >= 12)
 [FAIL] AWS-02  Every IAM user with a console password has MFA
@@ -302,9 +302,9 @@ empty placeholders until that version.
 | `sessions/` | V3 | Saved browser logins (**gitignored**, private files) |
 | `reports/` | V6 *later* | Generated reports (**gitignored**) |
 | `policies/` | V4 | Made-up sample policy documents for the DOC rules (compliant, noncompliant, ...) |
-| `experiment/` | V4 Stage 5 | AI vs code accuracy research: cases, setup, labels, runs, analysis ([`experiment/README.md`](experiment/README.md)) |
+| `experiment/` | V4–V5 | AI vs code accuracy research: cases, setup, labels, runs, analysis ([`experiment/README.md`](experiment/README.md)); results in `docs/` |
 | `scripts/` | V1 | Break-and-fix steps for each rule |
-| `docs/` | V4 onward | Write-ups (V4: the experiment's pilot note), later slides and a sample report |
+| `docs/` | V4 onward | Write-ups: the experiment's pilot (V4), main run and results tables (V5); later slides and a sample report |
 | `pyproject.toml` | V1 | Package info + ruff/pytest/coverage settings |
 | `requirements.txt` | V1 | Pinned runtime libraries |
 | `requirements-dev.txt` | V1 | Pinned dev libraries (tests, lint, hooks) |

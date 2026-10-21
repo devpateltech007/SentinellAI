@@ -173,7 +173,7 @@ The whole project runs in Python with free or near-free services.
 | CLI | Typer or argparse | Clean audit.py commands | V2 |
 | Screenshots | Playwright | Drives a real browser; saves login sessions | V3 |
 | AI | Claude API or Amazon Bedrock (Nova) | Both read images; pick whichever you have credits for | V4 |
-| Web UI | FastAPI + Jinja2 templates + htmx (V5 decision) | Real pages and URLs, a login that survives refresh, live progress; stays in Python and shares Jinja2 with the V6 report | V5 |
+| Web UI | FastAPI + Jinja2 templates and a small script of our own for the live parts (V5 decision; htmx was planned, not needed) | Real pages and URLs, a login that survives refresh, live progress; stays in Python and shares Jinja2 with the V6 report | V5 |
 | Reports | Jinja2 HTML templates + WeasyPrint for PDF | One template, two outputs | V6 |
 | Testing | pytest + moto (fake AWS) + recorded API responses | Test without touching real accounts | V1 onward |
 | Version control | Git + GitHub, one branch per version | Shows progress to graders | V1 |
@@ -582,7 +582,7 @@ V5 puts a web page on top of the engine so a non-technical person can run an aud
 - The report shows both the machine verdict and the human verdict.
 - A note is required on every override.
 
-**Framework choice (V5 decision, Oct 2026):** FastAPI with server-rendered Jinja2 pages and htmx for live parts (filters, review form, audit progress), not Streamlit. It gives real URLs, a cookie login that survives a page refresh, and the same templates V6 uses for the report, without a separate JavaScript app. It listens on localhost only, with one admin password and CSRF protection on every form.
+**Framework choice (V5 decision, Oct 2026):** FastAPI with server-rendered Jinja2 pages, not Streamlit. The live parts (filters, one submit per click, audit progress) turned out small enough for a 60-line script of our own, so htmx was not needed. It gives real URLs, a cookie login that survives a page refresh, and the same templates V6 uses for the report, without a separate JavaScript app. It listens on localhost only, with one admin password and CSRF protection on every form.
 
 **Running audits from the UI.** Run the engine in a background thread and show progress per rule, so the page does not freeze during a 1 to 2 minute run.
 
@@ -593,7 +593,7 @@ V5 puts a web page on top of the engine so a non-technical person can run an aud
 - [ ] History and run comparison (compare two runs by rule ID; moved here from the V7 stretch list)
 - [ ] Rules page: enable or disable rules for future audits (saved in the `config/` file V6 planned, not in the database); a run records exactly which rules and rule definitions it used
 - [ ] Simple login (a single admin password in .env) so the dashboard is not open to anyone
-- [ ] Usability test: a classmate completes a review without help
+- [ ] Usability test: a classmate completes a review without help (moved to V6 on Oct 21, to close V5)
 - [ ] Research experiment, carried over from V4: capture the 55 cases, two people label them (Cohen's κ), 3 AI answers per case, analysis (the tools and the pilot were done in V4)
 
 **Done when:** a person who did not build the tool can run an audit, find the failures and review the uncertain ones.
@@ -634,6 +634,7 @@ An AI-written executive summary is optional. If you add it, label it as AI-gener
 
 - [ ] Report template (HTML) and PDF export
 - [ ] Export button in the dashboard
+- [ ] Usability test, moved from V5: a classmate who didn't build it signs in, runs an audit, finds the failure and reviews an uncertain result without help
 - [ ] Finish the research experiment and write up results
 - [ ] Rehearse the demo script twice, with a recorded backup video
 

@@ -1,237 +1,103 @@
-# SentinellAI
-An AI-Powered Platform for Automated Compliance Auditing
-# 🧠 AI-Powered Platform for Automated Compliance Auditing
+# ComplianceLens
 
-## 📌 Project Overview
+ComplianceLens checks a company's security rules (for example "every user has MFA" or
+"code needs a review before merging") across AWS, GitHub, an HR employee list and policy
+documents. It saves tamper-evident proof for each rule and decides **PASS**, **FAIL** or
+**NEEDS REVIEW** with a reason. An AI model judges what code can't read (screenshots and
+policy documents), and a person reviews anything unclear in a web dashboard. Nothing ever
+defaults to PASS.
 
-Modern software systems must comply with continuously evolving regulations such as **HIPAA (Healthcare)** and **GDPR (Data Privacy)**. Compliance today is largely manual, fragmented, and expensive — requiring interpretation of legal documents, mapping them to technical controls, and collecting audit evidence across multiple systems.
+It is a 15-week semester project. The tool lives in [`compliance-lens/`](compliance-lens/);
+start with its [README](compliance-lens/README.md).
 
-This project proposes an **AI-powered compliance platform** that bridges the gap between regulatory intent and verifiable software-level technical evidence.
+## Status
 
-Our system introduces a centralized **"Compliance Brain"** powered by Retrieval-Augmented Generation (RAG) to:
+**Current version: V5, tagged `v5.0` (version 0.5.0).**
 
-* Interpret regulatory requirements
-* Convert them into structured technical controls
-* Map controls to actionable software checks
-* Automate evidence collection
-* Provide continuous compliance readiness
-* Detect logic-level and authorization failures
-* Generate actionable remediation guidance
+| Version | What it added | Status |
+| --- | --- | --- |
+| V1 Foundations | Rules as YAML cards, AWS and GitHub connectors, code checks | ✅ `v1.0` |
+| V2 Rules and evidence store | 14 rules, an HR list, evidence with SHA-256 hashes, SQLite history, `verify` | ✅ `v2.0` |
+| V3 Screenshots | Playwright screenshots with a banner, saved logins, login problems reported | ✅ `v3.0` |
+| V4 AI evaluation | Any AI model judges screenshots and policy documents; 19 rules | ✅ `v4.0` |
+| V5 Dashboard and review | Web dashboard, human reviews, run comparison, rules on/off; the research experiment's main run | ✅ `v5.0` |
+| V6 Reports and polish | HTML/PDF report, export, polish | ⬜ weeks 13–14 |
+| V7 Final presentation | Demo, slides, stretch goals | ⬜ week 15 |
 
----
+The plan is in [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md),
+and what's done (with every decision and a dated log) is in
+[`Project Progress.md`](Project%20Progress.md).
 
-## 👥 Team Members
+## What it does
 
-* **Dev Patel**
-* **Harishita Gupta**
-* **Indraneel Sarode**
-* **Vatsal Gandhi**
+- **19 rules** written as small YAML files, not code: AWS (password policy, MFA, old
+  access keys, inactive users, S3, CloudTrail), GitHub (branch protection, security
+  features, members' 2FA, organization settings), HR (every account belongs to an active
+  employee) and policy documents (passwords, MFA, offboarding).
+- **Evidence for every run:** the raw API data, a screenshot with a banner (rule, UTC time,
+  URL) and a manifest of SHA-256 hashes, plus a SQLite history. `verify` reports any file
+  changed after the audit.
+- **AI where code can't reach:** an AI model of your choice (set in `.env`: OpenAI,
+  Anthropic, or a local model) reads two screenshot-only settings and three policy
+  documents. Only a clear, consistent answer becomes PASS or FAIL; anything else is
+  NEEDS REVIEW with the reason.
+- **Web dashboard (V5):** start an audit and watch its progress, read each result with
+  its evidence, review uncertain results (reviews are added, never edited), compare two
+  runs, and turn rules on or off. It runs on your computer only, behind a password.
 
----
+## Quick start
 
-## 🎯 Problem Statement
-
-Maintaining regulatory compliance involves:
-
-1. Understanding applicable laws (HIPAA, GDPR, etc.)
-2. Translating legal text into technical requirements
-3. Verifying that systems meet those requirements
-4. Collecting and maintaining audit evidence
-
-Current compliance methods are:
-
-* Manual and document-heavy
-* Slow and expensive
-* Prone to human error
-* Limited in detecting business-logic failures
-
-This leads to the **"Black Box Problem"** — where subtle authorization or access control issues remain undetected by traditional checklist-based compliance tools.
-
----
-
-## 🚀 Proposed Solution
-
-Our platform introduces an AI-driven approach to compliance automation through:
-
-### 1️⃣ Compliance Brain (Core Engine)
-
-* Uses **RAG (Retrieval-Augmented Generation)**
-* Parses regulatory documents
-* Converts regulations into structured, machine-readable controls
-* Maps legal intent to software-level requirements
-
-Example:
-
-> HIPAA Requirement: "Minimum necessary access must be enforced."
-
-Converted Into:
-
-* Role-Based Access Control (RBAC) implemented?
-* Admin privileges restricted?
-* Access logs enabled?
-* Unauthorized endpoint exposure present?
-
----
-
-### 2️⃣ Structured Control Framework
-
-Controls are stored in a structured format (JSON schema), such as:
-
-```json
-{
-  "control_id": "HIPAA-AC-001",
-  "description": "Minimum Necessary Access",
-  "technical_checks": [
-    "RBAC implemented",
-    "Admin roles limited",
-    "Audit logs enabled"
-  ]
-}
+```bash
+cd compliance-lens
+make setup               # Python 3.11+, installs everything + Chromium
+cp .env.example .env     # fill it in: see "Account setup" in compliance-lens/README.md
+make test                # the tests, no accounts needed
+make audit               # a real audit (without accounts every rule says why it can't decide)
+make dashboard           # the web dashboard on http://127.0.0.1:8000
 ```
 
----
+## Research experiment
 
-### 3️⃣ Automated Evidence Collection
+How accurately does an AI read a compliance setting from a **screenshot**, compared with
+code reading the same setting from the **API**? 55 pictures of real AWS and GitHub
+settings (including dark theme, small text, cut-off and covered pages, and prompt
+injection) were labelled by two people separately (Cohen's κ = 0.97). `openai/gpt-6-luna`
+then judged each picture 3 times.
 
-The platform integrates with:
+| | AI vs the labels | AI vs the set-up state |
+| --- | --- | --- |
+| Decided accuracy | 95% | 99% |
+| False PASS (the dangerous error) | 7% (6 of 90) | 0% (0 of 84) |
+| Unclear pictures sent to review | 12 of 12 | – |
 
-* GitHub (codebase scanning)
-* CI/CD pipelines
-* Cloud configuration APIs
-* Application logs
+All 6 false PASSes are two AWS-02 pictures that both people labelled FAIL, although the
+rule's written condition, the setup and the code all say PASS. The code reading the API
+matched the setup in 55 of 55 cases. The whole run cost $0.05. Details:
+[`docs/experiment-main-run.md`](compliance-lens/docs/experiment-main-run.md).
 
-Evidence is automatically collected and mapped to compliance controls.
+## Repository layout
 
----
+| Path | What it is |
+| --- | --- |
+| [`compliance-lens/`](compliance-lens/) | The tool: code, rules, tests, experiment, docs |
+| [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md) | The semester plan, version by version |
+| [`Project Progress.md`](Project%20Progress.md) | What's done, decisions, how to test each version, log |
+| `meetings/` | Meeting notes template |
+| `.github/workflows/` | CI: lint and tests on every change to `compliance-lens/` |
+| `.pre-commit-config.yaml` | Before each commit: secret scan and code style |
 
-### 4️⃣ Authorization & Black-Box Testing
+The repository keeps the name of the team's first proposal, **SentinellAI**; the
+project built in it is ComplianceLens.
 
-Optional runtime verification includes:
+## Team
 
-* Endpoint access testing
-* Role-permission mismatch detection
-* Minimum necessary access validation
-* Detection of business logic vulnerabilities
+- Dev Patel
+- Harishita Gupta
+- Indraneel Sarode
+- Vatsal Gandhi
 
----
+## Disclaimer
 
-### 5️⃣ Continuous Monitoring Dashboard
-
-* Real-time compliance status
-* Control-level pass/fail indicators
-* Evidence logs
-* AI-generated remediation suggestions
-
----
-
-## 🏗️ System Architecture (High-Level)
-
-```
-Regulatory Documents
-        ↓
-   RAG Engine
-        ↓
-Structured Control Model (JSON)
-        ↓
-Evidence Orchestrator
-        ↓
-- GitHub Scanner
-- Cloud Config Scanner
-- Log Analyzer
-- Black-Box Tester
-        ↓
-Compliance Scoring Engine
-        ↓
-Dashboard & Remediation Layer
-```
-
----
-
-## 🧩 Current Project Scope (Phase 1)
-
-We are initially focusing on:
-
-* HIPAA Security Rule
-* Access Control Requirements
-* Role-Based Access Control validation
-* Authorization logic verification
-* Automated GitHub code analysis (read-only)
-
----
-
-## 🛠️ Tech Stack (Current & Planned)
-
-### Backend
-
-* Python (FastAPI)
-* LLM Integration (RAG pipeline)
-* Vector Database (for regulation retrieval)
-
-### Integrations
-
-* GitHub API
-* Cloud Config APIs (AWS/GCP/Azure – planned)
-
-### AI Components
-
-* Retrieval-Augmented Generation
-* Structured control extraction
-* Remediation suggestion engine
-
-### Security Testing
-
-* OWASP Top 10 reference checks
-* Authorization testing framework
-
----
-
-## 📚 Key Concepts & Research Areas
-
-* HIPAA Security Rule
-* GDPR basics
-* ISO 27001 (Security Management)
-* ISO 42001 (AI Governance)
-* OWASP Top 10
-* Policy-as-Code (OPA)
-* Role-Based Access Control (RBAC)
-
----
-
-## 📈 Long-Term Vision
-
-* Multi-framework support (HIPAA, GDPR, SOC 2)
-* AI governance compliance checks
-* Continuous AI model monitoring
-* Vendor risk evaluation modules
-* Enterprise audit export reports
-
----
-
-## 🧪 Research Contribution
-
-This project contributes by:
-
-* Bridging legal language to software-level validation
-* Introducing explainable AI for compliance reasoning
-* Detecting logic-level failures beyond static checklist tools
-* Enabling developer-friendly compliance automation
-
----
-
-## 📅 Current Status
-
-* Project Abstract Finalized
-* Research Phase Ongoing
-* Initial Architecture Designed
-* RAG Pipeline Prototype In Progress
-* Control Schema Draft Created
-
----
-
-## ⚠️ Disclaimer
-
-This platform is intended for research and automation assistance purposes. It does not replace legal counsel or certified compliance audits.
-
----
-
-⭐ If you find this project interesting, consider giving the repository a star!
+ComplianceLens is a research and automation aid. It does not replace legal advice or a
+certified compliance audit. Only point it at accounts you own: the tool itself only
+reads, but the research experiment changes test settings (and puts them back).
