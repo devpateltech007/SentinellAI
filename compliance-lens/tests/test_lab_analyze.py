@@ -196,6 +196,17 @@ def test_analyze_a_run(records, rows, tmp_path):
     assert result["statuses"] == {"accepted": 6, "unsure": 2}
     vs_state = result["vs_state"]  # gh01-signin's state is PASS
     assert (vs_state["accuracy"].k, vs_state["accuracy"].n) == (5, 8)
+    assert result["label_vs_state"] == [
+        {
+            "case_id": "gh01-signin",
+            "rule": "GH-01",
+            "kind": "review",
+            "state": "PASS",
+            "label": "REVIEW",
+            "ai": ["REVIEW", "PASS"],
+            "code": "PASS",
+        }
+    ]
 
 
 def test_the_report(records, rows, tmp_path):
@@ -211,8 +222,14 @@ def test_the_report(records, rows, tmp_path):
     assert "AI: 8 calls, 8,000 input and 800 output tokens, $0.0012, 2.0 s per answer." in text
     assert "Paid in all: $0.0012 for 8 calls." in text
     assert "PARTIAL" not in text
+    assert "| Measure | AI vs the labels | AI vs the set-up state |" in text
+    assert "| Accuracy | 62% (5/8; 31%–86%) | 62% (5/8; 31%–86%) |" in text
+    assert "| Review recall | 50% (1/2; 9%–91%) | – |" in text  # a state is never REVIEW
+    assert "### Where the labels and the set-up state differ" in text
+    assert "| gh01-signin | GH-01 | review | PASS | REVIEW | REVIEW, PASS | PASS |" in text
     plain = analyze.as_json(result)
     assert plain["overall"]["accuracy"]["k"] == 5 and json.dumps(plain)
+    assert plain["label_vs_state"][0]["ai"] == ["REVIEW", "PASS"]
     other = {**result, "run": "other", "usage": {**result["usage"], "paid_cost_usd": None}}
     partial = {**result, "run": "half", "status": {**result["status"], "complete": False}}
     table = analyze.comparison([result, other, partial])
@@ -230,6 +247,8 @@ def test_a_pilot_is_scored_against_the_setup(records, tmp_path):
     assert "1 case × 2 repeats = 1 answer, scored against the setup's state" in text
     assert "(pilot: no labels)" in text
     assert "of cases." in text and "evidence label for" not in text
+    assert "| Measure | AI |" in text and "set-up state differ" not in text
+    assert result["label_vs_state"] == []
 
 
 def test_runs_that_cant_be_scored(records, rows, tmp_path):
@@ -318,3 +337,21 @@ def test_changed_labels_are_refused(records, rows, tmp_path):
     )
     with pytest.raises(analyze.AnalysisError, match="labels.csv changed since this run"):
         analyze.analyze(folder, records, rows)
+
+
+def test_where_the_labels_and_the_state_differ(records, rows, tmp_path):
+    rows["gh01-signin"].update(
+        evidence_label_a="PASS", evidence_label_b="PASS", evidence_label="PASS"
+    )
+    same = analyze.report(analyze.analyze(make_run(tmp_path, records), records, rows))
+    assert "Nowhere: every final label is the state the setup made." in same
+    rows["gh06-read"].update(
+        evidence_label_a="FAIL", evidence_label_b="FAIL", evidence_label="FAIL"
+    )
+    unasked = make_run(tmp_path, records, ANSWERS[:-2], name="unasked")
+    rows["gh01-signin"].update(
+        evidence_label_a="REVIEW", evidence_label_b="REVIEW", evidence_label="REVIEW"
+    )
+    text = analyze.report(analyze.analyze(unasked, records, rows))
+    assert "| gh01-signin | GH-01 | review | PASS | REVIEW | – | PASS |" in text  # no answer yet
+    assert "| gh06-read | GH-06 | plain | PASS | FAIL | PASS, PASS | PASS |" in text

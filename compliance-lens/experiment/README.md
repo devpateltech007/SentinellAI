@@ -1,6 +1,6 @@
 # experiment/ — AI vs code accuracy research
 
-**Version:** V5 (tools and pilot from V4: [`docs/experiment-pilot.md`](../docs/experiment-pilot.md); all 55 cases captured and labelled, κ = 0.97; the runs next).
+**Version:** V5 (tools and pilot from V4: [`docs/experiment-pilot.md`](../docs/experiment-pilot.md); main run done: [`docs/experiment-main-run.md`](../docs/experiment-main-run.md), tables in [`docs/experiment-results.md`](../docs/experiment-results.md)).
 
 **Research question:** for rules that can be checked both ways, how accurately does an AI
 read a compliance setting from a **screenshot**, compared with code reading the same
@@ -39,7 +39,9 @@ base permission. The AI gets each rule's own `ai_check` from the rulebook, word 
    accuracy, coverage, **false PASS** (the dangerous error), false FAIL, review recall,
    PASS on unclear pictures, consistency over repeats, by rule / kind / confidence,
    "medium confidence → review", misread vs misjudged, invalid replies, the code's own
-   accuracy, tokens, cost and time; every rate with a 95% Wilson interval. It says
+   accuracy, tokens, cost and time; every rate with a 95% Wilson interval. The main
+   scores are against the labels, with the scores against the set-up state next to them
+   and every case where the final label and the state differ listed. It says
    **PARTIAL** unless every case has every repeat with no failed call, refuses if
    `labels.csv` changed since the run, and the cost counts **every paid attempt**
    (answers asked again or set aside too).

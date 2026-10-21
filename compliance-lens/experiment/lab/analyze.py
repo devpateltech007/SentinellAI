@@ -18,7 +18,9 @@ Also: the same by rule, kind and the model's confidence; "medium → review" (wh
 numbers would be if medium-confidence answers were not trusted); wrong answers split
 into misread (the AI's `observed` value differs from the API's) and misjudged (it read
 the value right but decided wrong); invalid replies; the code's own accuracy; tokens,
-cost and time. A pilot run has no labels: it is scored against the setup's state.
+cost and time. A pilot run has no labels: it is scored against the setup's state. A main
+run is scored against the setup's state too, next to the labels, and the cases where the
+final label and the state differ are listed with every answer to them.
 
 Honest by construction (V5):
   - a run is "complete" only with every main case of cases.yaml, every repeat of every
@@ -270,6 +272,22 @@ def analyze(folder: Path, records: list[dict], rows: dict, expected=None) -> dic
     code_pairs = [
         (r["case"]["state"], r["code"]["verdict"], truth_labels[r["case"]["id"]]) for r in chosen
     ]
+    given = {}
+    for answer in sorted(answers, key=lambda a: a["repeat"]):
+        given.setdefault(answer["case_id"], []).append(AS_LABEL[answer["verdict"]])
+    label_vs_state = [
+        {
+            "case_id": r["case"]["id"],
+            "rule": r["case"]["rule"],
+            "kind": r["case"]["kind"],
+            "state": r["case"]["state"],
+            "label": truth_labels[r["case"]["id"]],
+            "ai": given.get(r["case"]["id"], []),
+            "code": AS_LABEL.get(r["code"]["verdict"], r["code"]["verdict"]),
+        }
+        for r in chosen
+        if truth_labels[r["case"]["id"]] != r["case"]["state"]
+    ]
     cost = run._cost(answers)
     paid = every + set_aside  # every attempt that reached the provider and was paid for
     return {
@@ -289,6 +307,7 @@ def analyze(folder: Path, records: list[dict], rows: dict, expected=None) -> dic
         "vs_state": scores(
             [(by_id[a["case_id"]]["case"]["state"], AS_LABEL[a["verdict"]]) for a in answers]
         ),
+        "label_vs_state": label_vs_state,  # empty for a pilot: its labels are the state
         "consistency": consistency,
         "mistakes": mistakes,
         "statuses": {
@@ -379,15 +398,22 @@ def report(result: dict, agreement: dict | None = None) -> str:
             f"Labellers agreed on {agreement['agreed']} of {agreement['both_labelled']} pictures"
             f" (Cohen's κ = {agreement['kappa']:.2f})."
         )
-    overall = result["overall"]
-    lines += [
-        "",
-        *_table(["Measure", "AI"], [[label, overall[key].text()] for key, label in MEASURES]),
-    ]
+    overall, state = result["overall"], result["vs_state"]
+    if result["basis"] == "state":
+        measures = _table(
+            ["Measure", "AI"], [[label, overall[key].text()] for key, label in MEASURES]
+        )
+    else:
+        measures = _table(
+            ["Measure", "AI vs the labels", "AI vs the set-up state"],
+            [[label, overall[key].text(), state[key].text()] for key, label in MEASURES],
+        )
+    lines += ["", *measures]
     lines += [
         "",
         f"Consistency over repeats: {result['consistency'].text()}.  "
         f"Invalid replies: {result['invalid_replies'].text()} of attempts.",
+        *_label_vs_state(result),
         "",
         "### By rule",
         "",
@@ -447,6 +473,36 @@ def report(result: dict, agreement: dict | None = None) -> str:
         + "."
     )
     return "\n".join(lines) + "\n"
+
+
+def _label_vs_state(result: dict) -> list[str]:
+    """A main run's cases whose final label isn't the setup's state, with every answer."""
+    if result["basis"] == "state":
+        return []
+    lines = ["", "### Where the labels and the set-up state differ", ""]
+    differ = result["label_vs_state"]
+    if not differ:
+        return [*lines, "Nowhere: every final label is the state the setup made."]
+    lines += [
+        "The labels say what two people saw in each picture; the set-up state is what the"
+        " setup made true in the account. Every table here scores against the labels, except"
+        " the set-up state column above.",
+        "",
+    ]
+    rows = [
+        [
+            d["case_id"],
+            d["rule"],
+            d["kind"],
+            d["state"],
+            d["label"],
+            ", ".join(d["ai"]) or "–",
+            d["code"],
+        ]
+        for d in differ
+    ]
+    header = ["Case", "Rule", "Kind", "Set-up state", "Final label", "AI (each repeat)", "Code"]
+    return lines + _table(header, rows)
 
 
 def _money(value: float | None) -> str:
