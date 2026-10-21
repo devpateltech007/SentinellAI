@@ -1,6 +1,6 @@
 # experiment/ — AI vs code accuracy research
 
-**Version:** V4 Stage 5 (tools ready, pilot done: [`docs/experiment-pilot.md`](../docs/experiment-pilot.md); capture, labels and runs next).
+**Version:** V5 (tools and pilot from V4: [`docs/experiment-pilot.md`](../docs/experiment-pilot.md); all 55 cases captured and labelled, κ = 0.97; the runs next).
 
 **Research question:** for rules that can be checked both ways, how accurately does an AI
 read a compliance setting from a **screenshot**, compared with code reading the same
