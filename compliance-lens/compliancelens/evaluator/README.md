@@ -1,12 +1,11 @@
 # compliancelens/evaluator/ — AI evaluation
 
-**Version:** V4 (being built). Stage 1, done: choosing the model, the provider adapters,
-the prompt and answer format, and `python audit.py ai-test`. Stage 2, done: documents are
-read by `connectors/files.py` and saved with the run; the database has the AI tables.
-Stage 3, done: the judge (`ai.py`), screenshot preparation, the budget and the cache.
-Stage 4, done: `python audit.py run` uses it for GH-06/GH-07 and DOC-01 to DOC-03
-(`--no-ai`, `--cross-check`, `--refresh-ai`, `--ai-model`). Still to come: the research
-experiment (Stage 5) and the release (Stage 6).
+**Version:** V4 (tagged `v4.0`): choosing the model, the provider adapters, the prompt
+and answer format, and `python audit.py ai-test`; documents read by `connectors/files.py`
+and saved with the run; the judge (`ai.py`), screenshot preparation, the budget and the
+cache; `python audit.py run` uses it for GH-06/GH-07 and DOC-01 to DOC-03 (`--no-ai`,
+`--cross-check`, `--refresh-ai`, `--ai-model`). V5: the dashboard runs it the same way,
+and the research experiment measured it ([`docs/experiment-main-run.md`](../../docs/experiment-main-run.md)).
 
 **Purpose:** judge evidence that code cannot: screenshots and policy documents. Every AI
 verdict has a reason and a confidence; anything unclear becomes NEEDS REVIEW.
