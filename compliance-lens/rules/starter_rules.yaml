@@ -1,10 +1,12 @@
 # ComplianceLens rulebook (V4; targets in the settings since V6): 19 rules across AWS, GitHub, the HR list and policy documents.
 # How to write a rule card: see rules/README.md.
 #
-# Who judges (V4): 14 rules are judged by code from API data; GH-06 and GH-07 by the AI
-# reading their screenshot; DOC-01 to DOC-03 by the AI reading a policy document. An
-# `ai_check` on a code rule is only used by `run --cross-check`, which records whether
-# the AI reads the screenshot the same way; it never changes the code's verdict.
+# Who judges (V6): 15 rules are judged by code from API data; GH-07 by the AI reading its
+# screenshot; DOC-01 to DOC-03 by the AI reading a policy document. GH-06 was judged by
+# the AI until V6; the research experiment showed its API value is readable with the
+# audit's token, so code judges it now. An `ai_check` on a code rule is only used by
+# `run --cross-check`, which records whether the AI reads the screenshot the same way; it
+# never changes the code's verdict.
 #
 # Each rule can be broken and fixed on purpose (or, where that is unsafe, is
 # tested with fake data): see scripts/README.md.
@@ -245,19 +247,24 @@
     mask:
       - { role: button, name: "Open user navigation menu" }   # your avatar
 
-# Vision rules (V4): no collector and no check; the AI reads the screenshot. Both settings
-# are on the organization's Member privileges page (only organization owners can open it).
+# GH-06 and GH-07 are on the organization's Member privileges page (only organization
+# owners can open it). GH-06's value is also in the API, so code judges it (V6). The token
+# needs the organization's Administration (read); without it GitHub hides the value and
+# GH-06 is NEEDS REVIEW, never PASS.
 
 - id: GH-06
   title: Organization base repository permission is Read or None
   severity: medium
+  collector: github.org_settings
+  params: {}   # organization: config/settings.yaml
+  check: { field: default_repository_permission, op: in, value: [read, none] }
   screenshot:
     site: github
     url: "https://github.com/organizations/{org}/settings/member_privileges"
     wait_for: { role: heading, name: "Base permissions" }
     mask:
       - { role: button, name: "Open user navigation menu" }   # your avatar
-  ai_check:
+  ai_check:   # --cross-check only
     expect: "The selected base repository permission is Read or No permission."
     pass_if:
       - "The selected value under Base permissions is Read"
@@ -266,6 +273,8 @@
     review_if:
       - "The Base permissions control is not visible, cut off, covered or still loading"
       - "A list of options is open instead of the selected value"
+
+# Vision rule (V4): no collector and no check; the AI reads the screenshot.
 
 - id: GH-07
   title: Members cannot delete or transfer repositories

@@ -45,7 +45,7 @@ Nothing else needs to change.
 | `github.secret_scanning` | GH-03 | `secret_scanning`, `secret_scanning_push_protection` |
 | `github.dependabot_alerts` | GH-04 | `dependabot_alerts` |
 | `github.org_members_without_2fa` | GH-05 | `count`, `members` |
-| `github.org_settings` | GH-06 by API (research experiment only) | `default_repository_permission`, `members_can_delete_repositories`, ... |
+| `github.org_settings` | GH-06 (V6; also the research experiment) | `default_repository_permission`, `members_can_delete_repositories`, ... |
 | `github.org_members` | (HR-01) | `count`, `members` |
 | `hr.unmatched_accounts` | HR-01 | `unmatched_aws`, `unmatched_github`, counts |
 | `files.read_document` | DOC-01 to DOC-03 | `status`, `path`, `folder`, `media_type`, `size`, `sha256`, `extractor`, `pages` (number + text), `chars`, `warnings` |
@@ -61,14 +61,14 @@ Nothing else needs to change.
   is NEEDS REVIEW. A plain `403` (no permission) is not retried.
 - **Unclear answers are errors, not FAILs:** a hidden `security_and_analysis` block
   (GH-03), a 404 from the Dependabot endpoint without GitHub's "disabled" message (GH-04),
-  a missing employee list (HR-01).
+  a missing employee list (HR-01), a hidden or unknown base repository permission (GH-06).
 
 ## Permissions
 
 | System | Needs |
 | --- | --- |
 | AWS | `SecurityAudit` managed policy (IAM, S3, CloudTrail reads + `GenerateCredentialReport`) |
-| GitHub | Fine-grained token owned by the organization: Administration (read), Metadata (read), Members (read); for `org_settings` also the organization's Administration (read). GH-05 also needs the token owner to be an **organization owner**. |
+| GitHub | Fine-grained token owned by the organization: repository Administration (read) and Metadata (read); organization Members (read) and Administration (read, for GH-06). GH-05 also needs the token owner to be an **organization owner**. |
 
 ## The files connector (V4)
 

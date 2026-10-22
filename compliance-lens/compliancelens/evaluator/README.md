@@ -3,9 +3,11 @@
 **Version:** V4 (tagged `v4.0`): choosing the model, the provider adapters, the prompt
 and answer format, and `python audit.py ai-test`; documents read by `connectors/files.py`
 and saved with the run; the judge (`ai.py`), screenshot preparation, the budget and the
-cache; `python audit.py run` uses it for GH-06/GH-07 and DOC-01 to DOC-03 (`--no-ai`,
+cache; `python audit.py run` uses it for GH-07 and DOC-01 to DOC-03 (`--no-ai`,
 `--cross-check`, `--refresh-ai`, `--ai-model`). V5: the dashboard runs it the same way,
 and the research experiment measured it ([`docs/experiment-main-run.md`](../../docs/experiment-main-run.md)).
+V6: GH-06 is judged by code from the API, so the AI only reads its screenshot with
+`--cross-check`.
 
 **Purpose:** judge evidence that code cannot: screenshots and policy documents. Every AI
 verdict has a reason and a confidence; anything unclear becomes NEEDS REVIEW.

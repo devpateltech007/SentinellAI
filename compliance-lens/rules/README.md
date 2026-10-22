@@ -2,7 +2,9 @@
 
 **Version:** V2 (14 rules), V3 (16 rules: screenshots + 2 screenshot-only rules), V4 (19
 rules: GH-06/GH-07 judged by the AI from their screenshots, DOC-01 to DOC-03 from policy
-documents, and AI cross-checks on AWS-01, AWS-02, AWS-05 and GH-01).
+documents, and AI cross-checks on AWS-01, AWS-02, AWS-05 and GH-01), V6 (targets in
+`config/settings.yaml`; GH-06 judged by code from the API, its AI check kept as a
+cross-check).
 
 **Purpose:** every compliance rule is a small YAML "rule card". Rules are data, not
 code: adding a rule means adding a few lines here, not new Python (as long as a
@@ -134,9 +136,9 @@ duplicate IDs, a missing title, an unknown collector, operator or custom check.
 
 ## The V3 and V4 additions
 
-| ID | Rule | Evidence | Judged by (V4) |
+| ID | Rule | Evidence | Judged by |
 | --- | --- | --- | --- |
-| GH-06 | Base repository permission is Read or None | Screenshot of Member privileges | AI (`ai-vision`) |
+| GH-06 | Base repository permission is Read or None | `github.org_settings` + screenshot of Member privileges | Code since V6: `default_repository_permission in [read, none]` (V4: AI) |
 | GH-07 | Members cannot delete or transfer repositories | Screenshot of Member privileges | AI (`ai-vision`) |
 | DOC-01 | Password policy requires 12+ characters | `password-policy.pdf` | AI (`ai-text`) |
 | DOC-02 | Policy requires MFA for every AWS console user | `access-control-policy.md` | AI (`ai-text`) |
@@ -144,17 +146,28 @@ duplicate IDs, a missing title, an unknown collector, operator or custom check.
 
 The DOC rules read from `COMPLIANCELENS_POLICIES_DIR` (see `policies/README.md`); a
 policy that never states the requirement is FAIL (`missing_means: fail`). AWS-01,
-AWS-02, AWS-05 and GH-01 also have an `ai_check` for `run --cross-check` only; AWS-05's is
-`comparable: false` because its picture shows one bucket and the API checks them all.
+AWS-02, AWS-05, GH-01 and GH-06 also have an `ai_check` for `run --cross-check` only;
+AWS-05's is `comparable: false` because its picture shows one bucket and the API checks
+them all.
+
+**Why GH-06 moved to code (V6).** In V4 it was screenshot-only on purpose, so the
+research experiment could score the AI against the API's true answer. The experiment
+read GH-06's value with the audit's own read-only token, and found the code right in 55
+of 55 cases while the AI, though close, was not always right and its confidence did not
+warn when it was wrong. Its conclusion: where an API exists, code judges. GH-06 now reads
+`default_repository_permission` (`read` or `none` → PASS, `write` or `admin` → FAIL). The
+token needs the organization's **Administration: Read-only**; without it GitHub hides the
+value and GH-06 is NEEDS REVIEW, never PASS (so is a value GitHub does not document). Its
+screenshot stays for people, and its `ai_check` (unchanged, word for word) is now a
+cross-check.
 
 Screenshots: AWS-01 (IAM account settings), AWS-02/04/08 (IAM users list), AWS-03 (IAM
 dashboard), AWS-05/06 (the test bucket's Permissions/Properties), AWS-07 (CloudTrail
 trails, scrolled to the Status column), GH-01/02 (the `main` branch protection rule, opened
 directly by its number `vars.rule`), GH-03/04 (Advanced Security), GH-05
-(People, 2FA filter), GH-06/07 (Member privileges). GH-06's setting is also in GitHub's
-API; it is screenshot-only on purpose, so V4 can score the AI against the true answer.
-GH-07 was first "members cannot create public repositories", but only GitHub Enterprise
-Cloud can turn that off, so a free organization could never be compliant.
+(People, 2FA filter), GH-06/07 (Member privileges). GH-07 was first "members cannot
+create public repositories", but only GitHub Enterprise Cloud can turn that off, so a
+free organization could never be compliant.
 
 Notes:
 - AWS-04 counts only **active** keys. AWS-08 measures a user who never signed in from the
@@ -164,7 +177,7 @@ Notes:
 - GH-01/GH-02 read **classic** branch protection; rulesets are not seen.
 - **Targets come from `config/settings.yaml` (V6).** Before a run the settings fill the
   params a card leaves out: `repo` (organization/name) and `branch` for GH-01 to GH-04,
-  `org` for GH-05 and HR-01, the employee list and allowlists for HR-01, and `region` for
+  `org` for GH-05, GH-06 and HR-01, the employee list and allowlists for HR-01, and `region` for
   every `aws.*` rule. A card that writes its own value keeps it. The starter rulebook
   names no account, and each run saves the rules as it ran them (`run-context.json`).
 
@@ -218,7 +231,7 @@ proves the setting is shown, and update `wait_for`/`steps`. Then check the pictu
 really shows the value the code judges (V4 and the research experiment rely on it).
 
 **Screenshot-only rules** (V3; none left in the rulebook) have no `collector`, no
-`check` and no `ai_check`:
+`check` and no `ai_check`. GH-06 as it was in V3:
 
 ```yaml
 - id: GH-06

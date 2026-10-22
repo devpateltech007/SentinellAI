@@ -104,10 +104,10 @@ below is done by **you**, signed in as an admin (AWS root/admin, GitHub owner).
 10. **Fine-grained token owned by the organization.** Settings → Developer settings →
     Fine-grained tokens → Resource owner: **your organization** → only the test repo.
     Repository permissions: **Administration: Read-only**, **Metadata: Read-only**.
-    Organization permissions: **Members: Read-only** (and **Administration: Read-only** for
-    the research experiment, which reads the base permission by API). The organization may
-    have to approve the token. A token owned by your personal account can't read the
-    organization.
+    Organization permissions: **Members: Read-only** and **Administration: Read-only**
+    (GH-06 reads the base permission by API; without it GH-06 is NEEDS REVIEW). The
+    organization may have to approve the token. A token owned by your personal account
+    can't read the organization.
 11. **Fill in `.env`:** `GITHUB_TOKEN=...`.
 12. **Say what to audit** (V6): `cp config/settings.example.yaml config/settings.yaml` and set
     `company`, `github.org`, `github.repo` (the name only), `aws.region`, and optionally
@@ -127,7 +127,7 @@ GH-05 lists members without two-factor authentication; GitHub only shows this to
 
 ### Browser logins for screenshots (V3)
 
-14. **The two screenshot-only rules.** Organization → Settings → Member privileges:
+14. **The Member privileges rules.** Organization → Settings → Member privileges:
     base permission **Read** (GH-06), and under "Repository deletion and transfer" untick
     **Allow members to delete or transfer repositories** → Save (GH-07).
 15. **Save the GitHub login:** `make login SITE=github`. A browser window opens; log in as
@@ -213,8 +213,11 @@ ComplianceLens v0.5.0 audit  2026-10-29 14:02 UTC
        count = 1 (expected == 0)  users: ['intern-bob']
 ...
 [PASS] GH-06   Organization base repository permission is Read or None
-       The Base permissions control is visible and its selected value is Read, which meets the rule.
-       ai-vision · high confidence · openai/gpt-6-luna · "Base permissions — Read"
+       default_repository_permission = read (expected in ['read', 'none'])
+...
+[PASS] GH-07   Members cannot delete or transfer repositories
+       The box 'Allow members to delete or transfer repositories' is visible and not ticked.
+       ai-vision · high confidence · openai/gpt-6-luna · "Allow members to delete or transfer repositories for this organization"
 ...
 [PASS] DOC-01  Password policy requires 12+ characters
        The policy requires every password to be at least 14 characters long.
@@ -222,7 +225,7 @@ ComplianceLens v0.5.0 audit  2026-10-29 14:02 UTC
 ...
 18 PASS  1 FAIL  0 NEEDS REVIEW   run-0007 saved to evidence/2026-10-29/run-0007/
 Screenshots: 15 of 15 saved.
-AI: 5 check(s) with openai/gpt-6-luna: 5 call(s), 0 from cache, 6,982 tokens, $0.0010
+AI: 4 check(s) with openai/gpt-6-luna: 4 call(s), 0 from cache, 5,586 tokens, $0.0008
 Check the evidence later with:  python audit.py verify run-0007
 ```
 
@@ -261,14 +264,16 @@ rules/*.yaml → engine → connectors (AWS, GitHub, HR, files) → check → ve
 5. `runner.py` adds the banner, saves the PNG, the raw evidence and a meta file per rule,
    a manifest of every file with its SHA-256, and a row per result in SQLite (`compliance.db`).
 
-6. **AI rules (V4).** GH-06 and GH-07 have only a screenshot, and DOC-01 to DOC-03 read a
-   policy document (`policies/`). The AI model set in `.env` judges them
+6. **AI rules (V4).** GH-07 has only a screenshot, and DOC-01 to DOC-03 read a policy
+   document (`policies/`). The AI model set in `.env` judges them
    (`compliancelens/evaluator/`): only a clear, consistent answer becomes PASS or FAIL;
    unsure, low confidence, a quote not in the document, a refusal or an error is NEEDS
    REVIEW with the reason. Every attempt is saved (`<ID>.ai.json`, plus the exact picture
    sent, `<ID>.ai-input.png`), accepted answers are cached so a repeat audit costs
    nothing, and a per-run call and $ limit applies. `--cross-check` also lets the AI read
    the code rules' screenshots; that records agreement but never changes a verdict.
+   GH-06 was an AI rule until V6; the research experiment showed its value is readable
+   from the API, so code judges it now and its AI check is a cross-check.
 
 **Tamper detection.** `verify` re-hashes every file and compares it with the manifest,
 and the manifest and evidence hashes with the database. Editing, deleting or adding a
@@ -341,7 +346,7 @@ something that looks like a secret.
 - Evidence can contain user names, account IDs and settings: keep it local. HR-01's
   evidence holds account names only, never employee names or emails.
 - **AI checks (V4) send evidence to the AI provider** named in `COMPLIANCELENS_AI_MODEL`:
-  the screenshots of GH-06/GH-07 (and of code rules with `--cross-check`) and the
+  the screenshot of GH-07 (and of code rules with `--cross-check`) and the
   policy documents' text. A local model (`ollama/`, `lmstudio/`) keeps it on this
   computer. The key is never printed, logged or saved, and an Anthropic key is never
   sent to another provider. `--no-ai` makes no AI calls at all.

@@ -1,6 +1,6 @@
 # scripts/ — break-and-fix routines
 
-**Version:** V1 (3 rules), V2 (14 rules), V3 (16 rules + screenshot checks), V4 (19 rules: AI-judged screenshots and policy documents). Grows with every new rule.
+**Version:** V1 (3 rules), V2 (14 rules), V3 (16 rules + screenshot checks), V4 (19 rules: AI-judged screenshots and policy documents), V6 (GH-06 judged by code). Grows with every new rule.
 
 **Purpose:** for every rule, a short routine that makes the real test account
 **non-compliant** and then **compliant** again, so you can prove the verdict flips.
@@ -35,7 +35,8 @@ automated tests (`make test`) with fake AWS/GitHub data instead.
 | AWS-08 inactive users | ❌ PASS only (quick check below) | A user has to be idle 90 days |
 | GH-01 to GH-04 | ✅ | |
 | GH-05 org 2FA | ❌ PASS only | GitHub requires 2FA for most accounts, so a member without it is hard to create |
-| GH-06, GH-07 | ✅ (V4: the AI reads the screenshot, so the verdict flips) | |
+| GH-06 | ✅ (V6: code reads the API) | |
+| GH-07 | ✅ (V4: the AI reads the screenshot, so the verdict flips) | |
 | DOC-01 to DOC-03 | ✅ by switching the policy folder (no account change) | |
 | HR-01 | ✅ (edit the local CSV) | |
 
@@ -177,16 +178,21 @@ Live: PASS (you are the only member and have 2FA). GitHub now requires 2FA for m
 accounts, so FAIL is tested with a recorded reply in `tests/test_github.py`. If you do
 have a second account without 2FA: invite it to the organization → FAIL; remove it → PASS.
 
-## GH-06: Organization base repository permission is Read or None (AI reads the screenshot)
+## GH-06: Organization base repository permission is Read or None (code reads the API)
 
 | Step | Do this | Expected verdict |
 | --- | --- | --- |
-| Break | Organization → Settings → Member privileges → Base permissions → **Write** | FAIL; the AI reads "Write" |
-| Fix | Set it back to **Read** | PASS; the AI reads "Read" |
+| Break | Organization → Settings → Member privileges → Base permissions → **Write** | FAIL, `default_repository_permission = write (expected in ['read', 'none'])` |
+| Fix | Set it back to **Read** | PASS, `default_repository_permission = read ...` |
 
-Run `python audit.py run --rule GH-06 --rule GH-07` after each step and open `GH-06.png`
-and `GH-06.ai.json` (the AI's answer and quote). A changed page is a new picture, so the
-AI is asked again (the cache only reuses answers for identical pixels).
+Run `python audit.py run --rule GH-06` after each step. The verdict comes from the API
+(`GH-06.json`); `GH-06.png` should show the same value. **Admin** also gives FAIL and
+**No permission** PASS. With `--cross-check` the AI reads the picture too
+(`GH-06.crosscheck.json`); that records whether it agrees but never changes the verdict.
+Until V6 the AI judged GH-06 from the picture.
+
+If GH-06 says `default_repository_permission not visible`, the token is missing the
+organization's **Administration: Read-only** (see the README's GitHub setup, step 10).
 
 ## GH-07: Members cannot delete or transfer repositories (AI reads the screenshot)
 
@@ -194,6 +200,10 @@ AI is asked again (the cache only reuses answers for identical pixels).
 | --- | --- | --- |
 | Break | Member privileges → Repository deletion and transfer → tick **Allow members to delete or transfer repositories** → Save | FAIL; the AI reads it ticked |
 | Fix | Untick it → Save | PASS; the AI reads it unticked |
+
+Run `python audit.py run --rule GH-07` after each step and open `GH-07.png` and
+`GH-07.ai.json` (the AI's answer and quote). A changed page is a new picture, so the AI is
+asked again (the cache only reuses answers for identical pixels).
 
 Only the organization's members are affected; owners can always delete and transfer.
 
@@ -244,7 +254,7 @@ and say what is wrong with the screenshot.
 
 | Do this | Expected |
 | --- | --- |
-| Move `sessions/github.json` out of the project, run `make audit` | GitHub rules keep their verdicts; `GitHub: 7 not saved (session missing). Fix: python audit.py login github`; GH-06/GH-07 say why. Move the file back. |
+| Move `sessions/github.json` out of the project, run `make audit` | GitHub rules keep their verdicts; `GitHub: 7 not saved (session missing). Fix: python audit.py login github`; GH-07 (judged from its picture) says why. Move the file back. |
 | Wait more than 12 hours after `make login SITE=aws`, run an AWS rule | `session_expired`; the verdict stays; no PNG is saved (a sign-in page is never proof) |
 | In a **copy** of the rulebook, change one `wait_for` to text that doesn't exist; run `python audit.py run --rules-file <copy> --rule AWS-01` | `selector_timeout: ... did not appear within 20 s` |
 | `python audit.py run --no-screenshots` | No browser; `Screenshots: turned off` |

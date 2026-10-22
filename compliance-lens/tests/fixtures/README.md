@@ -16,6 +16,8 @@ touch a real account.
 | `github/dependabot_disabled.json` | 404 "Vulnerability alerts are disabled." (GH-04 FAIL) |
 | `github/org_members_2fa_disabled.json` | One org member without 2FA (GH-05 FAIL) |
 | `github/rate_limited.json` | 403 "API rate limit exceeded" body |
+| `github/org_settings_read.json` | Organization seen with Administration read: base permission `read` (GH-06 PASS; tests change the value) |
+| `github/org_no_admin_fields.json` | Organization seen without Administration read: no Member privileges settings (GH-06 NEEDS REVIEW) |
 | `aws/credential_report.csv` | IAM credential report: root row, recent, never-used, old console and old key users (AWS-08) |
 | `hr/employees.csv` | Fake employee list: active, terminated and on-leave people (HR-01) |
 | `browser/*.html` | A fake website for the screenshot tests, served on 127.0.0.1 by `test_browser.py`: sign-in page, logged-in pages, a tall page, a slow page, a page that signs out after loading, a sign-in page that logs in by itself (like a person typing while the terminal waits for Enter), "Confirm access", "no permission" and "Access denied" pages |

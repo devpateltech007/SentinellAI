@@ -6,7 +6,7 @@
         AWS-02.png         V3: the page screenshot with a banner (rule, UTC time, URL)
         DOC-01.source.pdf  V4: the exact policy document a document rule read
         DOC-01.ai.json     V4: the AI check: decision, settings and every attempt
-        GH-06.ai-input.png V4: the exact picture the AI was sent
+        GH-07.ai-input.png V4: the exact picture the AI was sent
         AWS-01.crosscheck.json  V4 (--cross-check): the AI's reading of a code rule's screenshot
         rulebook.yaml      V5: the exact rulebook the run read
         run-context.json   V6: the settings and the rules as the run used them, what it audited

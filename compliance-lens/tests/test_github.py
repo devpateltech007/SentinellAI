@@ -385,38 +385,77 @@ def test_permission_403_is_not_retried(token, no_sleep):
     assert len(responses.calls) == 1
 
 
-# --- org_settings (research experiment: GH-06 by API) ---------------------------------
+# --- GH-06: base repository permission (org_settings; judged by code since V6) --------
 
 ORG_URL = "https://api.github.com/orgs/test-org"
-BASE_CHECK = {"field": "default_repository_permission", "op": "in", "value": ["read", "none"]}
+RULEBOOK = Path(__file__).parent.parent / "rules" / "starter_rules.yaml"
+GH06 = next(rule for rule in engine.load_rules(RULEBOOK) if rule["id"] == "GH-06")
+
+
+def gh06(reply: dict, status: int = 200) -> dict:
+    """The rulebook's GH-06, judged on one recorded reply from GitHub."""
+    responses.get(ORG_URL, json=reply, status=status)
+    return engine.run_rule({**GH06, "params": {"org": "test-org"}})
 
 
 @responses.activate
 def test_org_settings(token, org):
-    responses.get(
-        ORG_URL,
-        json={
-            "login": "test-org",
-            "default_repository_permission": "write",
-            "members_can_delete_repositories": False,
-            "members_can_create_private_repositories": True,
-            "members_can_fork_private_repositories": False,
-            "plan": {"name": "free"},
-        },
-    )
+    responses.get(ORG_URL, json=fixture("org_settings_read.json"))
     assert github.org_settings({}) == {
-        "default_repository_permission": "write",
+        "default_repository_permission": "read",
         "members_can_delete_repositories": False,
         "members_can_create_private_repositories": True,
         "members_can_fork_private_repositories": False,
     }
-    assert run("github.org_settings", BASE_CHECK, {})["verdict"] == "FAIL"
+
+
+@pytest.mark.parametrize(
+    "permission, verdict",
+    [("read", "PASS"), ("none", "PASS"), ("write", "FAIL"), ("admin", "FAIL")],
+)
+@responses.activate
+def test_gh06_is_judged_by_code(token, permission, verdict):
+    reply = {**fixture("org_settings_read.json"), "default_repository_permission": permission}
+    result = gh06(reply)
+    assert (result["verdict"], result["method"], result["confidence"]) == (verdict, "code", "high")
+    assert result["reason"] == (
+        f"default_repository_permission = {permission} (expected in ['read', 'none'])"
+    )
+    assert result["evidence"]["default_repository_permission"] == permission
+    assert responses.calls[0].request.url == ORG_URL
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        fixture("org_no_admin_fields.json"),  # GitHub leaves the settings out
+        {**fixture("org_settings_read.json"), "default_repository_permission": None},
+    ],
+    ids=["left-out", "null"],
+)
+@responses.activate
+def test_gh06_without_administration_read_needs_review(token, reply):
+    result = gh06(reply)
+    assert result["verdict"] == "NEEDS REVIEW"
+    assert "default_repository_permission not visible" in result["reason"]
+    with pytest.raises(RuntimeError, match="organization's Administration settings"):
+        github.org_settings({"org": "test-org"})
+
+
+@pytest.mark.parametrize(
+    "message, status",
+    [("Resource not accessible by personal access token", 403), ("Not Found", 404)],
+)
+@responses.activate
+def test_gh06_no_permission_or_wrong_org_needs_review(token, no_sleep, message, status):
+    result = gh06({"message": message}, status)
+    assert result["verdict"] == "NEEDS REVIEW"
+    assert f"{status} Client Error" in result["reason"]
+    assert no_sleep == []  # a plain 403 is not a rate limit: no retry
 
 
 @responses.activate
-def test_org_settings_need_administration_read(token, org):
-    # Without the organization's Administration read access GitHub leaves the value out.
-    responses.get(ORG_URL, json={"login": "test-org", "default_repository_permission": None})
-    with pytest.raises(RuntimeError, match="Administration"):
-        github.org_settings({})
-    assert run("github.org_settings", BASE_CHECK, {})["verdict"] == "NEEDS REVIEW"
+def test_gh06_unknown_permission_needs_review(token):
+    result = gh06({**fixture("org_settings_read.json"), "default_repository_permission": "own"})
+    assert result["verdict"] == "NEEDS REVIEW"
+    assert "unexpected default_repository_permission 'own'" in result["reason"]

@@ -52,7 +52,7 @@ def test_v4_rules_exist():
 
 
 def test_every_rule_with_a_web_page_has_a_screenshot():
-    # 13 API rules + 2 vision rules. HR-01 checks a local CSV and DOC rules read files.
+    # 14 API rules + 1 vision rule. HR-01 checks a local CSV and DOC rules read files.
     no_page = [r["id"] for r in ALL_RULES if "screenshot" not in r]
     assert no_page == ["HR-01", "DOC-01", "DOC-02", "DOC-03"]
     assert len(SCREENSHOT_RULES) == 15
@@ -60,19 +60,20 @@ def test_every_rule_with_a_web_page_has_a_screenshot():
 
 def test_who_judges_each_rule():
     kinds = {r["id"]: engine.rule_kind(r) for r in ALL_RULES}
-    assert [i for i, k in kinds.items() if k == engine.KIND_VISION] == ["GH-06", "GH-07"]
+    assert [i for i, k in kinds.items() if k == engine.KIND_VISION] == ["GH-07"]
     assert [i for i, k in kinds.items() if k == engine.KIND_DOCUMENT] == [
         "DOC-01",
         "DOC-02",
         "DOC-03",
     ]
-    assert list(kinds.values()).count(engine.KIND_CODE) == 14
+    assert list(kinds.values()).count(engine.KIND_CODE) == 15
+    assert kinds["GH-06"] == engine.KIND_CODE  # V6: the API has the value
     assert engine.KIND_LEGACY not in kinds.values()  # every screenshot rule has an AI check
 
 
 def test_cross_checks():
     crossed = {r["id"]: r["ai_check"] for r in API_RULES if r.get("ai_check")}
-    assert sorted(crossed) == ["AWS-01", "AWS-02", "AWS-05", "GH-01"]
+    assert sorted(crossed) == ["AWS-01", "AWS-02", "AWS-05", "GH-01", "GH-06"]
     # AWS-05's picture shows one bucket; the API checks every bucket.
     assert [i for i, c in crossed.items() if c.get("comparable") is False] == ["AWS-05"]
 
@@ -168,6 +169,8 @@ def test_github_rules_get_repo_and_branch_from_the_settings():
             assert rule["params"].keys() >= {"repo", "branch"}, rule["id"]
         elif rule["collector"] in ("github.secret_scanning", "github.dependabot_alerts"):
             assert rule["params"]["repo"] == "your-org/your-repo", rule["id"]
+        elif rule["collector"] in ("github.org_members_without_2fa", "github.org_settings"):
+            assert rule["params"] == {"org": "your-org"}, rule["id"]
         elif rule["collector"].startswith("aws."):
             assert rule["params"]["region"] == "us-east-1", rule["id"]
 
