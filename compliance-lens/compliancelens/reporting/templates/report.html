@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit report {{ r.name }}{% if r.company %} — {{ r.company }}{% endif %}</title>
+<style>
+{{ css }}
+</style>
+</head>
+<body>
+<main>
+
+<header class="cover">
+  <p class="kicker">ComplianceLens audit report</p>
+  <h1>{{ r.company or "Company not recorded" }}</h1>
+  <p class="lead">Audit {{ r.name }} · {{ r.started_at|when }}</p>
+  <div class="scoreline">
+    <span class="score">{{ r.score|percent }}</span>
+    <span>passed after review: {{ counts(r.counts.effective) }}<br>
+      <span class="muted">as the audit decided: {{ counts(r.counts.machine) }} ({{ r.machine_score|percent }})</span></span>
+  </div>
+{% if r.scope != "full" %}
+  <p class="notice partial"><strong>Partial audit:</strong> {{ r.counts.total }} of {{ r.rules_total or "?" }} rules ran, so the score applies to the {{ r.counts.total }} rules assessed only.
+  {% if r.omitted %}Not run: {{ r.omitted|join(", ") }}.{% elif r.omitted is none %}Which rules were left out is not recorded for this audit.{% endif %}</p>
+{% endif %}
+  <dl class="facts">
+{% for label, value in audited %}
+    <dt>{{ label }}</dt><dd>{{ value }}</dd>
+{% endfor %}
+    <dt>Audit ran</dt><dd>{{ r.started_at|when }} to {{ r.finished_at|when }}</dd>
+    <dt>Rules</dt><dd>{{ r.counts.total }} assessed{% if r.rules_total %} of {{ r.rules_total }} in the rulebook{% endif %} ({{ r.scope }} audit)</dd>
+    <dt>Reviews counted</dt><dd>{% if r.snapshot %}every review up to #{{ r.snapshot }}: {{ r.counts.reviewed }} result(s) reviewed, {{ r.counts.changed }} changed{% else %}none (no human review yet){% endif %}</dd>
+    <dt>AI</dt><dd>{% if r.ai_calls or r.ai_cache_hits %}{{ r.ai_model or "model not recorded" }}: {{ r.ai_calls }} call(s), {{ r.ai_cache_hits }} from earlier answers, cost {{ r.ai_cost_usd|money }}{% else %}not used{% endif %}</dd>
+    <dt>Evidence</dt><dd>verified: {{ r.files_verified }} files match their SHA-256 hashes (see the appendix)</dd>
+    <dt>Tool at audit time</dt><dd>ComplianceLens {{ r.tool_version }}{% if r.git and r.git.commit %}, commit <code>{{ r.git.commit[:12] }}</code>{% if r.git.dirty %} with uncommitted changes{% endif %}{% endif %}</dd>
+    <dt>This report</dt><dd>{{ r.export_name }} · report format {{ r.report_version }} · ComplianceLens {{ generator }} · made {{ generated_at|when }}</dd>
+  </dl>
+  <p class="notice">This report supports an auditor's work; it is not a compliance sign-off. Results judged by an AI name the model that judged them. Human reviews are shown separately, with who made them and when, and never replace the audit's own result.</p>
+</header>
+
+<section id="summary">
+  <h2>Summary</h2>
+  <table>
+    <thead><tr><th>Rule</th><th>Severity</th><th>Result after review</th><th>Audit said</th><th>Judged by</th><th>Machine confidence</th></tr></thead>
+    <tbody>
+{% for f in r.findings %}
+      <tr>
+        <td><a href="#{{ f.rule_id }}">{{ f.rule_id }}</a> {{ f.title }}</td>
+        <td>{{ f.severity or "—" }}</td>
+        <td>{{ verdict(f.verdict) }}{% if f.changed_by_review %} <span class="changed">(changed by review)</span>{% endif %}</td>
+        <td>{{ verdict(f.machine_verdict) }}</td>
+        <td>{{ method(f.method) }}</td>
+        <td>{{ f.confidence }}</td>
+      </tr>
+{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section id="findings">
+  <h2>Findings, failures first</h2>
+{% for f in findings %}
+  <article class="finding {{ f.verdict|verdict_class }}" id="{{ f.rule_id }}">
+    <h3>{{ verdict(f.verdict) }} {{ f.rule_id }} {{ f.title }}</h3>
+    <p class="meta">Severity {{ f.severity or "not set" }} · {{ f.system }} · judged by {{ method(f.method) }} · machine confidence {{ f.confidence }} · checked {{ f.collected_at|when }}</p>
+{% if f.changed_by_review %}
+    <p class="changed">Changed by human review: the audit said {{ f.machine_verdict }}; the latest review says {{ f.verdict }} (see Human reviews).</p>
+{% endif %}
+    <p class="wrap"><strong>Why:</strong> {{ f.reason }}</p>
+{% if f.excerpt %}
+    <figure>
+      <pre>{{ f.excerpt }}</pre>
+      <figcaption>Evidence: {{ f.evidence_file }}{% if f.excerpt_cut %} (shortened; the full file is in the evidence folder){% endif %}</figcaption>
+    </figure>
+{% endif %}
+{% for a in f.ai %}
+    <div class="ai">
+      <strong>{{ "AI judgement" if a.role == "primary" else "AI cross-check (never changes the verdict)" }}</strong>
+      · {{ a.model or "model not recorded" }}{% if a.served_model and a.model and a.served_model not in a.model %} (served {{ a.served_model }}){% endif %}
+      · {{ a.verdict or "no verdict" }} ({{ a.status|replace("_", " ") }}{% if a.confidence %}, {{ a.confidence }} confidence{% endif %}){% if a.comparison %} · {{ a.comparison|replace("_", " ") }}{% endif %}
+      {% if a.reason %}<br><span class="wrap">{{ a.reason }}</span>{% endif %}
+      {% if a.quote %}<br>Quote: “<span class="wrap">{{ a.quote }}</span>”{% endif %}
+      {% if a.observed %}<br>Read: <span class="wrap">{{ a.observed }}</span>{% endif %}
+      <br><span class="muted">{% if a.from_cache %}a saved answer{% if a.cache_source %} from {{ a.cache_source }}{% endif %} (no new call){% else %}cost {{ a.cost_usd|money }}{% endif %}</span>
+    </div>
+{% endfor %}
+{% if f.screenshot %}
+{% if f.screenshot.png %}
+    <figure>
+      <img class="shot" src="{{ f.screenshot.png|data_uri }}" alt="Screenshot for {{ f.rule_id }}: {{ f.screenshot.caption or f.title }}">
+      <figcaption>{% if f.screenshot.caption %}{{ f.screenshot.caption }} · {% endif %}Captured {{ f.screenshot.captured_at|when }} · {{ f.screenshot.url or "address not recorded" }} · {{ f.screenshot.file }} SHA-256 <span class="hash">{{ f.screenshot.sha256 }}</span></figcaption>
+    </figure>
+{% else %}
+    <p class="missing">No screenshot: {{ f.screenshot.reason or f.screenshot.status|replace("_", " ") }}. The result above does not depend on it.</p>
+{% endif %}
+{% endif %}
+{% if f.verdict != "PASS" or f.machine_verdict != "PASS" %}
+    <p class="fix"><strong>Suggested fix:</strong> {% if f.remediation %}{{ f.remediation }}{% else %}<span class="missing">not recorded for this audit.</span>{% endif %}</p>
+{% endif %}
+  </article>
+{% endfor %}
+</section>
+
+<section id="reviews">
+  <h2>Human reviews</h2>
+  <p>A review never edits the audit's result: it is added beside it. The latest review of a result is the one in force. These are people's decisions, separate from the machine's confidence.</p>
+{% set reviewed = r.findings|selectattr("reviews")|list %}
+{% if reviewed %}
+{% for f in reviewed %}
+  <h3>{{ f.rule_id }} {{ f.title }}</h3>
+  <p>The audit said {{ verdict(f.machine_verdict) }}; in force now: {{ verdict(f.verdict) }}</p>
+  <table>
+    <thead><tr><th>When (UTC)</th><th>Reviewer</th><th>Decision</th><th>Note</th></tr></thead>
+    <tbody>
+{% for v in f.reviews %}
+      <tr>
+        <td>{{ v.at|when }}</td>
+        <td>{{ v.reviewer }}</td>
+        <td>{{ verdict(v.verdict) }}{% if v.latest %} <strong>in force</strong>{% endif %}</td>
+        <td class="wrap">{{ v.note }}</td>
+      </tr>
+{% endfor %}
+    </tbody>
+  </table>
+{% endfor %}
+{% else %}
+  <p class="muted">No result had been reviewed when this report was made.</p>
+{% endif %}
+</section>
+
+<section id="appendix">
+  <h2>Appendix: the evidence and how to check it</h2>
+  <dl class="facts">
+    <dt>Manifest SHA-256</dt><dd><span class="hash">{{ r.manifest_sha256 }}</span> (also recorded in the results database)</dd>
+    <dt>Rulebook SHA-256</dt><dd>{% if r.rules_sha256 %}<span class="hash">{{ r.rules_sha256 }}</span>{% else %}not recorded{% endif %}</dd>
+    <dt>Run context SHA-256</dt><dd>{% if r.context_sha256 %}<span class="hash">{{ r.context_sha256 }}</span>{% else %}not recorded for this audit{% endif %}</dd>
+    <dt>Rule definitions</dt><dd>{{ ("as the audit used them, from " ~ r.rules_from) if r.rules_from else "not recorded for this audit" }}</dd>
+  </dl>
+  <h3>How to check it</h3>
+  <ol>
+    <li>With ComplianceLens: <code>python audit.py verify {{ r.name }}</code> re-hashes every file and compares it with the manifest and the database.</li>
+    <li>By hand: in the run's evidence folder, <code>shasum -a 256 FILE</code> must print the hash in the table below.</li>
+  </ol>
+  <p class="muted">The hashes of this report's own files are in its {{ r.export_name }}.export.json file. They describe the report, not the evidence.</p>
+  <table>
+    <thead><tr><th>File</th><th>Bytes</th><th>SHA-256</th></tr></thead>
+    <tbody>
+{% for m in r.manifest %}
+      <tr><td class="wrap">{{ m.path }}</td><td>{{ m.size if m.size is not none else "—" }}</td><td class="hash">{{ m.sha256 }}</td></tr>
+{% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<footer>ComplianceLens audit report {{ r.export_name }} · made {{ generated_at|when }} · supports an auditor; not a compliance sign-off.</footer>
+</main>
+</body>
+</html>

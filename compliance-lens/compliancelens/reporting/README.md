@@ -1,6 +1,6 @@
 # compliancelens/reporting/ — audit report code
 
-**Version:** V6 (Stage 2: the report's data; Stages 3–4: HTML, PDF and export).
+**Version:** V6 (Stage 2: the report's data; Stage 3: the HTML report and its export; Stage 4: PDF and the dashboard).
 
 **Purpose:** turn one saved audit into an audit-ready HTML and PDF report from a single
 template, the same from the command line and the dashboard.
@@ -8,10 +8,10 @@ template, the same from the command line and the dashboard.
 | File | Stage | Job |
 | --- | --- | --- |
 | `data.py` | 2 ✅ | `load(run_id, snapshot=None)`: everything a report shows, read once (see below) |
-| `report.py` | 3 | Render the data as one self-contained HTML page (Jinja2) |
-| `templates/report.html`, `report.css` | 3 | Cover, summary, failures first, human reviews, evidence appendix |
+| `report.py` | 3 ✅ | `render_html(data, generated_at)`: one self-contained page (styles and pictures inside, no script, nothing loaded from elsewhere, everything escaped) |
+| `templates/report.html`, `report.css` | 3 ✅ | Cover (company, what was audited, score, scope, reviews counted, tool and report versions, the "supports an auditor" line), summary, findings failures first (reason, evidence, AI answers with their model, screenshot or why there is none, suggested fix), human reviews, evidence appendix (every file's SHA-256 and how to check it) |
+| `export.py` | 3 ✅ | `export(run, formats, snapshot)`: writes `reports/<run>/<run>-r<snapshot>.html` and its `.export.json`, never overwriting an earlier export; exports of one run take turns |
 | `pdf.py` | 4 | The same HTML as a PDF (WeasyPrint; on macOS `brew install pango` first) |
-| `export.py` | 3–4 | Write the files to `reports/<run>/`, never overwriting an earlier export |
 
 **What `data.load()` promises:**
 - Only a finished audit whose evidence verifies. A running, failed or interrupted run, or

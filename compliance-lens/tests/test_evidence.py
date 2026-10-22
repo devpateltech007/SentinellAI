@@ -5,6 +5,7 @@ import io
 import json
 import os
 import stat
+import threading
 
 import pytest
 from PIL import Image, ImageDraw, ImageFont
@@ -338,6 +339,38 @@ def test_write_screenshot(tmp_path):
     entry = evidence.write_screenshot(tmp_path, "GH/01", b"png bytes")
     assert entry == {"path": "GH_01.png", "sha256": evidence.sha256_bytes(b"png bytes"), "size": 9}
     assert [p.name for p in tmp_path.iterdir()] == ["GH_01.png"]
+
+
+def test_two_writers_of_one_file_never_collide(tmp_path):
+    # V6: each write has its own temporary file, so the last rename wins whole.
+    path = tmp_path / "report.html"
+    texts = [f"writer {n} ".encode() * 20_000 for n in range(8)]
+    errors = []
+
+    def write(data):
+        try:
+            for _ in range(5):
+                evidence.write_atomic(path, data)
+        except Exception as e:  # pragma: no cover - only if they collide
+            errors.append(e)
+
+    threads = [threading.Thread(target=write, args=(data,)) for data in texts]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert errors == [] and path.read_bytes() in texts
+    assert [p.name for p in tmp_path.iterdir()] == ["report.html"]
+
+
+def test_a_failed_write_leaves_no_temporary_file(tmp_path, monkeypatch):
+    def refuse(source, target):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(os, "replace", refuse)
+    with pytest.raises(OSError, match="disk full"):
+        evidence.write_atomic(tmp_path / "a.json", b"{}")
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_write_atomic_with_a_private_mode(tmp_path):

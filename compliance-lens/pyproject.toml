@@ -21,10 +21,11 @@ dependencies = { file = ["requirements.txt"] }
 include = ["compliancelens*"]
 
 # Non-Python files the package needs at run time (V4: the AI prompt, schema and model list;
-# V5: the dashboard's page templates, stylesheet and script).
+# V5: the dashboard's page templates, stylesheet and script; V6: the report's template).
 [tool.setuptools.package-data]
 "compliancelens.evaluator" = ["models.json", "prompts/*.txt", "prompts/*.json"]
 "compliancelens.dashboard" = ["templates/*.html", "static/*.css", "static/*.js"]
+"compliancelens.reporting" = ["templates/*.html", "templates/*.css"]  # V6: the audit report
 
 # ---------------------------------------------------------------- ruff ----
 [tool.ruff]

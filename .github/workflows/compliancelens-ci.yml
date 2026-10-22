@@ -55,9 +55,9 @@ jobs:
       - name: Tests with coverage (must stay >= 70%)
         run: pytest --cov
 
-      # The installed package must carry the AI prompt, schema and model list, and (V5) the
-      # dashboard's templates and static files. The editable install above reads them from
-      # this folder, so it would hide a missing file.
+      # The installed package must carry the AI prompt, schema and model list, (V5) the
+      # dashboard's templates and static files, and (V6) the report's template and styles.
+      # The editable install above reads them from this folder, so it would hide a missing file.
       - name: Packaged files (wheel in a clean environment)
         run: |
           python -m build --wheel --outdir dist
@@ -65,3 +65,4 @@ jobs:
           /tmp/wheel-check/bin/pip install --no-deps dist/*.whl
           cd /tmp && /tmp/wheel-check/bin/python -c "from compliancelens.evaluator import prompt, settings; prompt.system_prompt(); prompt.answer_schema(); settings.catalog(); print('packaged files OK')"
           cd /tmp && /tmp/wheel-check/bin/python -c "from importlib.resources import files; d = files('compliancelens.dashboard'); missing = [n for n in ('templates/base.html', 'templates/detail.html', 'templates/_progress.html', 'static/app.js', 'static/style.css') if not d.joinpath(n).is_file()]; assert not missing, missing; print('dashboard files OK')"
+          cd /tmp && /tmp/wheel-check/bin/python -c "from importlib.resources import files; d = files('compliancelens.reporting'); missing = [n for n in ('templates/report.html', 'templates/report.css') if not d.joinpath(n).is_file()]; assert not missing, missing; print('report files OK')"

@@ -12,6 +12,7 @@
     python audit.py history             past runs and their scores
     python audit.py settings            what audits check (config/settings.yaml) and from where
     python audit.py verify run-0007     re-hash a run's files and report any change
+    python audit.py report run-0007     export the run's audit report to reports/ (offline)
     python audit.py login github        log in by hand once, for screenshots (or: aws)
     python audit.py ai-test             check the AI model set in .env (one text, one image)
 
@@ -33,6 +34,8 @@ from compliancelens.connectors import browser
 from compliancelens.evaluator import ai, answer, prompt, providers, smoke
 from compliancelens.evaluator import settings as ai_settings
 from compliancelens.evaluator.providers import base as provider_base
+from compliancelens.reporting import data as report_data
+from compliancelens.reporting import export as report_export
 from compliancelens.storage import db
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -378,6 +381,43 @@ def verify(
         typer.echo(f"  - {problem}")
     typer.echo(f"FAILED: {len(report.problems)} problem(s) found.")
     raise typer.Exit(1)
+
+
+@app.command("report")
+def report_command(
+    run_name: Annotated[str, typer.Argument(help="The run to report on, e.g. run-0042.")],
+    report_format: Annotated[
+        str, typer.Option("--format", "-f", help=f"One of: {', '.join(report_export.FORMATS)}.")
+    ] = report_export.HTML,
+    snapshot: Annotated[
+        int | None,
+        typer.Option(
+            "--snapshot",
+            help="Count the reviews up to this review ID (default: every review so far).",
+        ),
+    ] = None,
+) -> None:
+    """Export a saved audit as an audit report in reports/. Reads only the saved run."""
+    try:
+        run_id = db.parse_run_name(run_name)
+        done = report_export.export(run_id, (report_format,), snapshot)
+    except ValueError as e:  # a bad run name or format
+        typer.echo(str(e))
+        raise typer.Exit(2)
+    except report_data.ReportError as e:
+        typer.echo(f"No report: {e.message}.")
+        for problem in e.problems:
+            typer.echo(f"  - {problem}")
+        if e.fix:
+            typer.echo(f"Fix: {e.fix}")
+        raise typer.Exit(2 if e.code == report_data.NOT_FOUND else 1)
+    except OSError as e:
+        typer.echo(f"No report: {report_export.reports_dir()} can't be written: {e}")
+        raise typer.Exit(1)
+    for fmt, path in done.files.items():
+        kept = " (exported earlier: kept as it was)" if fmt in done.kept else ""
+        typer.echo(f"Report: {display_path(path)}{kept}")
+    typer.echo(f"Made from: {display_path(done.record)}")
 
 
 def _wait_for_enter(site: browser.Site) -> None:
