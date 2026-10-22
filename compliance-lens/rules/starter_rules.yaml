@@ -11,6 +11,10 @@
 # Each rule can be broken and fixed on purpose (or, where that is unsafe, is
 # tested with fake data): see scripts/README.md.
 #
+# `remediation` (V6) is the suggested fix the report shows under a failed rule. It is
+# written by hand here, saved with each run (rulebook.yaml, run-context.json), and never
+# made from evidence.
+#
 # What to audit comes from config/settings.yaml (V6; copy config/settings.example.yaml):
 # the GitHub organization, repository and branch, the AWS region, the screenshot targets
 # and the HR list. A setting fills only what a card leaves out, so a card may still name
@@ -27,6 +31,10 @@
   title: Password policy requires 12+ characters
   framework_ref: CIS AWS 1.8
   severity: medium
+  remediation: >-
+    IAM > Account settings > Password policy: set the minimum length to 12 characters or
+    more (14 is the usual choice). Existing passwords follow the new policy when they
+    are next changed.
   collector: aws.password_policy
   params: {}
   check: { field: MinimumPasswordLength, op: ">=", value: 12 }
@@ -47,6 +55,9 @@
   title: Every IAM user with a console password has MFA
   framework_ref: CIS AWS 1.10
   severity: high
+  remediation: >-
+    For each user named: IAM > Users > the user > Security credentials > Assign MFA
+    device. If the user doesn't need the console, remove their console password instead.
   collector: aws.users_without_mfa
   params: {}
   check: { field: count, op: "==", value: 0 }
@@ -69,6 +80,10 @@
   title: Root account has MFA
   framework_ref: CIS AWS 1.5
   severity: high
+  remediation: >-
+    Sign in as the root user and assign an MFA device (Security credentials >
+    Multi-factor authentication). Prefer a hardware key and keep its recovery details
+    offline.
   collector: aws.root_account_mfa
   params: {}
   check: { field: AccountMFAEnabled, op: "==", value: 1 }
@@ -84,6 +99,10 @@
   title: No active access key is older than 90 days
   framework_ref: CIS AWS 1.14
   severity: medium
+  remediation: >-
+    For each key named: create a new access key, move whatever uses the old one to it,
+    then deactivate and delete the old key. Prefer roles or short-lived credentials over
+    long-lived keys.
   collector: aws.access_key_age
   params: { max_age_days: 90 }
   check: { field: count, op: "==", value: 0 }
@@ -103,11 +122,16 @@
   title: Every S3 bucket blocks public access
   framework_ref: CIS AWS 2.1.4
   severity: high
+  remediation: >-
+    For each bucket named: bucket > Permissions > Block public access, turn on all four
+    settings. Turn them on for the whole account too, unless a bucket must be public by
+    design.
   collector: aws.s3_public_access
   params: {}
   check: { field: buckets_fully_blocked, op: all_true }
   screenshot:   # aws.screenshot_bucket only (a test bucket); the API checks every bucket
     site: aws
+    caption: "Shows the screenshot bucket only; the API checked every bucket."
     url: "https://{region}.console.aws.amazon.com/s3/buckets/{bucket}?region={region}&tab=permissions"
     wait_for: { text: "Individual Block Public Access settings for this bucket" }   # On/Off has loaded
     mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
@@ -123,11 +147,15 @@
 - id: AWS-06
   title: Every S3 bucket has versioning on
   severity: low
+  remediation: >-
+    For each bucket named: bucket > Properties > Bucket Versioning > Enable. A lifecycle
+    rule that expires old versions keeps the storage cost bounded.
   collector: aws.s3_versioning
   params: {}
   check: { field: versioning_enabled, op: all_true }
   screenshot:   # aws.screenshot_bucket only (a test bucket); the API checks every bucket
     site: aws
+    caption: "Shows the screenshot bucket only; the API checked every bucket."
     url: "https://{region}.console.aws.amazon.com/s3/buckets/{bucket}?region={region}&tab=properties"
     wait_for: { text: "Bucket Versioning" }
     steps:
@@ -140,6 +168,9 @@
   title: At least one CloudTrail trail is logging
   framework_ref: CIS AWS 3.1
   severity: high
+  remediation: >-
+    CloudTrail > Trails: start logging on the stopped trail, or create a multi-region
+    trail that delivers to its own S3 bucket with versioning on.
   collector: aws.cloudtrail_logging
   params: {}
   check: { field: logging_count, op: ">=", value: 1 }
@@ -157,6 +188,9 @@
   title: No IAM user has been inactive for more than 90 days
   framework_ref: CIS AWS 1.12 (adapted, CIS uses 45 days)
   severity: medium
+  remediation: >-
+    For each user named: confirm with their manager, then delete the user, or remove
+    their console password and access keys if the account must stay.
   collector: aws.unused_users
   params: { max_inactive_days: 90 }
   check: { field: count, op: "==", value: 0 }
@@ -176,6 +210,9 @@
   title: main branch requires at least 1 review
   framework_ref: CIS GitHub 1.1.3
   severity: high
+  remediation: >-
+    Repository Settings > Branches > edit the classic protection rule for the branch:
+    tick "Require a pull request before merging" with at least 1 required approval.
   collector: github.branch_protection
   params: {}   # repository and branch: config/settings.yaml
   check: { field: required_approving_review_count, op: ">=", value: 1 }
@@ -195,6 +232,9 @@
 - id: GH-02
   title: Force pushes to main are blocked
   severity: high
+  remediation: >-
+    Repository Settings > Branches > edit the classic protection rule for the branch:
+    leave "Allow force pushes" unticked (and "Allow deletions" too).
   collector: github.force_push_protection
   params: {}   # repository and branch: config/settings.yaml
   check: { field: allow_force_pushes, op: "==", value: false }
@@ -209,6 +249,9 @@
 - id: GH-03
   title: Secret scanning is enabled
   severity: medium
+  remediation: >-
+    Repository Settings > Advanced Security: turn on Secret Protection (secret
+    scanning), and push protection with it.
   collector: github.secret_scanning
   params: {}   # repository: config/settings.yaml
   check: { field: secret_scanning, op: in, value: [enabled] }
@@ -223,6 +266,8 @@
 - id: GH-04
   title: Dependabot alerts are enabled
   severity: medium
+  remediation: >-
+    Repository Settings > Advanced Security: turn on Dependabot alerts.
   collector: github.dependabot_alerts
   params: {}   # repository: config/settings.yaml
   check: { field: dependabot_alerts, op: "==", value: true }
@@ -237,6 +282,10 @@
 - id: GH-05
   title: Every organization member has 2FA
   severity: high
+  remediation: >-
+    Ask each member named to turn on two-factor authentication, then require it for the
+    organization (Settings > Authentication security). Members without it are removed
+    when you require it.
   collector: github.org_members_without_2fa
   params: {}
   check: { field: count, op: "==", value: 0 }
@@ -255,6 +304,9 @@
 - id: GH-06
   title: Organization base repository permission is Read or None
   severity: medium
+  remediation: >-
+    Organization Settings > Member privileges > Base permissions: choose Read or No
+    permission, and give write access per team or per repository instead.
   collector: github.org_settings
   params: {}   # organization: config/settings.yaml
   check: { field: default_repository_permission, op: in, value: [read, none] }
@@ -279,6 +331,9 @@
 - id: GH-07
   title: Members cannot delete or transfer repositories
   severity: medium
+  remediation: >-
+    Organization Settings > Member privileges: untick "Allow members to delete or
+    transfer repositories for this organization".
   screenshot:   # compliant: "Allow members to delete or transfer repositories" unticked
     site: github
     url: "https://github.com/organizations/{org}/settings/member_privileges"
@@ -300,6 +355,11 @@
   title: Every AWS and GitHub account belongs to an active employee
   framework_ref: SOC 2 CC6.2
   severity: high
+  remediation: >-
+    For each account named: if the person has left, remove the AWS user or the GitHub
+    member; if it is a service account, add it to hr.allow_aws or hr.allow_github in
+    config/settings.yaml; if it belongs to a current employee, correct the employee
+    list.
   collector: hr.unmatched_accounts
   params: {}   # the employee list and the service accounts: hr in config/settings.yaml
   check: { custom: no_unmatched_accounts }
@@ -312,6 +372,10 @@
 - id: DOC-01
   title: Password policy requires 12+ characters
   severity: medium
+  remediation: >-
+    Change the password policy so every password must be at least 12 characters long,
+    with no exception that allows a shorter one, and have its owner approve and publish
+    it.
   collector: files.read_document
   params: { path: password-policy.pdf }
   ai_check:
@@ -326,6 +390,10 @@
 - id: DOC-02
   title: Policy requires MFA for every AWS console user
   severity: high
+  remediation: >-
+    Change the access control policy to require MFA for every user who can sign in to
+    the AWS console, not only for administrators, and have its owner approve and publish
+    it.
   collector: files.read_document
   params: { path: access-control-policy.md }
   ai_check:
@@ -340,6 +408,9 @@
 - id: DOC-03
   title: Offboarding removes AWS and GitHub access within 24 hours
   severity: high
+  remediation: >-
+    Change the offboarding policy so both AWS and GitHub access are removed within 24
+    hours of someone leaving, and have its owner approve and publish it.
   collector: files.read_document
   params: { path: offboarding-policy.txt }
   ai_check:

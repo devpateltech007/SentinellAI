@@ -30,12 +30,16 @@ collector for it exists in `compliancelens/connectors/`).
 | `params` | no | Settings passed to the collector. Since V6 the account-specific ones (repository, branch, organization, region, the HR list) come from `config/settings.yaml`; a value written here wins over the settings |
 | `check` | yes* | How to judge the collected data (see below) |
 | `framework_ref` | no | Matching CIS / SOC 2 control, e.g. `CIS AWS 1.10` |
+| `remediation` | V6 | The suggested fix the report shows under the rule: one or two plain sentences (at most 600 characters), written by hand, never made from evidence. Saved with each run, so an old report keeps the fix its audit had |
 | `screenshot` | V3 | The web page to screenshot for people (see "Screenshots" below) |
 | `ai_check` | V4 | What the AI checks: a document, a screenshot, or (cross-check) a code rule's screenshot |
 
 \* Not for a **screenshot-only** rule: one with a `screenshot` and neither `collector`
 nor `check`. Having only one of the two is an error. A **document** rule has a
 `files.read_document` collector but no `check`.
+
+Any other key is refused before a run (V6), so a typo such as `remedation:` is caught
+instead of being quietly ignored.
 
 ## Rule kinds (V4)
 
@@ -199,6 +203,7 @@ never changes an API rule's verdict. HR-01 has none (it checks a local CSV).
     mask:                                          # optional: hide private parts
       - { css: ".avatar" }
     vars: { page: settings }                       # optional: extra URL values
+    caption: "Shows one bucket; the API checked every bucket."   # optional (V6): under the picture in the report
     timeout_ms: 20000                              # optional: 1000 to 60000
 ```
 

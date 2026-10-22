@@ -410,6 +410,9 @@ def test_minimal_screenshot_block():
         ({"timeout_ms": 10}, "timeout_ms must be a whole number"),
         ({"timeout_ms": 600_000}, "timeout_ms must be a whole number"),
         ({"timeout_ms": True}, "timeout_ms must be a whole number"),
+        ({"caption": ""}, "caption must be text of at most 200 characters"),
+        ({"caption": 3}, "caption must be text"),
+        ({"caption": "x" * 201}, "caption must be text of at most 200 characters"),
     ],
 )
 def test_bad_screenshot_block(changes, problem):

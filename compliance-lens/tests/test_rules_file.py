@@ -124,6 +124,20 @@ def test_rulebook_has_no_problems():
     assert engine.validate_rules(applied(ALL_RULES)) == []
 
 
+@pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.get("id", "?"))
+def test_every_rule_has_a_suggested_fix(rule):
+    # V6: the report shows it under a failed rule; written by hand, never from evidence.
+    text = rule.get("remediation")
+    assert isinstance(text, str) and 40 <= len(text) <= engine.MAX_REMEDIATION, rule["id"]
+    assert text == " ".join(text.split()), rule["id"]  # one paragraph, no stray line breaks
+
+
+def test_bucket_screenshots_say_they_show_one_bucket():
+    for rule in SCREENSHOT_RULES:
+        if rule["id"] in ("AWS-05", "AWS-06"):
+            assert "every bucket" in rule["screenshot"]["caption"]
+
+
 @pytest.mark.parametrize("path", RULE_FILES, ids=lambda p: p.name)
 def test_no_account_is_named_in_the_rulebook(path):
     text = path.read_text()
