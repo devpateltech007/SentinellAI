@@ -359,11 +359,19 @@ def test_valid_rules_have_no_problems():
         (valid(check={"field": "x", "op": "in", "value": "enabled"}), "needs a list"),
         (valid(check={"custom": "os.system"}), "unknown custom check"),
         (valid(check={"custom": ["x"]}), "unknown custom check"),
+        (valid(remedation="typo"), "unknown key(s) remedation"),
+        (valid(remediation=""), "remediation must be text"),
+        (valid(remediation=["fix it"]), "remediation must be text"),
+        (valid(remediation="x" * 601), "remediation is too long (601 characters, at most 600)"),
     ],
 )
 def test_validate_rules_finds_problems(bad, problem):
     [found] = engine.validate_rules([bad])
     assert problem in found
+
+
+def test_a_suggested_fix_is_allowed():
+    assert engine.validate_rules([valid(remediation="Turn it on.", framework_ref="CIS 1.1")]) == []
 
 
 def test_duplicate_ids_are_a_problem():

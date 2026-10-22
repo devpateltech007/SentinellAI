@@ -331,7 +331,18 @@ UNSAFE_CLICK = re.compile(
     r"|log\s*out)\b",
     re.I,
 )
-SCREENSHOT_KEYS = {"site", "url", "vars", "wait_for", "steps", "capture", "mask", "timeout_ms"}
+SCREENSHOT_KEYS = {
+    "site",
+    "url",
+    "vars",
+    "wait_for",
+    "steps",
+    "capture",
+    "mask",
+    "timeout_ms",
+    "caption",  # V6: a line under the picture in the report, e.g. what it does not show
+}
+MAX_CAPTION = 200
 
 
 def locator_problem(spec) -> str | None:
@@ -434,6 +445,11 @@ def screenshot_problems(rule: dict) -> list[str]:
         problem = site and url_problem(site, PLACEHOLDER.sub("x", url))
         if problem:
             problems.append(f"url {problem}")
+    caption = shot.get("caption")
+    if caption is not None and (
+        not isinstance(caption, str) or not caption.strip() or len(caption) > MAX_CAPTION
+    ):
+        problems.append(f"caption must be text of at most {MAX_CAPTION} characters")
     if "wait_for" not in shot:
         problems.append("needs wait_for: something on the page that proves it has loaded")
     elif problem := locator_problem(shot["wait_for"]):

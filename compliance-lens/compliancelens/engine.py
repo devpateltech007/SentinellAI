@@ -41,6 +41,22 @@ METHODS = {KIND_CODE: CODE, KIND_DOCUMENT: AI_TEXT, KIND_VISION: AI_VISION, KIND
 AI_CHECK_KEYS = {"expect", "pass_if", "fail_if", "review_if", "missing_means", "comparable"}
 MISSING_MEANS = ("fail", "review")
 
+# What a rule card may hold (V6: anything else is refused, so a typo such as
+# `remedation:` is caught before a run instead of being quietly ignored).
+RULE_KEYS = {
+    "id",
+    "title",
+    "framework_ref",
+    "severity",
+    "remediation",  # V6: the suggested fix, written by hand; the report shows it
+    "collector",
+    "params",
+    "check",
+    "screenshot",
+    "ai_check",
+}
+MAX_REMEDIATION = 600
+
 # Rule cards name a collector as "<system>.<function>", e.g. "aws.users_without_mfa".
 # To add a system: write connectors/<system>.py and register it here.
 # The browser connector is deliberately not here: rule cards can't call it.
@@ -145,6 +161,11 @@ CUSTOM_CHECKS = {"no_unmatched_accounts": _no_unmatched_accounts}
 # ---------------------------------------------------------------- engine ----
 
 
+def _now() -> datetime.datetime:
+    # One place to read the clock, so tests can fix every timestamp (V6: golden reports).
+    return datetime.datetime.now(datetime.UTC)
+
+
 def result(
     rule: dict, verdict: str, reason: str, data, method: str = CODE, confidence: str | None = None
 ) -> dict:
@@ -164,7 +185,7 @@ def result(
         "confidence": confidence or (HIGH if verdict in (PASS, FAIL) else LOW),
         "reason": reason,
         "evidence": data,
-        "collected_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "collected_at": _now().isoformat(),
     }
 
 
@@ -393,6 +414,17 @@ def _document_problems(rule: dict) -> list[str]:
     return problems
 
 
+def _remediation_problem(text) -> str | None:
+    """What is wrong with a card's `remediation` (optional), or None."""
+    if text is None:
+        return None
+    if not isinstance(text, str) or not text.strip():
+        return "must be text: the suggested fix in a sentence or two"
+    if len(text) > MAX_REMEDIATION:
+        return f"is too long ({len(text)} characters, at most {MAX_REMEDIATION})"
+    return None
+
+
 def validate_rules(rules: list[dict]) -> list[str]:
     """Problems that make the rulebook unusable (empty list if it is fine).
 
@@ -408,8 +440,13 @@ def validate_rules(rules: list[dict]) -> list[str]:
         elif rule_id in seen:
             problems.append(f"{where}: duplicate id")
         seen.add(rule_id)
+        unknown = sorted(str(key) for key in set(rule) - RULE_KEYS)
+        if unknown:
+            problems.append(f"{where}: unknown key(s) {', '.join(unknown)}")
         if not rule.get("title"):
             problems.append(f"{where}: missing title")
+        if problem := _remediation_problem(rule.get("remediation")):
+            problems.append(f"{where}: remediation {problem}")
         if not isinstance(rule.get("params", {}), dict):
             problems.append(f"{where}: params must be a mapping")
         kind = rule_kind(rule)

@@ -31,6 +31,7 @@ served from this computer (`fixtures/browser/`).
 | `test_dashboard_jobs.py` | Background audits (progress, one at a time, every failure named), the "before you run" checks, the launcher (this computer only unless asked) |
 | `test_dashboard_browser.py` | Real Chromium against the real server: sign in, start an audit, watch the progress update without reloading, review a result; no console or CSP errors |
 | `test_locking.py` | The audit lock: who holds it, a second one refused with who holds it, waiting a moment, a killed holder never leaving it stuck |
+| `test_reporting_data.py` | The report's data (V6): what a saved audit holds (counts as the dashboard's, findings, excerpts, verified pictures, AI answers, fixes), review snapshots that never change, failures first, refusals (unknown, unfinished, unverified, a file changed while reading), partial runs, and older runs saying what they didn't save |
 | `test_queries.py` | The dashboard's read views: both verdicts, run states (interrupted), counts and score, paging past 20 runs, filters, the review queue, comparing runs by rule ID with the notes that weaken a comparison |
 | `test_review.py` | Human reviews on real (fake-system) audits: explicit choices, approve never turning NEEDS REVIEW into PASS, every bad review refused, stale forms and double clicks, unfinished runs, the audit and its evidence untouched (still verifies), new audits not inheriting reviews |
 | `test_rules_file.py` | The real rulebook: the 19 rules (15 code, 1 vision, 3 document; GH-06 is code since V6), 15 screenshot blocks, the cross-checks, every DOC rule reading every sample folder, valid, sensible value types, no secrets |
@@ -44,6 +45,7 @@ served from this computer (`fixtures/browser/`).
 | `test_lab_analyze.py` | The analysis on hand-made answers with known results: every rate, Wilson intervals, misread vs misjudged, consistency, the code's accuracy, the report; complete vs PARTIAL, changed labels refused, every paid attempt in the cost |
 | `test_lab_cli.py` | `python -m experiment.lab` end to end with fakes for every account |
 | `lab_helpers.py` | Saved experiment cases for the tests above |
+| `report_helpers.py` | A made-up audit ("Example Labs") with fake systems, model and browser on a fixed clock, for the report tests |
 | `fixtures/` | Recorded API replies and the fake website |
 
 **What is mocked instead of done live:** root MFA on (AWS-03), keys older than 90 days

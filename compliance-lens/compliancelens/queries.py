@@ -14,6 +14,10 @@ will never finish.
 The score is effective PASS divided by every result of the run, open ones included, so
 unresolved results lower it instead of disappearing. Show it with the counts and the
 coverage (rules run / rules in the rulebook), never alone.
+
+Reviews up to a point (V6, for reports): `reviews_upto` counts only reviews with an ID up
+to that one. Reviews are append-only, so the same limit always gives the same verdicts,
+and a report made from it never changes when someone reviews later.
 """
 
 import json
@@ -35,14 +39,17 @@ NOT_RUN_BEFORE, NOT_RUN_NOW = "not run before", "not run now"
 COLLECTOR_SYSTEMS = {"aws": "AWS", "github": "GitHub", "hr": "HR", "files": "Policy documents"}
 ID_SYSTEMS = {"AWS": "AWS", "GH": "GitHub", "HR": "HR", "DOC": "Policy documents"}
 
+# Every query below takes the review limit as its first parameters (ALL_REVIEWS: no limit).
+ALL_REVIEWS = 2**63 - 1  # SQLite's largest integer: every review ID is below it
 _LATEST_REVIEW = (
-    "SELECT * FROM overrides WHERE id IN (SELECT MAX(id) FROM overrides GROUP BY result_id)"
+    "SELECT * FROM overrides WHERE id IN"
+    " (SELECT MAX(id) FROM overrides WHERE id <= ? GROUP BY result_id)"
 )
 _RESULTS = f"""
 SELECT r.*,
        o.id AS review_id, o.new_verdict AS review_verdict, o.reviewer AS reviewer,
        o.note AS review_note, o.created_at AS reviewed_at,
-       (SELECT COUNT(*) FROM overrides WHERE result_id = r.id) AS review_count
+       (SELECT COUNT(*) FROM overrides WHERE result_id = r.id AND id <= ?) AS review_count
 FROM results r LEFT JOIN ({_LATEST_REVIEW}) o ON o.result_id = r.id
 """
 _COUNTS = f"""
@@ -111,16 +118,20 @@ def _counts(row) -> dict:
     }
 
 
-def _summaries(conn, runs: list[sqlite3.Row], holder) -> list[dict]:
+def _upto(reviews_upto: int | None) -> int:
+    return ALL_REVIEWS if reviews_upto is None else reviews_upto
+
+
+def _summaries(conn, runs: list[sqlite3.Row], holder, reviews_upto=None) -> list[dict]:
     if not runs:
         return []
     if holder is _UNSET:
         holder = locking.holder()
     ids = [run["id"] for run in runs]
     marks = ", ".join("?" * len(ids))
+    query = f"{_COUNTS} WHERE r.run_id IN ({marks}) GROUP BY r.run_id"
     counts = {
-        row["run_id"]: _counts(row)
-        for row in conn.execute(f"{_COUNTS} WHERE r.run_id IN ({marks}) GROUP BY r.run_id", ids)
+        row["run_id"]: _counts(row) for row in conn.execute(query, [_upto(reviews_upto), *ids])
     }
     summaries = []
     for run in runs:
@@ -140,10 +151,11 @@ def _summaries(conn, runs: list[sqlite3.Row], holder) -> list[dict]:
     return summaries
 
 
-def run_summary(conn, run_id: int, holder=_UNSET) -> dict | None:
-    """One run with its state, counts (machine and effective), score and coverage."""
+def run_summary(conn, run_id: int, holder=_UNSET, reviews_upto: int | None = None) -> dict | None:
+    """One run with its state, counts (machine and effective), score and coverage.
+    `reviews_upto`: count only reviews up to that ID (a report's snapshot)."""
     run = db.get_run(conn, run_id)
-    return _summaries(conn, [run], holder)[0] if run is not None else None
+    return _summaries(conn, [run], holder, reviews_upto)[0] if run is not None else None
 
 
 def list_runs(conn, limit: int | None = None, offset: int = 0, holder=_UNSET) -> list[dict]:
@@ -193,13 +205,14 @@ def results(
     verdict: str | None = None,
     system: str | None = None,
     severity: str | None = None,
+    reviews_upto: int | None = None,
 ) -> list[dict]:
     """A run's results in rulebook order, each with both verdicts and its latest review.
-    Filters (all optional, combined): effective verdict, system, severity."""
-    rows = [
-        _result(row)
-        for row in conn.execute(f"{_RESULTS} WHERE r.run_id = ? ORDER BY r.id", (run_id,))
-    ]
+    Filters (all optional, combined): effective verdict, system, severity.
+    `reviews_upto`: only reviews up to that ID count (a report's snapshot)."""
+    upto = _upto(reviews_upto)
+    query = f"{_RESULTS} WHERE r.run_id = ? ORDER BY r.id"
+    rows = [_result(row) for row in conn.execute(query, (upto, upto, run_id))]
     return [
         r
         for r in rows
@@ -215,7 +228,8 @@ def result_detail(conn, result_id: int, holder=_UNSET) -> dict | None:
     `review_id` is the latest review's ID (None if none): a review form sends it back
     as `seen`, so review.record() can tell whether someone reviewed it meanwhile.
     """
-    row = conn.execute(f"{_RESULTS} WHERE r.id = ?", (result_id,)).fetchone()
+    query = f"{_RESULTS} WHERE r.id = ?"
+    row = conn.execute(query, (ALL_REVIEWS, ALL_REVIEWS, result_id)).fetchone()
     if row is None:
         return None
     detail = _result(row)
@@ -228,6 +242,28 @@ def result_detail(conn, result_id: int, holder=_UNSET) -> dict | None:
         )
     ]
     return detail
+
+
+def latest_review_id(conn, run_id: int) -> int:
+    """The highest review ID among a run's results (0 if none): a report's snapshot."""
+    row = conn.execute(
+        "SELECT MAX(o.id) FROM overrides o JOIN results r ON r.id = o.result_id WHERE r.run_id = ?",
+        (run_id,),
+    ).fetchone()
+    return row[0] or 0
+
+
+def run_reviews(conn, run_id: int, reviews_upto: int | None = None) -> list[dict]:
+    """Every review of a run's results, oldest first (up to `reviews_upto`), each with its
+    result_id: the full history, not only the latest."""
+    return [
+        dict(row)
+        for row in conn.execute(
+            "SELECT o.* FROM overrides o JOIN results r ON r.id = o.result_id"
+            " WHERE r.run_id = ? AND o.id <= ? ORDER BY o.id",
+            (run_id, _upto(reviews_upto)),
+        )
+    ]
 
 
 def review_queue(conn, run_id: int) -> list[dict]:
