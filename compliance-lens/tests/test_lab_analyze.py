@@ -134,6 +134,21 @@ def test_scores_on_a_hand_table():
 
 
 @pytest.mark.parametrize(
+    ("verdicts", "verdict"),
+    [
+        (["PASS", "PASS", "FAIL"], "PASS"),
+        (["FAIL", "FAIL", "REVIEW"], "FAIL"),
+        (["REVIEW", "REVIEW", "PASS"], "REVIEW"),
+        (["PASS", "FAIL", "REVIEW"], "REVIEW"),  # no majority: a person decides
+        (["PASS", "FAIL"], "REVIEW"),
+        (["FAIL"], "FAIL"),
+    ],
+)
+def test_the_majority_of_a_cases_repeats(verdicts, verdict):
+    assert analyze.majority(verdicts) == verdict
+
+
+@pytest.mark.parametrize(
     ("rule", "observed", "value"),
     [
         ("AWS-01", "Password minimum length: 11 characters", 11),
@@ -196,6 +211,21 @@ def test_analyze_a_run(records, rows, tmp_path):
     assert result["statuses"] == {"accepted": 6, "unsure": 2}
     vs_state = result["vs_state"]  # gh01-signin's state is PASS
     assert (vs_state["accuracy"].k, vs_state["accuracy"].n) == (5, 8)
+    # Case level: gh06-read PASS; gh06-write (PASS, FAIL), aws01-len8 (FAIL, REVIEW) and
+    # gh01-signin (REVIEW, PASS) have no majority, so they count as REVIEW.
+    case_level = {key: (rate.k, rate.n) for key, rate in result["case_level"].items()}
+    assert case_level == {
+        "accuracy": (2, 4),
+        "decided_accuracy": (1, 1),
+        "coverage": (1, 3),
+        "false_pass": (0, 2),
+        "false_fail": (0, 1),
+        "review_recall": (1, 1),
+        "pass_when_unclear": (0, 1),
+    }
+    case_state = result["case_level_vs_state"]
+    assert (case_state["accuracy"].k, case_state["accuracy"].n) == (1, 4)
+    assert (case_state["coverage"].k, case_state["coverage"].n) == (1, 4)
     assert result["label_vs_state"] == [
         {
             "case_id": "gh01-signin",
@@ -227,8 +257,18 @@ def test_the_report(records, rows, tmp_path):
     assert "| Review recall | 50% (1/2; 9%–91%) | – |" in text  # a state is never REVIEW
     assert "### Where the labels and the set-up state differ" in text
     assert "| gh01-signin | GH-01 | review | PASS | REVIEW | REVIEW, PASS | PASS |" in text
+    assert "### Case level: each case counted once" in text
+    assert "n is 4 cases, not 8 answers." in text
+    assert "| Accuracy | 50% (2/4; 15%–85%) | 25% (1/4; 5%–70%) |" in text
+    assert text.index("Case level") < text.index("set-up state differ")
     plain = analyze.as_json(result)
     assert plain["overall"]["accuracy"]["k"] == 5 and json.dumps(plain)
+    assert plain["case_level"]["accuracy"] == {
+        "k": 2,
+        "n": 4,
+        "value": 0.5,
+        "ci95": analyze.wilson(2, 4),
+    }
     assert plain["label_vs_state"][0]["ai"] == ["REVIEW", "PASS"]
     other = {**result, "run": "other", "usage": {**result["usage"], "paid_cost_usd": None}}
     partial = {**result, "run": "half", "status": {**result["status"], "complete": False}}
@@ -248,7 +288,10 @@ def test_a_pilot_is_scored_against_the_setup(records, tmp_path):
     assert "(pilot: no labels)" in text
     assert "of cases." in text and "evidence label for" not in text
     assert "| Measure | AI |" in text and "set-up state differ" not in text
+    assert "n is 1 case, not 1 answer." in text
+    assert text.count("| Measure | AI |") == 2  # the case level has one column too
     assert result["label_vs_state"] == []
+    assert result["case_level"]["accuracy"].k == 1
 
 
 def test_runs_that_cant_be_scored(records, rows, tmp_path):

@@ -5,6 +5,8 @@ and judged 3 times each by the AI. Every number here comes from the generated ta
 [`experiment-results.md`](experiment-results.md)
 (`python -m experiment.lab analyze --write docs/experiment-results.md`). Method and commands:
 [`experiment/README.md`](../experiment/README.md). Pilot: [`experiment-pilot.md`](experiment-pilot.md).
+The write-up, with the figures and what the results mean (V6):
+[`experiment-writeup.md`](experiment-writeup.md).
 
 ## What was done
 
@@ -66,8 +68,8 @@ PASS / FAIL there instead.
   against the labels (79%).
 
 So the dangerous error rate depends entirely on how these two pictures are read. The
-results report both. The V6 write-up should say that the AI followed the rule's written
-condition here and the two people did not.
+results report both. The [V6 write-up](experiment-writeup.md#81-aws-02-the-labels-and-the-rules-wording-disagree)
+says so: the AI followed the rule's written condition here and the two people did not.
 
 The other 4 differences are by design: pictures cut off below the fold (`aws05-fold`,
 `gh01-fold`), a setting covered by a pop-up (`gh06-covered`) and a sign-in page

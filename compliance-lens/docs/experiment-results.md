@@ -25,9 +25,23 @@ Labellers agreed on 54 of 55 pictures (Cohen's κ = 0.97).
 
 Consistency over repeats: 96% (53/55; 88%–99%).  Invalid replies: 0% (0/167; 0%–2%) of attempts.
 
+### Case level: each case counted once
+
+The repeats of a case look at the same picture, so they are not independent. Here each case counts once, with the verdict most of its repeats gave (NEEDS REVIEW if none has a majority): n is 55 cases, not 165 answers.
+
+| Measure | AI vs the labels | AI vs the set-up state |
+|---|---|---|
+| Accuracy | 95% (52/55; 85%–98%) | 91% (50/55; 80%–96%) |
+| Decided accuracy | 96% (48/50; 87%–99%) | 100% (50/50; 93%–100%) |
+| Coverage (decided) | 98% (50/51; 90%–100%) | 91% (50/55; 80%–96%) |
+| False PASS | 7% (2/30; 2%–21%) | 0% (0/28; 0%–12%) |
+| False FAIL | 0% (0/21; 0%–15%) | 0% (0/27; 0%–12%) |
+| Review recall | 100% (4/4; 51%–100%) | – |
+| PASS when unclear | 0% (0/4; 0%–49%) | – |
+
 ### Where the labels and the set-up state differ
 
-The labels say what two people saw in each picture; the set-up state is what the setup made true in the account. Every table here scores against the labels, except the set-up state column above.
+The labels say what two people saw in each picture; the set-up state is what the setup made true in the account. Every table here scores against the labels, except the set-up state columns above.
 
 | Case | Rule | Kind | Set-up state | Final label | AI (each repeat) | Code |
 |---|---|---|---|---|---|---|
@@ -95,6 +109,20 @@ Paid in all: $0.0542 for 165 calls.
 
 Consistency over repeats: –.  Invalid replies: 0% (0/10; 0%–28%) of attempts.
 
+### Case level: each case counted once
+
+The repeats of a case look at the same picture, so they are not independent. Here each case counts once, with the verdict most of its repeats gave (NEEDS REVIEW if none has a majority): n is 10 cases, not 10 answers.
+
+| Measure | AI |
+|---|---|
+| Accuracy | 100% (10/10; 72%–100%) |
+| Decided accuracy | 100% (10/10; 72%–100%) |
+| Coverage (decided) | 100% (10/10; 72%–100%) |
+| False PASS | 0% (0/5; 0%–43%) |
+| False FAIL | 0% (0/5; 0%–43%) |
+| Review recall | – |
+| PASS when unclear | – |
+
 ### By rule
 
 | Rule | Accuracy | Decided accuracy | Coverage (decided) | False PASS | False FAIL |
@@ -144,6 +172,20 @@ Paid in all: $0.0031 for 10 calls.
 | PASS when unclear | – |
 
 Consistency over repeats: –.  Invalid replies: 0% (0/8; 0%–32%) of attempts.
+
+### Case level: each case counted once
+
+The repeats of a case look at the same picture, so they are not independent. Here each case counts once, with the verdict most of its repeats gave (NEEDS REVIEW if none has a majority): n is 10 cases, not 10 answers.
+
+| Measure | AI |
+|---|---|
+| Accuracy | 80% (8/10; 49%–94%) |
+| Decided accuracy | 100% (8/8; 68%–100%) |
+| Coverage (decided) | 80% (8/10; 49%–94%) |
+| False PASS | 0% (0/5; 0%–43%) |
+| False FAIL | 0% (0/5; 0%–43%) |
+| Review recall | – |
+| PASS when unclear | – |
 
 ### By rule
 
