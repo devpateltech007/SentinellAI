@@ -1,7 +1,11 @@
 """Writing a report's files (V6), the same for `audit.py report` and the dashboard.
 
-    reports/run-0042/run-0042-r17.html          the report (Stage 4 adds .pdf)
+    reports/run-0042/run-0042-r17.html          the report
+    reports/run-0042/run-0042-r17.pdf           the same page as a PDF (V6 Stage 4)
     reports/run-0042/run-0042-r17.export.json   what it was made from, and its files' hashes
+
+A PDF is always made from its HTML page, which is kept beside it: asking for the PDF
+writes the HTML first if it isn't there, so the two can never say different things.
 
 The name says the run and its review snapshot, so a later review makes a new report
 beside the old one, and an existing report is never overwritten: exporting the same
@@ -25,12 +29,13 @@ from pathlib import Path
 
 from compliancelens import __version__, evidence
 from compliancelens.reporting import data as report_data
-from compliancelens.reporting import report
+from compliancelens.reporting import pdf, report
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 ENV_VAR = "COMPLIANCELENS_REPORTS_DIR"
-HTML = "html"
-FORMATS = (HTML,)  # Stage 4 adds "pdf"
+HTML, PDF = "html", "pdf"
+FORMATS = (HTML, PDF)
+BOTH = "both"  # what `audit.py report --format both` and the make target mean
 RECORD_VERSION = 1
 LOCK_FILE = ".export.lock"
 NOTE = (
@@ -109,9 +114,19 @@ def _generated(record_path: Path) -> dict:
     return {}
 
 
-def export(run_id: int, formats=FORMATS, snapshot: int | None = None) -> Exported:
+def formats_for(choice: str) -> tuple[str, ...]:
+    """The formats a user's choice means: html, pdf or both. ValueError for anything else."""
+    if choice == BOTH:
+        return FORMATS
+    if choice in FORMATS:
+        return (choice,)
+    raise ValueError(f"unknown report format(s): {choice} (choose html, pdf or both)")
+
+
+def export(run_id: int, formats=(HTML,), snapshot: int | None = None) -> Exported:
     """Export a saved audit's report. Raises report_data.ReportError (no report: why and
-    the fix), ValueError for an unknown format, and OSError if the folder can't be written."""
+    the fix), pdf.PdfUnavailable (no PDF here: the fix; the HTML is still written), ValueError
+    for an unknown format, and OSError if the folder can't be written."""
     unknown = [fmt for fmt in formats if fmt not in FORMATS]
     if unknown or not formats:
         raise ValueError(f"unknown report format(s): {', '.join(unknown) or 'none given'}")
@@ -120,16 +135,25 @@ def export(run_id: int, formats=FORMATS, snapshot: int | None = None) -> Exporte
     folder.mkdir(parents=True, exist_ok=True)
     record_path = folder / f"{data.export_name}.export.json"
     done = Exported(data.export_name, folder, {}, record_path)
+    wanted = [fmt for fmt in FORMATS if fmt in formats]  # html first: a PDF is made from it
+    if PDF in wanted and HTML not in wanted:
+        wanted.insert(0, HTML)
     with _one_at_a_time(folder):
         generated = _generated(record_path)
-        for fmt in dict.fromkeys(formats):
-            path = folder / f"{data.export_name}.{fmt}"
-            done.files[fmt] = path
-            if path.exists():  # an earlier export of this snapshot: never overwritten
-                continue
-            at = _now().isoformat()
-            evidence.write_atomic(path, report.render_html(data, at).encode("utf-8"))
-            generated[path.name] = at
-            done.made.append(fmt)
-        evidence.write_atomic(record_path, _record(data, folder, generated))
+        try:
+            for fmt in wanted:
+                path = folder / f"{data.export_name}.{fmt}"
+                done.files[fmt] = path
+                if path.exists():  # an earlier export of this snapshot: never overwritten
+                    continue
+                at = _now().isoformat()
+                if fmt == HTML:
+                    content = report.render_html(data, at).encode("utf-8")
+                else:  # the very HTML file beside it, as written
+                    content = pdf.render_pdf(done.files[HTML].read_text(encoding="utf-8"))
+                evidence.write_atomic(path, content)
+                generated[path.name] = at
+                done.made.append(fmt)
+        finally:  # the record always names exactly the files that are there
+            evidence.write_atomic(record_path, _record(data, folder, generated))
     return done

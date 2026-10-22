@@ -680,6 +680,144 @@ def test_the_page_shows_what_is_missing(admin):
     assert "python audit.py login github" in page
 
 
+# --- audit reports (V6) ---------------------------------------------------------------
+
+
+def export(admin, run_id=1, report_format="html", page=None):
+    return post(
+        admin, f"/runs/{run_id}/report", {"format": report_format}, page or f"/runs/{run_id}"
+    )
+
+
+def test_a_report_is_exported_and_downloaded(admin, rules, temp_storage):
+    audit(rules)
+    page = admin.get("/runs/1").text
+    assert "Download HTML" in page and "Download PDF" in page and "data-download" in page
+    # from a filtered page: the report still holds every rule
+    response = export(admin, page="/runs/1?verdict=FAIL")
+    assert response.status_code == 303
+    assert response.headers["location"] == "/reports/1/run-0001-r0.html"
+    download = admin.get(response.headers["location"])
+    assert download.status_code == 200
+    assert download.headers["content-type"] == "text/html; charset=utf-8"
+    assert download.headers["content-disposition"] == 'attachment; filename="run-0001-r0.html"'
+    assert download.headers["content-security-policy"] == dashboard.REPORT_CSP
+    assert download.headers["cache-control"] == "no-store"
+    for rule_id in ("AWS-01", "AWS-02", "GH-01", "GH-06"):
+        assert f'id="{rule_id}"' in download.text
+    # the PDF, and both listed for later
+    pdf = admin.get(export(admin, report_format="pdf").headers["location"])
+    assert pdf.headers["content-type"] == "application/pdf" and pdf.content.startswith(b"%PDF")
+    listed = admin.get("/runs/1").text
+    assert "Earlier reports:" in listed and "run-0001-r0, reviews up to #0" in listed
+    assert 'href="/reports/1/run-0001-r0.html">HTML</a>' in listed
+    assert 'href="/reports/1/run-0001-r0.pdf">PDF</a>' in listed
+    # exporting changes nothing in the audit
+    _, verified = runner.verify("run-0001")
+    assert verified.ok and verified.warnings == []
+
+
+def test_a_later_review_makes_a_new_report(admin, rules):
+    audit(rules)
+    first = admin.get(export(admin).headers["location"]).content
+    ids = result_ids()
+    detail = f"/results/{ids['AWS-02']}"
+    post(admin, f"{detail}/review", {"action": "approve", "note": "Seen.", "seen": ""}, detail)
+    assert export(admin).headers["location"] == "/reports/1/run-0001-r1.html"
+    assert admin.get("/reports/1/run-0001-r0.html").content == first  # kept as it was
+
+
+def test_report_downloads_are_only_reports(admin, rules, temp_storage):
+    audit(rules)
+    export(admin)
+    for name in (
+        "run-0002-r0.html",  # another run's name
+        "run-0001-r0.txt",
+        "run-0001-r9.html",  # not exported
+        "..%2Frun-0001-r0.html",
+        "run-0001-r0.export.json",
+    ):
+        assert admin.get(f"/reports/1/{name}").status_code == 404, name
+    secret = temp_storage / "reports" / "run-0002"
+    secret.mkdir()
+    (secret / "run-0002-r0.html").write_text("other")
+    assert admin.get("/reports/1/run-0002-r0.html").status_code == 404
+
+
+def test_reports_need_the_admin(client, rules):
+    audit(rules)
+    assert client.get("/reports/1/run-0001-r0.html", follow_redirects=False).status_code == 303
+    response = client.post("/runs/1/report", data={"format": "html"}, follow_redirects=False)
+    assert response.status_code == 303 and response.headers["location"].startswith("/login")
+    assert not report_files()
+
+
+def test_an_export_needs_the_form_token(admin, rules):
+    audit(rules)
+    response = admin.post("/runs/1/report", data={"format": "html"}, follow_redirects=False)
+    assert response.status_code == 403 and not report_files()
+
+
+def report_files():
+    from compliancelens.reporting import export as report_export
+
+    folder = report_export.reports_dir()
+    return sorted(p.name for p in folder.rglob("*.html")) if folder.exists() else []
+
+
+def test_a_report_that_cannot_be_made_says_why(admin, rules, monkeypatch, tmp_path):
+    audit(rules)
+    assert export(admin, report_format="docx").status_code == 400
+    assert export(admin, run_id=9, page="/runs").status_code == 404
+    # no PDF on this computer
+    from compliancelens.reporting import pdf as report_pdf
+
+    def unavailable(html):
+        raise report_pdf.PdfUnavailable("no Pango here")
+
+    monkeypatch.setattr(report_pdf, "render_pdf", unavailable)
+    response = export(admin, report_format="pdf")
+    assert response.status_code == 503 and "No PDF: no Pango here" in response.text
+    # a folder that can't be written
+    blocker = tmp_path / "a-file"
+    blocker.write_text("")
+    monkeypatch.setenv("COMPLIANCELENS_REPORTS_DIR", str(blocker))
+    response = export(admin)
+    assert response.status_code == 500 and "The report can&#39;t be written" in response.text
+
+
+def test_no_report_for_unverified_or_unfinished_runs(admin, rules):
+    audit(rules)
+    run_folder = next(evidence.evidence_root().glob("*/run-0001"))
+    (run_folder / "AWS-01.json").write_text("{}")
+    page = admin.get("/runs/1").text
+    assert "Download HTML" not in page and "evidence does not verify" in page
+    response = export(admin)  # the form is gone, but a direct post is refused too
+    assert response.status_code == 409
+    assert "evidence does not verify" in response.text
+    assert "python audit.py verify run-0001 lists each problem" in response.text
+    conn = db.connect()
+    try:
+        db.start_run(conn, "2026-10-29T14:00:00+00:00", db.FULL, "0.6", "r.yaml", "a")
+    finally:
+        conn.close()
+    assert "No report: this run is interrupted" in admin.get("/runs/2").text
+
+
+def test_broken_export_records_are_skipped(admin, rules, temp_storage):
+    audit(rules)
+    export(admin)
+    folder = temp_storage / "reports" / "run-0001"
+    (folder / "run-0001-r5.export.json").write_text("not json")
+    (folder / "run-0001-r6.export.json").write_text('{"files": [], "review_snapshot": 6}')
+    (folder / "run-0001-r7.export.json").write_text(
+        '{"files": {"x.html": {}}, "review_snapshot": 7}'
+    )
+    (folder / "run-0001-r8.export.json").write_text("[1]")
+    page = admin.get("/runs/1").text
+    assert page.count("reviews up to #") == 1
+
+
 # --- evidence files -----------------------------------------------------------------
 
 

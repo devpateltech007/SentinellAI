@@ -182,7 +182,7 @@ def test_a_broken_record_is_rebuilt(run_id):
 
 
 def test_unknown_formats_are_refused(run_id):
-    for formats in (("pdf",), ()):
+    for formats in (("docx",), ()):
         with pytest.raises(ValueError, match="unknown report format"):
             export.export(run_id, formats)
 

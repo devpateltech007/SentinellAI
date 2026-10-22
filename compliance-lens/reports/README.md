@@ -8,12 +8,16 @@ them is in `compliancelens/reporting/`.
 ```
 reports/run-0042/
   run-0042-r17.html          the report: one self-contained page (styles and pictures inside)
+  run-0042-r17.pdf           the same page as a PDF (A4, numbered pages), made from that HTML
   run-0042-r17.export.json   what it was made from (run, review snapshot, the evidence
                              manifest's hash, report version) and the report files' hashes
 ```
 
-- **Make one:** `python audit.py report run-0042` (or `make report RUN=run-0042`). It reads
+- **Make one:** `python audit.py report run-0042 --format both` (or `make report RUN=run-0042`),
+  or **Download HTML / Download PDF** on the run's Results page in the dashboard. It reads
   only the saved run: no AWS, GitHub or AI call, so it works offline.
+- **The PDF** needs the Pango libraries (macOS: `brew install pango`). Without them the HTML
+  is still written and the message says how to fix the PDF.
 - **`r17`** is the review snapshot: every review up to review #17 is counted. A later
   review makes a new report beside this one; an existing report is never overwritten
   (exporting the same snapshot again keeps the file that is there).

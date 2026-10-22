@@ -19,6 +19,31 @@
     {% if previous %}<a href="/compare?a={{ previous }}&amp;b={{ run.id }}">Compare with {{ previous|run_name }}</a>{% endif %}</p>
 </section>
 
+<section class="panel" id="report">
+  <h2>Audit report</h2>
+  {% if export_error %}
+  <div class="notice bad" role="alert"><p>{{ export_error.message }}</p>
+    {% if export_error.problems %}<ul>{% for p in export_error.problems %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+    {% if export_error.fix %}<p>Fix: <code>{{ export_error.fix }}</code></p>{% endif %}</div>
+  {% endif %}
+  {% if run.state == "complete" and verify.ok %}
+  <p>The whole run, every rule whatever the filters below show, with every review so far. A later review makes a new report; earlier ones are kept.</p>
+  <form method="post" action="/runs/{{ run.id }}/report" data-download>
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" name="format" value="html">Download HTML</button>
+    <button type="submit" name="format" value="pdf">Download PDF</button>
+  </form>
+  {% elif run.state != "complete" %}
+  <p class="hint">No report: this run is {{ run.state }}. Only a finished audit can be reported.</p>
+  {% else %}
+  <p class="hint">No report: this run's evidence does not verify (see above). A report is only made from evidence that verifies.</p>
+  {% endif %}
+  {% if exports %}
+  <p>Earlier reports:</p>
+  <ul>{% for e in exports %}<li>{{ e.name }}, reviews up to #{{ e.snapshot }}: {% for f in e.files %}<a href="/reports/{{ run.id }}/{{ f }}">{{ f.rsplit(".", 1)[1]|upper }}</a>{% if not loop.last %} · {% endif %}{% endfor %}</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+
 <form method="get" action="/runs/{{ run.id }}" class="filters" data-autosubmit>
   <label>Verdict (after review)
     <select name="verdict"><option value="">all</option>{% for v in VERDICTS %}<option value="{{ v }}"{% if filters.verdict == v %} selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>

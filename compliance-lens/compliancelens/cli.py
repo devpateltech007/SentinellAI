@@ -13,6 +13,7 @@
     python audit.py settings            what audits check (config/settings.yaml) and from where
     python audit.py verify run-0007     re-hash a run's files and report any change
     python audit.py report run-0007     export the run's audit report to reports/ (offline)
+    python audit.py report run-0007 --format both   the HTML and the PDF
     python audit.py login github        log in by hand once, for screenshots (or: aws)
     python audit.py ai-test             check the AI model set in .env (one text, one image)
 
@@ -36,6 +37,7 @@ from compliancelens.evaluator import settings as ai_settings
 from compliancelens.evaluator.providers import base as provider_base
 from compliancelens.reporting import data as report_data
 from compliancelens.reporting import export as report_export
+from compliancelens.reporting import pdf as report_pdf
 from compliancelens.storage import db
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -387,7 +389,7 @@ def verify(
 def report_command(
     run_name: Annotated[str, typer.Argument(help="The run to report on, e.g. run-0042.")],
     report_format: Annotated[
-        str, typer.Option("--format", "-f", help=f"One of: {', '.join(report_export.FORMATS)}.")
+        str, typer.Option("--format", "-f", help="html, pdf or both (a PDF keeps its HTML).")
     ] = report_export.HTML,
     snapshot: Annotated[
         int | None,
@@ -400,10 +402,16 @@ def report_command(
     """Export a saved audit as an audit report in reports/. Reads only the saved run."""
     try:
         run_id = db.parse_run_name(run_name)
-        done = report_export.export(run_id, (report_format,), snapshot)
+        done = report_export.export(run_id, report_export.formats_for(report_format), snapshot)
     except ValueError as e:  # a bad run name or format
         typer.echo(str(e))
         raise typer.Exit(2)
+    except report_pdf.PdfUnavailable as e:
+        typer.echo(f"No PDF: {e}")
+        typer.echo(
+            f"The HTML report was still written to {display_path(report_export.reports_dir())}/."
+        )
+        raise typer.Exit(1)
     except report_data.ReportError as e:
         typer.echo(f"No report: {e.message}.")
         for problem in e.problems:

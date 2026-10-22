@@ -93,13 +93,37 @@ footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--line);
   table { font-size: 13px; }
 }
 
+/* Print, and the PDF (V6 Stage 4): A4 pages with the report's name and page numbers at
+   the foot, table headings repeated on each page, pictures and boxes never cut in two,
+   tall screenshots scaled to fit a page. */
+.report-name { string-set: report-name content(); }
+
+@page {
+  size: A4;
+  margin: 16mm 14mm 18mm;
+  @bottom-left { content: "ComplianceLens · " string(report-name); font: 8pt Helvetica, Arial, sans-serif; color: #59636e; }
+  @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 8pt Helvetica, Arial, sans-serif; color: #59636e; }
+}
+
+@media print {
+  body { font-size: 10pt; }
+  main { max-width: none; padding: 0; }
+  h2 { margin-top: 24px; }
+  h2, h3 { break-after: avoid; }
+  thead { display: table-header-group; }
+  tr, figure, pre, .ai, .fix, dl.facts div { break-inside: avoid; }
+  img.shot { max-height: 210mm; width: auto; max-width: 100%; }
+  a { color: inherit; text-decoration: none; }
+}
+
+
 </style>
 </head>
 <body>
 <main>
 
 <header class="cover">
-  <p class="kicker">ComplianceLens audit report</p>
+  <p class="kicker">ComplianceLens audit report · <span class="report-name">run-0001-r3</span></p>
   <h1>Example Labs</h1>
   <p class="lead">Audit run-0001 · 2026-10-29 14:00 UTC</p>
   <div class="scoreline">

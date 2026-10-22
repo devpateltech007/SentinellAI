@@ -10,8 +10,8 @@ template, the same from the command line and the dashboard.
 | `data.py` | 2 ✅ | `load(run_id, snapshot=None)`: everything a report shows, read once (see below) |
 | `report.py` | 3 ✅ | `render_html(data, generated_at)`: one self-contained page (styles and pictures inside, no script, nothing loaded from elsewhere, everything escaped) |
 | `templates/report.html`, `report.css` | 3 ✅ | Cover (company, what was audited, score, scope, reviews counted, tool and report versions, the "supports an auditor" line), summary, findings failures first (reason, evidence, AI answers with their model, screenshot or why there is none, suggested fix), human reviews, evidence appendix (every file's SHA-256 and how to check it) |
-| `export.py` | 3 ✅ | `export(run, formats, snapshot)`: writes `reports/<run>/<run>-r<snapshot>.html` and its `.export.json`, never overwriting an earlier export; exports of one run take turns |
-| `pdf.py` | 4 | The same HTML as a PDF (WeasyPrint; on macOS `brew install pango` first) |
+| `export.py` | 3–4 ✅ | `export(run, formats, snapshot)`: writes `reports/<run>/<run>-r<snapshot>.html` (and `.pdf`, made from that very HTML file) and its `.export.json`, never overwriting an earlier export; exports of one run take turns |
+| `pdf.py` | 4 ✅ | `render_pdf(html)`: the same page as a PDF (WeasyPrint 70; on macOS `brew install pango` first). Imported only when a PDF is asked for; a missing library is `PdfUnavailable` with the fix. It may load only `data:` addresses (no file, no network, no redirect) |
 
 **What `data.load()` promises:**
 - Only a finished audit whose evidence verifies. A running, failed or interrupted run, or

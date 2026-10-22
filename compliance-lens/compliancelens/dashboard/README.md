@@ -16,7 +16,7 @@ failures, look at the evidence and settle the uncertain results.
 | Home | `/` | The latest complete **full** audit: score, counts after review and as the audit decided, coverage, open reviews, AI cost. Newer partial, failed or running runs are listed apart, never in the score. Trend of full audits (a changed rulebook is marked). |
 | Run audit | `/run` | Start an audit (screenshots, AI; advanced: cross-check, ask the AI again). Live progress. What is missing (logins, tokens, AI key) with the exact fix. |
 | History | `/runs` | Every run, 25 per page: state (incl. *interrupted*), full/partial, counts, coverage, AI cost. |
-| Results | `/runs/<id>` | One row per rule: verdict after review and as the audit decided, method, confidence, reason. Filters: verdict, system, severity. Whether the evidence still verifies. |
+| Results | `/runs/<id>` | One row per rule: verdict after review and as the audit decided, method, confidence, reason. Filters: verdict, system, severity. Whether the evidence still verifies. **Download HTML / Download PDF** (V6): the whole run's audit report, whatever the filters show, and the run's earlier reports |
 | Rule detail | `/results/<id>` | The collected data, screenshot, policy document text, the AI's answer (model, quote, cache, cost), hashes and `verify`, the rule as that run read it, every review and the review form. |
 | Review queue | `/queue` | The results of a run still NEEDS REVIEW; work through them one by one. |
 | Compare | `/compare` | Two runs side by side, by rule ID: changed, same, not run; notes when a comparison is weaker (partial or unfinished run, changed rulebook). |
