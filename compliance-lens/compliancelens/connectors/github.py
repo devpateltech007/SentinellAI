@@ -2,9 +2,8 @@
 
 Needs GITHUB_TOKEN in .env: a fine-grained token owned by the test organization
 with read access to "Administration" and "Metadata" on the test repo and to
-"Members" on the organization (and "Administration" on the organization for
-org_settings, used by the research experiment). Each collector takes the rule's
-`params` and returns a dict.
+"Members" and "Administration" on the organization (V6: GH-06 reads the organization's
+settings). Each collector takes the rule's `params` and returns a dict.
 """
 
 import os
@@ -27,6 +26,8 @@ ORG_SETTINGS = (
     "members_can_create_private_repositories",
     "members_can_fork_private_repositories",
 )
+# The base repository permissions GitHub documents; anything else is unclear (GH-06).
+BASE_PERMISSIONS = ("read", "write", "admin", "none")
 
 _sleep = time.sleep  # tests replace this so they never really wait
 
@@ -224,19 +225,23 @@ def org_members_without_2fa(params: dict) -> dict:
 
 
 def org_settings(params: dict) -> dict:
-    """GH-06 and GH-07 by API (research experiment): the base repository permission and
-    other Member privileges settings.
+    """GH-06 (V6): the organization's base repository permission, with the other Member
+    privileges settings for context (the research experiment changes those too).
 
-    GitHub leaves these out (null) unless the token can read the organization's
-    Administration settings; a missing value is an error here, not a FAIL.
+    GitHub leaves these out (or null) unless the token can read the organization's
+    Administration settings; a missing value is an error here, not a FAIL. So is a value
+    GitHub does not document, so it can never pass by accident.
     """
     response = _get(f"{API}/orgs/{_org(params)}")
     response.raise_for_status()
     data = response.json()
     settings = {name: data.get(name) for name in ORG_SETTINGS}
-    if settings["default_repository_permission"] is None:
+    permission = settings["default_repository_permission"]
+    if permission is None:
         raise RuntimeError(
             "default_repository_permission not visible: the token needs read access to the"
             " organization's Administration settings"
         )
+    if permission not in BASE_PERMISSIONS:
+        raise RuntimeError(f"unexpected default_repository_permission {permission!r}")
     return settings

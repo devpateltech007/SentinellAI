@@ -8,9 +8,9 @@ covered, a prompt injection, or a deliberately unclear picture).
 
 The rules are the rulebook's own cards, with config/settings.yaml applied as an audit
 applies it (V6: the repository, organization, region and screenshot targets), so the AI
-gets exactly the wording an audit uses. Two changes, for the experiment only: GH-06 is
-also judged by code (from github.org_settings), and AWS-05 is judged on the one bucket
-its picture shows.
+gets exactly the wording an audit uses. One change, for the experiment only: AWS-05 is
+judged on the one bucket its picture shows. (Until V6 the experiment also gave GH-06 its
+code check, from github.org_settings; the rulebook has it now.)
 """
 
 import copy
@@ -33,7 +33,6 @@ CASE_ID = re.compile(r"^[a-z0-9][a-z0-9-]{1,40}$")
 CASE_KEYS = {"id", "rule", "state", "kind", "setup", "view", "pilot", "note"}
 VIEW_FLAGS = ("logged_in", "run_steps", "settle", "keep_problem_pages")
 VIEW_KEYS = {f.name for f in dataclasses.fields(browser.Profile)} - {"name"}
-GH06_CHECK = {"field": "default_repository_permission", "op": "in", "value": ["read", "none"]}
 
 
 class CasesError(ValueError):
@@ -200,12 +199,15 @@ def experiment_rules(
     if missing:
         raise CasesError([f"the rulebook has no {', '.join(missing)}"])
     chosen = {rule_id: copy.deepcopy(rules[rule_id]) for rule_id in RULE_IDS}
-    chosen["GH-06"].update(collector="github.org_settings", params={}, check=GH06_CHECK)
     unusable = [
-        r for r, rule in chosen.items() if not rule.get("ai_check") or not rule.get("screenshot")
+        r
+        for r, rule in chosen.items()
+        if engine.rule_kind(rule) != engine.KIND_CODE
+        or not rule.get("ai_check")
+        or not rule.get("screenshot")
     ]
     if unusable:
-        raise CasesError([f"{', '.join(unusable)} need both a screenshot and an ai_check"])
+        raise CasesError([f"{', '.join(unusable)} need a code check, a screenshot and an ai_check"])
     return chosen
 
 

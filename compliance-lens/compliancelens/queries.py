@@ -30,8 +30,8 @@ STATES = (db.RUNNING, db.COMPLETE, db.FAILED, INTERRUPTED)
 SAME, CHANGED = "same", "changed"
 NOT_RUN_BEFORE, NOT_RUN_NOW = "not run before", "not run now"
 
-# The system a rule checks: from its collector, else from its ID (GH-06/GH-07 have only
-# a screenshot, no collector).
+# The system a rule checks: from its collector, else from its ID (GH-07 has only a
+# screenshot, no collector).
 COLLECTOR_SYSTEMS = {"aws": "AWS", "github": "GitHub", "hr": "HR", "files": "Policy documents"}
 ID_SYSTEMS = {"AWS": "AWS", "GH": "GitHub", "HR": "HR", "DOC": "Policy documents"}
 

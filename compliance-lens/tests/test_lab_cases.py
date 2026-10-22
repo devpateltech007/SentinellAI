@@ -5,7 +5,8 @@ from collections import Counter
 import pytest
 import yaml
 
-from compliancelens import engine
+from compliancelens import config, engine
+from compliancelens.cli import RULES_FILE
 from compliancelens.connectors import browser
 from experiment.lab import cases
 
@@ -141,10 +142,15 @@ def test_select():
         cases.select(found, case_ids=["nope"])
 
 
-def test_experiment_rules_come_from_the_rulebook():
+def test_experiment_rules_come_from_the_rulebook(monkeypatch):
+    monkeypatch.setenv("GITHUB_ORG", "lab")
     rules = cases.experiment_rules()
     assert list(rules) == list(cases.RULE_IDS)
+    # V6: GH-06's code check is the rulebook's own, with the organization from the settings.
+    audit = {r["id"]: r for r in config.apply(engine.load_rules(RULES_FILE), config.resolve())}
+    assert rules["GH-06"] == audit["GH-06"]
     assert rules["GH-06"]["collector"] == "github.org_settings"
+    assert rules["GH-06"]["params"] == {"org": "lab"}
     assert engine.rule_kind(rules["GH-06"]) == engine.KIND_CODE
     for rule in rules.values():
         assert rule["ai_check"]["expect"] and rule["screenshot"]["url"]
@@ -165,19 +171,23 @@ def test_rules_missing_from_the_rulebook(tmp_path):
         cases.experiment_rules(tmp_path / "nope.yaml")
 
 
-def test_rules_need_a_screenshot_and_an_ai_check(tmp_path, monkeypatch):
+def test_rules_need_a_code_check_a_screenshot_and_an_ai_check(tmp_path, monkeypatch):
+    usable = {"screenshot": {"url": "https://github.com/x"}, "ai_check": {"expect": "e"}}
     rules = [
         {
             "id": r,
             "title": "t",
             "collector": "aws.password_policy",
             "check": {"field": "a", "op": "==", "value": 1},
+            **(usable if r != "AWS-01" else {}),  # no screenshot or ai_check
         }
         for r in cases.RULE_IDS
     ]
+    rules[-1] = {"id": "GH-06", "title": "t", **usable}  # judged by the AI only (before V6)
     monkeypatch.setattr(engine, "load_rules", lambda path: rules)
-    with pytest.raises(cases.CasesError, match="need both a screenshot and an ai_check"):
+    with pytest.raises(cases.CasesError) as e:
         cases.experiment_rules()
+    assert e.value.problems == ["AWS-01, GH-06 need a code check, a screenshot and an ai_check"]
 
 
 def test_the_rules_need_usable_settings(temp_storage):

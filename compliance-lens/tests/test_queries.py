@@ -70,7 +70,7 @@ def review(conn, result_id, verdict, note="checked"):
     [
         ("AWS-01", "aws.password_policy", "AWS"),
         ("GH-01", "github.branch_protection", "GitHub"),
-        ("GH-06", None, "GitHub"),  # screenshot only: no collector
+        ("GH-07", None, "GitHub"),  # screenshot only: no collector
         ("HR-01", "hr.unmatched_accounts", "HR"),
         ("DOC-01", "files.read_document", "Policy documents"),
         ("DOC-09", "fake.thing", "Policy documents"),

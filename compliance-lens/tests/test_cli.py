@@ -10,6 +10,7 @@ import types
 from pathlib import Path
 
 import pytest
+import responses
 from PIL import Image
 from typer.testing import CliRunner
 
@@ -304,6 +305,36 @@ def test_settings_warnings_and_problems(monkeypatch):
     result = invoke("settings")
     assert result.exit_code == 2
     assert "settings.yaml has problems:\n  - settings.yaml: nope: unknown setting" in result.output
+
+
+# --- GH-06 judged by code (V6) -------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "reply, status, verdict, reason",
+    [
+        ({"default_repository_permission": "read"}, 200, "PASS", "= read (expected in"),
+        ({"default_repository_permission": "none"}, 200, "PASS", "= none (expected in"),
+        ({"default_repository_permission": "write"}, 200, "FAIL", "= write (expected in"),
+        ({"default_repository_permission": "admin"}, 200, "FAIL", "= admin (expected in"),
+        ({"login": "test-org"}, 200, "NEEDS REVIEW", " not visible: the token needs"),
+        ({"message": "Resource not accessible"}, 403, "NEEDS REVIEW", "403 Client Error"),
+    ],
+    ids=["read", "none", "write", "admin", "hidden", "no-permission"],
+)
+@responses.activate
+def test_real_rulebook_judges_gh06_by_code(monkeypatch, reply, status, verdict, reason):
+    # The API value decides GH-06 (recorded GitHub replies); the screenshot is for people
+    # and the AI is not asked.
+    monkeypatch.setenv("GITHUB_TOKEN", "fake-test-token")
+    write_settings("github: {org: test-org}\n")
+    responses.get("https://api.github.com/orgs/test-org", json=reply, status=status)
+    out = invoke("run", "--rule", "GH-06").output
+    assert f"[{verdict}] GH-06   Organization base repository permission is Read or None\n" in out
+    assert reason in out and "AI:" not in out
+    _, results = stored(1)
+    assert (results[0]["rule_id"], results[0]["verdict"]) == ("GH-06", verdict)
+    assert results[0]["method"] == "code"
 
 
 # --- history -----------------------------------------------------------------------

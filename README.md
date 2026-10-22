@@ -38,9 +38,11 @@ and what's done (with every decision and a dated log) is in
   URL) and a manifest of SHA-256 hashes, plus a SQLite history. `verify` reports any file
   changed after the audit.
 - **AI where code can't reach:** an AI model of your choice (set in `.env`: OpenAI,
-  Anthropic, or a local model) reads two screenshot-only settings and three policy
+  Anthropic, or a local model) reads one screenshot-only setting (GH-07) and three policy
   documents. Only a clear, consistent answer becomes PASS or FAIL; anything else is
-  NEEDS REVIEW with the reason.
+  NEEDS REVIEW with the reason. GH-06 (the base repository permission) moved from the AI
+  to code in V6: its value is in the API, and in the research experiment below the code
+  reading the API matched the setup in 55 of 55 cases.
 - **Web dashboard (V5):** start an audit and watch its progress, read each result with
   its evidence, review uncertain results (reviews are added, never edited), compare two
   runs, and turn rules on or off. It runs on your computer only, behind a password.

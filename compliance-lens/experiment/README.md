@@ -48,7 +48,10 @@ base permission. The AI gets each rule's own `ai_check` from the rulebook, word 
 
 The code's verdict for each case comes from the same engine check an audit uses, on the
 API data saved with the picture (GH-06 through `github.org_settings`; AWS-05 only for the
-bucket in the picture).
+bucket in the picture). Until V6 only the experiment judged GH-06 by code; since V6 the
+rulebook's GH-06 card has that collector and check itself, because of this experiment's
+result, and the experiment uses the card as it is. The AI's wording for GH-06 did not
+change, and the saved runs keep the code verdicts recorded at capture.
 
 ## Commands (from `compliance-lens/`)
 
@@ -79,8 +82,8 @@ read-only ones:
   `gh auth refresh -h github.com -s admin:org`. The audit's `GITHUB_TOKEN` is never used.
 - The pictures and the API checks use the audit's own logins, as in an audit:
   `aws login --profile compliancelens`, `make login SITE=aws` and `SITE=github`; the
-  read-only `GITHUB_TOKEN` also needs the organization's **Administration: Read-only**
-  (for GH-06 by API).
+  read-only `GITHUB_TOKEN` needs the organization's **Administration: Read-only** (GH-06
+  reads the base permission by API, in audits too since V6).
 
 ## Safety
 
