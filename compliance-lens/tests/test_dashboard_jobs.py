@@ -7,7 +7,7 @@ import types
 
 import pytest
 
-from compliancelens import engine, locking, run_options, runner
+from compliancelens import config, engine, locking, run_options, runner
 from compliancelens.connectors import browser
 from compliancelens.dashboard import __main__ as launcher
 from compliancelens.dashboard import auth, checks, jobs
@@ -134,20 +134,48 @@ def by_what(found):
     return {c.what: c for c in found}
 
 
+def write_settings(text):
+    path = config.settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def test_readiness_names_optional_targets_and_problems():
+    write_settings("github: {org: lab, repo: test}\n")
+    settings = by_what(checks.readiness())["Settings"]
+    assert settings.ok and settings.detail == (
+        "no company name · GitHub lab/test (main) · AWS us-east-1"
+        " · no github.protection_rule_id: the GH-01/GH-02 screenshots skipped"
+        " · no aws.screenshot_bucket: the AWS-05/AWS-06 screenshots skipped"
+    )
+    write_settings("nope: 1\n")
+    settings = by_what(checks.readiness())["Settings"]
+    assert not settings.ok and "nope: unknown setting" in settings.detail
+    assert settings.fix == f"fix it: {checks.SETTINGS_FIX}"
+    assert by_what(checks.readiness(problem="x"))["Settings"].detail == "x"
+
+
 def test_readiness_with_nothing_set_up(monkeypatch):
     monkeypatch.delenv("AWS_ACCESS_KEY_ID")  # conftest's fake keys
     found = by_what(checks.readiness())
-    assert not found["AWS"].ok and checks.AWS_LOGIN in found["AWS"].fix
-    assert not found["GitHub"].ok and "GITHUB_TOKEN and GITHUB_ORG" in found["GitHub"].detail
+    assert list(found)[0] == "Settings"  # first: what the audit will check
+    assert not found["Settings"].ok and found["Settings"].fix == checks.SETTINGS_FIX
+    assert "github.org and github.repo not set" in found["Settings"].detail
+    assert not found["AWS"].ok
+    assert found["AWS"].fix == "run: aws login --region us-east-1 --profile compliancelens"
+    assert not found["GitHub"].ok and "GITHUB_TOKEN not set" in found["GitHub"].detail
     assert not found["AI model"].ok and "has no key" in found["AI model"].detail
     assert found["GitHub screenshots"].fix == "run: python audit.py login github"
     assert "no saved login" in found["AWS screenshots"].detail
 
 
 def test_readiness_when_everything_is_set_up(monkeypatch):
-    monkeypatch.setenv("AWS_PROFILE", "compliancelens")
+    monkeypatch.setenv("AWS_PROFILE", "audit")
     monkeypatch.setenv("GITHUB_TOKEN", "t")
-    monkeypatch.setenv("GITHUB_ORG", "lab")
+    write_settings(
+        "company: Example Labs\ngithub: {org: lab, repo: test, protection_rule_id: 5}\n"
+        "aws: {region: eu-west-1, screenshot_bucket: my-bucket}\n"
+    )
     monkeypatch.setenv("COMPLIANCELENS_AI_MODEL", "openai/gpt-6-luna")
     monkeypatch.setenv("COMPLIANCELENS_AI_API_KEY", "sk-test")
     now = datetime.datetime(2026, 10, 29, 12, tzinfo=datetime.UTC)
@@ -160,6 +188,8 @@ def test_readiness_when_everything_is_set_up(monkeypatch):
     found = by_what(checks.readiness(now))
     assert all(c.ok for c in found.values()), found
     assert found["GitHub"].detail == "token set, organization lab"
+    assert found["Settings"].detail == "Example Labs · GitHub lab/test (main) · AWS eu-west-1"
+    assert found["AWS"].fix.endswith("run: aws login --region eu-west-1 --profile audit")
     assert found["AI model"].detail == "openai/gpt-6-luna"
     assert found["AWS screenshots"].detail == "login saved 2026-10-29 10:00 UTC"
     old = (now - datetime.timedelta(hours=13)).timestamp()

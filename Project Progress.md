@@ -3,7 +3,7 @@
 Tracks what has been done against [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md).
 Update it whenever a checklist item is finished: tick the box, add a line to the log.
 
-**Current version:** V5 Dashboard and review ✅ tagged `v5.0` (Oct 21), version `0.5.0`. The classmate usability test moved to V6.
+**Current version:** V5 Dashboard and review ✅ tagged `v5.0` (Oct 21), version `0.5.0`. V6 started Oct 21 (version `0.6.0.dev0` while it is built; see "V6 Reports, polish and tests").
 **Current branch:** `main` (V4 merged in PRs #16–#24, V5 in #25–#31 plus the release PR; tags `v1.0` to `v5.0`)
 **Last updated:** Oct 21, 2026 (week 4)
 
@@ -19,9 +19,49 @@ Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 | V3 Screenshots | 6–7 | ✅ | Tagged `v3.0` (Oct 7). Real audit `run-0004`: 13 PASS / 1 FAIL / 2 NEEDS REVIEW, 15 of 15 screenshots, verify OK (47 files); tamper, missing-login and wrong-locator checks passed live. 551 tests, 100% coverage. Not run before the tag: expired AWS login (done live Oct 11, `run-0007`) and GH-06/07 break-and-fix ("V3 leftovers", both done later: Oct 11 and Oct 19) |
 | V4 AI evaluation | 8–10 | ✅ | Tagged `v4.0` (Oct 19), version 0.4.0. Started early. 6 stages. Stage 1 ✅ (PR #16): any AI model set in `.env`, `ai-test`; `openai/gpt-6-luna` chosen after measuring 5 cheap models. Stage 2 ✅ (PR #18): policy documents read and saved with each run, 5 sets of sample policies, rule kinds + `ai_check`, database schema 3 (real database upgraded; all 9 runs verify). Stage 3 ✅ (PR #19): the AI judge (safety table, retries, quote check), screenshot preparation, budget, cache; live: 17 of 17 right for $0.003. Stage 4 ✅ (PR #20): the AI in `audit.py run`, 19 rules; **live audit 18 PASS / 1 FAIL / 0 NEEDS REVIEW** (`run-0010`, $0.0010), repeat from cache for $0; GH-06/07 live flip FAIL → PASS (Oct 19). Stage 5 🟡: the experiment's tools are built (55 + 10 cases, setup that changes and puts back the accounts, capture, labelling packs, runs, analysis; 1,163 tests, 100%); pilot 10 of 10 right at a 4 MP picture limit ($0.0031). Stage 6 ✅: release. The experiment's main data collection (capture the 55 cases, labels by 2 people, 3 answers each, analysis) moved to V5 |
 | V5 Dashboard and review | 11–12 | ✅ | Tagged `v5.0` (Oct 21), version 0.5.0. Started early. Plan reviewed Oct 19 (decisions below). Dashboard: FastAPI + Jinja2 (no htmx, D9). Stage 1 ✅ (code): schema 4, the shared lock, scope by coverage, the queries and review services. Stage 2 ✅ (code): shared run options, rules turned off in `config/settings.yaml`, the rulebook read once and saved with each run, progress events. Stage 3 ✅ (code): the FastAPI dashboard, all pages, sign-in, background audits. Stage 4 ✅ (code): the experiment's fixes (D7) before its main run; 1,373 tests, 100%. Dashboard acceptance on the real accounts ✅ (Oct 20, `run-0042`/`run-0043`). Experiment: 55 cases captured ✅ (Oct 20), labelled by 2 people ✅ (Oct 21, κ = 0.97), main AI run and analysis ✅ (Oct 21, $0.054). Release ✅ (root README rewritten). The classmate usability test moved to V6 |
-| V6 Reports and polish | 13–14 | ⬜ | Folders ready: `compliancelens/reporting/`, `reports/`, `config/` |
+| V6 Reports and polish | 13–14 | 🟡 | Started early (Oct 21). Plan reviewed against the code; decisions D1–D13 below. 9 stages (0–8), one PR each. Stage 0 ✅ (version 0.6.0.dev0, plan wording, V2 leftovers closed except GH-04). Stage 1 ✅ (code: settings file, run context) |
 | V7 Final presentation | 15 | ⬜ | Folder ready: `docs/` |
 | Research experiment | 8–14 | 🟡 | V4: tools (`experiment/lab/`, 55 + 10 cases) and pilot (10 of 10 right). V5: capture ✅, labels ✅ (κ = 0.97), 3 answers per case ✅, analysis ✅ ([`docs/experiment-main-run.md`](compliance-lens/docs/experiment-main-run.md)). V6: write-up |
+
+## V6 Reports, polish and tests 🟡 (started Oct 21)
+
+Started early (week 4; the plan has it in weeks 13–14). A V6 plan was drafted, then checked
+against the code and the real database (read-only). Baseline before any change (`0a35bfd`):
+lint clean, 1,377 tests, 100% coverage. Facts that shaped the plan: only 2 of the 43 saved
+runs (`run-0042`, `run-0043`) have a copy of their rulebook, none has fix guidance, and both
+record tool version `0.4.0` (the version only changed at release).
+
+Decisions:
+
+| # | Decision |
+| --- | --- |
+| D1 | **Two config files.** `config/settings.yaml` is written by hand only (the tool never rewrites it, so comments survive); `config/disabled_rules.yaml` is written only by the Rules page. Both gitignored; `config/settings.example.yaml` committed. |
+| D2 | **One value, one home.** Targets (company, GitHub organization/repository/branch, AWS region, screenshot bucket, HR list) live in `settings.yaml`. `GITHUB_ORG` / `AWS_DEFAULT_REGION` in `.env` are still read as a fallback; set in both with different values is an error, never a silent choice. A value written in a rule card still wins. |
+| D3 | **The region is passed to every AWS client**, so API checks and screenshots use the same region. |
+| D4 | **`run-context.json` in every run folder**, in the manifest: the settings as used, the effective rules (with fix guidance), what was audited (masked AWS account, region, organization, repository), the options. Database stays schema 4. |
+| D5 | **Review snapshot = the highest review ID** at export time (reviews are append-only, so a report can be rebuilt exactly). Exports are named `run-0042-r17.*` and never overwritten. |
+| D6 | **Export metadata in a file next to the export** (`reports/run-0042/run-0042-r17.export.json`): a finished run's database row can't be edited. |
+| D7 | **Older runs show "not recorded"** for what they didn't save (rule definition, fix guidance, company, targets); nothing is filled in from today's files. |
+| D8 | **V2 leftovers:** GH-04 is flipped live (GitHub's real "disabled" message). AWS-05, AWS-06, AWS-07, GH-02, GH-03 and HR-01 are closed as "FAIL proven by the automated tests" (listed under V2 leftovers). |
+| D9 | **The committed sample report and README screenshots come from a made-up audit** ("Example Labs", the golden test's), never from the real accounts. |
+| D10 | **Coverage stays at 100%**; the PDF code runs real WeasyPrint in CI. |
+| D11 | **Version `0.6.0.dev0` while V6 is built**, and each run records its git commit, so a report never shows a misleading version. |
+| D12 | **Injected text never decides the verdict**: a clearly non-compliant injection sample may correctly be FAIL (Project Plan wording fixed). |
+| D13 | **The demo reads the `ambiguous` sample policies**, so DOC-01..03 are NEEDS REVIEW and there is something to review (with the compliant ones a normal audit has none). |
+
+Stages (one PR each):
+
+- [x] Stage 0, start (Oct 21): version `0.6.0.dev0`; Project Plan wording (injection, V6 decisions); HR-01 note closed; V2 leftovers closed except GH-04 (D8)
+- [x] Stage 1, settings and run context (code, Oct 21): `config/settings.yaml` (company, GitHub organization/repository/branch/protection rule number, AWS region/screenshot bucket, HR list) + committed `settings.example.yaml`; the Rules page writes `config/disabled_rules.yaml` and never touches `settings.yaml` (the V5 list there is still read until then); settings resolved once per audit (`run_options.prepare`) and applied to the rules before they are checked (dashboard and experiment too); the region given to every AWS client; `run-context.json` in every run (in the manifest: the settings, the effective rules, the masked AWS account, the options, the git commit); `python audit.py settings`; "Before you run" shows the targets and the right `aws login`; Home and Compare say "settings changed"; nothing account-specific left in the rulebook. Found while testing: `AWS_DEFAULT_REGION` is often set for other AWS tools, so a different one is a warning (settings win), not an error; a different `GITHUB_ORG` is still an error. 1,435 tests, 100% coverage. **Before the next real audit:** write the real `config/settings.yaml` (organization, repository, protection rule number, test bucket, `allow_aws: [compliancelens-audit]`)
+- [ ] Stage 2, fix guidance (`remediation:` on all 19 rules) and the report data service (`reporting/data.py`: one database snapshot, verified bytes only, older runs honest)
+- [ ] Stage 3, HTML report and `python audit.py report RUN --format html|pdf|both` (`make report`)
+- [ ] Stage 4, PDF (WeasyPrint) and the dashboard's Download HTML / Download PDF
+- [ ] Stage 5, logging to `logs/` (secrets hidden), friendly errors, per-rule timing
+- [ ] Stage 6, the experiment write-up and its figures (can run alongside Stages 1–5)
+- [ ] Stage 7, live acceptance in one sitting: GH-04 flip, a full audit under 2 minutes, exports, reviews, offline export, missing login, tamper test on a copy, a clean clone that follows the README, the classmate usability test
+- [ ] Stage 8, READMEs, sample report, demo script, two rehearsals and a backup video, version `0.6.0`, tag `v6.0`
+
+**Done when** (from the plan): a stranger can clone the repo, follow the README, run an audit and get a PDF report.
 
 ## V5 Dashboard and review ✅ (tagged `v5.0`, Oct 21)
 
@@ -57,7 +97,7 @@ Stages:
 - By a person who did not build it: not yet. The classmate usability test moved to V6 (V5 closed without it, as V4 closed with the experiment moved to V5)
 
 Notes:
-- HR-01 was turned off on the Rules page during the acceptance walkthrough; turn it back on (Rules page, or delete `config/settings.yaml`) before the next full audit.
+- HR-01 was turned off on the Rules page during the acceptance walkthrough and is back on (checked Oct 21: the local `config/settings.yaml` says `disabled_rules: []`).
 - The experiment's pictures, answers and packs stay in the gitignored `experiment/data/`; `python -m experiment.lab analyze` rebuilds every table from them.
 
 ## Repo setup ✅
@@ -130,8 +170,8 @@ states are covered by the automated tests.
 
 ### V2 leftovers (later)
 
-- [ ] Break-and-fix live: AWS-05, AWS-06, AWS-07, GH-02, GH-03, GH-04, HR-01 (`scripts/README.md`)
-- [ ] GitHub: confirm the Dependabot "disabled" message during GH-04 (if it differs, fix `DEPENDABOT_DISABLED` and its fixture)
+- [x] Break-and-fix: AWS-05, AWS-06, AWS-07, GH-02, GH-03, HR-01 closed in V6 (D8) without a live flip: each FAIL and its flip back is proven by the automated tests: `test_aws.py::test_public_access_verdicts` (AWS-05), `::test_versioning_verdicts` (AWS-06), `::test_cloudtrail_verdicts` (AWS-07); `test_github.py::test_force_pushes_allowed` / `::test_unprotected_branch_allows_force_pushes` (GH-02), `::test_secret_scanning_disabled` (GH-03); `test_hr.py::test_former_employee_accounts_are_unmatched` + `test_engine.py::test_custom_check_fail` (HR-01)
+- [ ] GH-04 live (V6 Stage 7): turn Dependabot alerts off, confirm GitHub's real "disabled" message (if it differs, fix `DEPENDABOT_DISABLED` and its fixture), turn them back on
 - [x] Tag `v2.0` (Oct 7, on `1fe2122`; the two items above were not done first)
 
 Decision (Oct 2): add all 11 planned rules, for **14** in V2. V3 and V4 add 5 more, so the
@@ -141,7 +181,7 @@ Checklist from the plan:
 
 - [x] Add the rules and their collectors: AWS-03 to AWS-08, GH-02 to GH-05, HR-01 (14 rules in total)
 - [x] Create a free GitHub organization for GH-05 and move the test repo into it (`compliancelens-lab-sjsu`)
-- [ ] Confirm every new rule can be broken and fixed on purpose (live where safe; see `compliance-lens/scripts/README.md`)
+- [ ] Confirm every new rule can be broken and fixed on purpose (live where safe; see `compliance-lens/scripts/README.md`). V6 D8: 6 closed by the automated tests; GH-04 live in V6 Stage 7
 - [x] Add the new check operators (`in`, `not_in`, `contains`, `all_true`) and allowlisted custom checks, with tests
 - [x] Write evidence files, meta files and a run manifest (`evidence/<date>/run-NNNN/`)
 - [x] Create the SQLite schema and save every run (`compliance.db`)
@@ -164,11 +204,11 @@ Account setup and live checks (you):
 - [x] GitHub: new fine-grained token owned by the org (Administration, Metadata, Members: read); `GITHUB_TOKEN` + `GITHUB_ORG` in `.env`
 - [x] GitHub: set `repo:` in GH-01 to GH-04 to `compliancelens-lab-sjsu/compliancelens-test`
 - [x] GitHub: secret scanning and Dependabot alerts on
-- [ ] GitHub: confirm the Dependabot "disabled" message (happens during the GH-04 break-and-fix)
+- [ ] GitHub: confirm the Dependabot "disabled" message (happens during the GH-04 break-and-fix, V6 Stage 7)
 - [x] HR: `data/employees.csv` from the example, with the real test accounts (`neels22`, `intern-bob`)
 - [x] First real V2 audit: 13 PASS, 1 FAIL (AWS-02, `intern-bob`), 0 NEEDS REVIEW, as expected (`run-0001`, Oct 4)
 - [x] `make history` shows it; `make verify RUN=run-0001` says OK (28 files); editing `AWS-02.json` made verify FAIL (manifest + database), restoring it gave OK
-- [ ] Break-and-fix live: AWS-05, AWS-06, AWS-07, GH-02, GH-03, GH-04, HR-01
+- [ ] Break-and-fix live: GH-04 (V6 Stage 7). AWS-05, AWS-06, AWS-07, GH-02, GH-03 and HR-01 closed by the automated tests (V6 D8; see "V2 leftovers")
 - [x] Commit, open the PR, CI passes, merge (PR #8)
 - [x] Tag `v2.0` (Oct 7, on `1fe2122`, without the live break-and-fix; see "V2 leftovers")
 
@@ -187,19 +227,19 @@ verifies, and editing any file makes verify report it.
 | AWS-02 Console users have MFA | `aws.users_without_mfa` | `count == 0` | ✅ | ✅ (V1) |
 | AWS-03 Root account has MFA | `aws.root_account_mfa` | `AccountMFAEnabled == 1` | ✅ | ✅ PASS (FAIL mocked) |
 | AWS-04 No active key > 90 days | `aws.access_key_age` | `count == 0` | ✅ | ✅ PASS (FAIL mocked) |
-| AWS-05 Buckets block public access | `aws.s3_public_access` | `buckets_fully_blocked all_true` | ✅ | ✅ PASS; flip ⬜ |
-| AWS-06 Buckets have versioning | `aws.s3_versioning` | `versioning_enabled all_true` | ✅ | ✅ PASS; flip ⬜ |
-| AWS-07 A CloudTrail trail is logging | `aws.cloudtrail_logging` | `logging_count >= 1` | ✅ | ✅ PASS; flip ⬜ |
+| AWS-05 Buckets block public access | `aws.s3_public_access` | `buckets_fully_blocked all_true` | ✅ | ✅ PASS; flip by tests (V6) |
+| AWS-06 Buckets have versioning | `aws.s3_versioning` | `versioning_enabled all_true` | ✅ | ✅ PASS; flip by tests (V6) |
+| AWS-07 A CloudTrail trail is logging | `aws.cloudtrail_logging` | `logging_count >= 1` | ✅ | ✅ PASS; flip by tests (V6) |
 | AWS-08 No user inactive > 90 days | `aws.unused_users` | `count == 0` | ✅ | ✅ PASS (FAIL mocked) |
 | GH-01 main needs 1 review | `github.branch_protection` | `required_approving_review_count >= 1` | ✅ | ✅ (V1) |
-| GH-02 Force pushes blocked | `github.force_push_protection` | `allow_force_pushes == false` | ✅ | ✅ PASS; flip ⬜ |
-| GH-03 Secret scanning on | `github.secret_scanning` | `secret_scanning in [enabled]` | ✅ | ✅ PASS; flip ⬜ |
-| GH-04 Dependabot alerts on | `github.dependabot_alerts` | `dependabot_alerts == true` | ✅ | ✅ PASS; flip ⬜ |
+| GH-02 Force pushes blocked | `github.force_push_protection` | `allow_force_pushes == false` | ✅ | ✅ PASS; flip by tests (V6) |
+| GH-03 Secret scanning on | `github.secret_scanning` | `secret_scanning in [enabled]` | ✅ | ✅ PASS; flip by tests (V6) |
+| GH-04 Dependabot alerts on | `github.dependabot_alerts` | `dependabot_alerts == true` | ✅ | ✅ PASS; flip ⬜ (V6 Stage 7) |
 | GH-05 Org members have 2FA | `github.org_members_without_2fa` | `count == 0` | ✅ | ✅ PASS (FAIL mocked) |
-| HR-01 Accounts belong to active employees | `hr.unmatched_accounts` | `custom: no_unmatched_accounts` | ✅ | ✅ PASS; flip ⬜ |
+| HR-01 Accounts belong to active employees | `hr.unmatched_accounts` | `custom: no_unmatched_accounts` | ✅ | ✅ PASS; flip by tests (V6) |
 
 "FAIL mocked": breaking it for real is unsafe or takes 90 days, so FAIL is proven with fake data.
-"flip ⬜": live break-and-fix still to do.
+"flip ⬜": live break-and-fix still to do. "flip by tests": closed in V6 (D8) by the automated tests named under "V2 leftovers".
 
 Tests: 316 passing, 100% coverage (target 70%).
 
@@ -583,7 +623,7 @@ Undo each change afterwards (and run `aws login ...` again).
 - [x] Start V2: add the rules, run folders with manifest + hashes, SQLite history, `verify` command (code done)
 - [x] V2 account setup and first real audit (Oct 4)
 - [x] Tag `v2.0` (Oct 7, on `1fe2122`)
-- [ ] V2 leftovers: live break-and-fix (AWS-05, AWS-06, AWS-07, GH-02, GH-03, GH-04, HR-01)
+- [ ] V2 leftovers: GH-04 live break-and-fix (V6 Stage 7); the other 6 closed by the automated tests (V6 D8)
 - [x] Start V3: plan reviewed, decisions D1–D5, code + offline tests done (Oct 5)
 - [x] V3 live: logins, real page locators, first real V3 audit (`run-0004`, 15 of 15 screenshots) (Oct 7)
 - [x] V3 checks: tamper, missing login, wrong locator (Oct 7); tag `v3.0` (Oct 7)
@@ -593,7 +633,8 @@ Undo each change afterwards (and run `aws login ...` again).
 - [x] V4 Stage 5 tools + pilot (PR #23) and Stage 6 release: version 0.4.0, tag `v4.0` (Oct 19)
 - [x] V5: the experiment's main data collection (carried over from V4): capture, labels (κ = 0.97), main run, analysis (Oct 20–21)
 - [x] V5: dashboard and review (PRs #25–#29), live acceptance (Oct 20), release: version 0.5.0, tag `v5.0` (Oct 21)
-- [ ] V6: the classmate usability test (moved from V5), then the report (HTML/PDF) and polish
+- [x] V6 Stage 0: plan reviewed against the code (D1–D13), version 0.6.0.dev0 (Oct 21)
+- [ ] V6: settings and run context, the report (HTML/PDF) and export, logging, the experiment write-up, live acceptance with the classmate usability test, release
 - [ ] Confirm the assumptions in the Overview (Python, company tools, personal test accounts)
 
 ## Final deliverables (week 15)
@@ -611,6 +652,8 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-10-21 | 4 | **V6 Stage 1: settings and run context.** What to audit moved out of the rulebook into a hand-written `config/settings.yaml` (example committed); rules turned off moved to `config/disabled_rules.yaml`. One audit resolves the settings once and applies them before checking the rules; the AWS region goes to every client; each run saves `run-context.json` (settings, effective rules, masked AWS account, options, git commit) in its manifest, so a report never rebuilds an old audit from today's settings. New `python audit.py settings`; the dashboard shows the targets and marks "settings changed". 1,435 tests, 100% coverage. |
+| 2026-10-21 | 4 | **V6 started: plan reviewed, Stage 0.** The V6 plan was checked against the code and, read-only, the real database and settings: decisions D1–D13 (hand-written settings file plus a separate file for rules turned off, `run-context.json` per run, review snapshots for reports, older runs shown as "not recorded", made-up sample report). Baseline 1,377 tests, 100% coverage, lint clean. Version `0.6.0.dev0`. Project Plan: the injection wording says injected text never decides the verdict (a non-compliant sample may be FAIL). HR-01 already back on. V2 leftovers: 6 live flips closed as proven by the automated tests (named); GH-04 stays for the live sitting. |
 | 2026-10-21 | 4 | **V5 closed and tagged `v5.0`** (version 0.5.0). Root README rewritten for ComplianceLens (status, what it does, quick start, the experiment's results, layout, team); the package and evaluator READMEs brought up to date; Project Plan wording fixed (no htmx). The classmate usability test moved to V6 to close V5 (the flow itself works live and in the real-browser test). 1,377 tests, 100% coverage. |
 | 2026-10-21 | 4 | **Experiment: the main run and its analysis.** `openai/gpt-6-luna` judged all 55 pictures 3 times: 165 answers, complete, $0.0542. Against the labels: decided accuracy 95%, false PASS 7% (6/90); against the set-up state: 99% and 0% (0/84). All 6 false PASSes come from the two AWS-02 cases labelled FAIL against the rule's written condition; the report now shows both columns and lists where labels and state differ. Hard pictures (dark, small text, prompt injection, cut off, covered) all handled. Write-up in `docs/experiment-main-run.md`, tables in `docs/experiment-results.md`. 1,377 tests, 100% coverage. |
 | 2026-10-21 | 4 | **Experiment: capture and labels.** All 55 main cases captured on the real accounts in 5 batches (Oct 20), everything put back and checked read-only afterwards. Two people labelled every picture separately: 54 of 55 agreed, κ = 0.97; the disagreement settled as FAIL. Two AWS-02 plain cases set up as PASS were labelled FAIL by both (the no-console user's dashes); kept as the labellers' call and noted. `labels.csv` committed before the main run. |

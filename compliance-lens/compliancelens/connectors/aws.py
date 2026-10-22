@@ -2,14 +2,17 @@
 
 Credentials come from the AWS CLI profile (`aws login --profile compliancelens`),
 selected with AWS_PROFILE in .env. Each collector takes the rule's `params` and
-returns a dict. Collectors never change a setting; the only call that is not a
-plain read is iam.generate_credential_report, which builds a report and changes
-nothing in the account.
+returns a dict. `params["region"]` (from config/settings.yaml, V6) picks the region,
+so the API checks and the console screenshots use the same one. Collectors never
+change a setting; the only call that is not a plain read is
+iam.generate_credential_report, which builds a report and changes nothing in the
+account.
 """
 
 import csv
 import datetime
 import io
+import re
 import time
 
 import boto3
@@ -29,6 +32,7 @@ S3_BLOCK_FLAGS = (
 REPORT_WAIT_SECONDS = 60  # give up on the credential report after this long
 REPORT_POLL_SECONDS = 2
 NO_DATE = {"", "N/A", "no_information", "not_supported"}  # credential report "no value" markers
+ACCOUNT_ID = re.compile(r"(?<![0-9])[0-9]{12}(?![0-9])")
 
 _sleep = time.sleep  # tests replace this so they never really wait
 
@@ -38,14 +42,18 @@ def _now() -> datetime.datetime:
     return datetime.datetime.now(datetime.UTC)
 
 
-def _client(service: str):
+def _client(service: str, params: dict | None = None):
     # Create the client when a collector runs, not at import time. This picks up
-    # the current AWS_PROFILE/region and lets tests replace AWS with moto.
+    # the current AWS_PROFILE and lets tests replace AWS with moto. Without a region
+    # in the params (an older direct caller), boto3 picks its own.
+    region = (params or {}).get("region")
+    if region:
+        return boto3.client(service, region_name=region, config=RETRY_CONFIG)
     return boto3.client(service, config=RETRY_CONFIG)
 
 
-def _iam():
-    return _client("iam")
+def _iam(params: dict | None = None):
+    return _client("iam", params)
 
 
 def _user_names(iam) -> list[str]:
@@ -68,18 +76,32 @@ def _error_code(error: ClientError) -> str:
     return error.response.get("Error", {}).get("Code", "")
 
 
+# ---------------------------------------------------------- identity ----
+
+
+def caller_identity(params: dict) -> dict:
+    """Which AWS account and user an audit reads (V6, for the report): the account ID
+    masked to its last 4 digits, and the ARN's user or role part (no account ID)."""
+    identity = _client("sts", params).get_caller_identity()
+    account = str(identity.get("Account") or "")
+    parts = str(identity.get("Arn") or "").split(":", 5)
+    # arn:aws:iam::123456789012:user/compliancelens-audit -> user/compliancelens-audit
+    name = ACCOUNT_ID.sub("************", parts[5]) if len(parts) == 6 else ""
+    return {"account": f"********{account[-4:]}" if account else None, "identity": name or None}
+
+
 # --------------------------------------------------------------- IAM ----
 
 
 def iam_users(params: dict) -> dict:
     """Every IAM user name (used by HR-01 to compare with the employee list)."""
-    names = _user_names(_iam())
+    names = _user_names(_iam(params))
     return {"count": len(names), "users": names}
 
 
 def password_policy(params: dict) -> dict:
     """AWS-01: the account password policy. No policy at all counts as length 0."""
-    iam = _iam()
+    iam = _iam(params)
     try:
         return iam.get_account_password_policy()["PasswordPolicy"]
     except iam.exceptions.NoSuchEntityException:
@@ -102,7 +124,7 @@ def users_without_mfa(params: dict) -> dict:
     Only console users need MFA (CIS). Access-key-only users, such as the tool's
     own audit user, are skipped; otherwise they would always fail the rule.
     """
-    iam = _iam()
+    iam = _iam(params)
     missing = [
         name
         for name in _user_names(iam)
@@ -113,7 +135,7 @@ def users_without_mfa(params: dict) -> dict:
 
 def root_account_mfa(params: dict) -> dict:
     """AWS-03: whether the root user has MFA (1) or not (0), plus root access keys."""
-    summary = _iam().get_account_summary()["SummaryMap"]
+    summary = _iam(params).get_account_summary()["SummaryMap"]
     return {
         "AccountMFAEnabled": summary.get("AccountMFAEnabled"),
         "AccountAccessKeysPresent": summary.get("AccountAccessKeysPresent"),
@@ -127,7 +149,7 @@ def access_key_age(params: dict) -> dict:
     there is nothing old to rotate.
     """
     max_age = int(params.get("max_age_days", 90))
-    iam, now = _iam(), _now()
+    iam, now = _iam(params), _now()
     old, checked = [], 0
     for user in _user_names(iam):
         for page in iam.get_paginator("list_access_keys").paginate(UserName=user):
@@ -204,7 +226,7 @@ def _inactive_users(report_csv: str, now: datetime.datetime, max_days: int) -> t
 def unused_users(params: dict) -> dict:
     """AWS-08: IAM users with no sign-in or key use for more than `max_inactive_days` (90)."""
     max_days = int(params.get("max_inactive_days", 90))
-    report, generated_at = _credential_report(_iam())
+    report, generated_at = _credential_report(_iam(params))
     inactive, checked = _inactive_users(report, _now(), max_days)
     return {
         "count": len(inactive),
@@ -219,11 +241,11 @@ def unused_users(params: dict) -> dict:
 # ---------------------------------------------------------------- S3 ----
 
 
-def _account_public_access_block() -> dict:
+def _account_public_access_block(params: dict) -> dict:
     """Account-wide Block Public Access flags. Recorded for context only."""
     try:
-        account = _client("sts").get_caller_identity()["Account"]
-        config = _client("s3control").get_public_access_block(AccountId=account)
+        account = _client("sts", params).get_caller_identity()["Account"]
+        config = _client("s3control", params).get_public_access_block(AccountId=account)
         flags = config["PublicAccessBlockConfiguration"]
         return {flag: bool(flags.get(flag, False)) for flag in S3_BLOCK_FLAGS}
     except ClientError as e:
@@ -237,7 +259,7 @@ def s3_public_access(params: dict) -> dict:
 
     A bucket with no Block Public Access settings counts as all four flags off.
     """
-    s3 = _client("s3")
+    s3 = _client("s3", params)
     flags_by_bucket = {}
     for name in _bucket_names(s3):
         try:
@@ -250,13 +272,13 @@ def s3_public_access(params: dict) -> dict:
     return {
         "buckets_fully_blocked": {name: all(f.values()) for name, f in flags_by_bucket.items()},
         "bucket_flags": flags_by_bucket,
-        "account_flags": _account_public_access_block(),
+        "account_flags": _account_public_access_block(params),
     }
 
 
 def s3_versioning(params: dict) -> dict:
     """AWS-06: whether versioning is turned on for each bucket."""
-    s3 = _client("s3")
+    s3 = _client("s3", params)
     status = {
         # No Status at all means versioning was never turned on.
         name: s3.get_bucket_versioning(Bucket=name).get("Status") or "NeverEnabled"
@@ -277,7 +299,7 @@ def cloudtrail_logging(params: dict) -> dict:
     Shadow trails (multi-region trails from another region) are included, and
     their status is read by ARN so it works from any region.
     """
-    cloudtrail = _client("cloudtrail")
+    cloudtrail = _client("cloudtrail", params)
     trails = []
     for trail in cloudtrail.describe_trails(includeShadowTrails=True)["trailList"]:
         status = cloudtrail.get_trail_status(Name=trail["TrailARN"])

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from compliancelens import engine
+from compliancelens import config, engine
 from compliancelens.connectors import browser, files
 
 RULES_DIR = Path(__file__).parent.parent / "rules"
@@ -26,6 +26,19 @@ SECRET_PATTERNS = [
     r"sk-ant-[A-Za-z0-9-]{20,}",  # Anthropic API key
 ]
 SECRET_KEYS = re.compile(r"token|password|secret|api_key|credential", re.IGNORECASE)
+# V6: the rulebook names no account; these come from config/settings.yaml.
+EXAMPLE_SETTINGS = config.PROJECT_ROOT / "config" / "settings.example.yaml"
+ACCOUNT_SPECIFIC = [
+    r"compliancelens-lab",  # the real test organization
+    r"sjsu",
+    r"\b[0-9]{8,}\b",  # a branch protection rule's number, an account ID
+    r"intern-bob",
+]
+
+
+def applied(rules):
+    """The rules as an audit runs them with the example settings."""
+    return config.apply(rules, config.resolve(EXAMPLE_SETTINGS, environ={}))
 
 
 def test_v4_rules_exist():
@@ -92,9 +105,8 @@ def test_screenshots_hide_private_details(rule):
         assert {"role": "button", "name": "Open user navigation menu"} in masks  # your avatar
 
 
-@pytest.mark.parametrize("rule", SCREENSHOT_RULES, ids=lambda r: r.get("id", "?"))
-def test_screenshot_urls_resolve_with_the_usual_settings(rule, monkeypatch):
-    monkeypatch.setenv("GITHUB_ORG", "compliancelens-lab-sjsu")
+@pytest.mark.parametrize("rule", applied(SCREENSHOT_RULES), ids=lambda r: r.get("id", "?"))
+def test_screenshot_urls_resolve_with_the_usual_settings(rule):
     url = browser.resolve_url(rule)
     site = browser.SITES[rule["screenshot"]["site"]]
     assert browser.url_problem(site, url) is None
@@ -108,6 +120,14 @@ def test_at_least_ten_rules():
 
 def test_rulebook_has_no_problems():
     assert engine.validate_rules(ALL_RULES) == []
+    assert engine.validate_rules(applied(ALL_RULES)) == []
+
+
+@pytest.mark.parametrize("path", RULE_FILES, ids=lambda p: p.name)
+def test_no_account_is_named_in_the_rulebook(path):
+    text = path.read_text()
+    for pattern in ACCOUNT_SPECIFIC:
+        assert not re.search(pattern, text), f"{path.name} names an account ({pattern})"
 
 
 @pytest.mark.parametrize("rule", ALL_RULES, ids=lambda r: r.get("id", "?"))
@@ -142,12 +162,14 @@ def test_check_value_has_a_sensible_type(rule):
         assert isinstance(value, bool)
 
 
-def test_github_rules_need_repo_and_branch():
-    for rule in API_RULES:
+def test_github_rules_get_repo_and_branch_from_the_settings():
+    for rule in applied(API_RULES):
         if rule["collector"] in ("github.branch_protection", "github.force_push_protection"):
             assert rule["params"].keys() >= {"repo", "branch"}, rule["id"]
         elif rule["collector"] in ("github.secret_scanning", "github.dependabot_alerts"):
-            assert "repo" in rule["params"], rule["id"]
+            assert rule["params"]["repo"] == "your-org/your-repo", rule["id"]
+        elif rule["collector"].startswith("aws."):
+            assert rule["params"]["region"] == "us-east-1", rule["id"]
 
 
 @pytest.mark.parametrize("path", RULE_FILES, ids=lambda p: p.name)

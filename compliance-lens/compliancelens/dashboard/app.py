@@ -227,12 +227,40 @@ def _next_in_queue(conn, run_id: int, after: int) -> int | None:
     return (later or others or [None])[0]
 
 
-def _load_rules(rules_file: Path) -> tuple[list[dict], list[str]]:
+def _settings() -> tuple[config.RunContext | None, str | None]:
+    """The settings as an audit would use them, or (None, why they can't be used)."""
+    try:
+        return config.resolve(), None
+    except config.SettingsError as e:
+        return None, str(e)
+
+
+def _load_rules(rules_file: Path, context: config.RunContext | None) -> tuple[list, list]:
+    """The rulebook as an audit would run it (with the settings in, V6), and its problems."""
     try:
         rules = engine.load_rules(rules_file)
     except (OSError, ValueError) as e:
         return [], [str(e)]
+    if context is not None:
+        rules = config.apply(rules, context)
     return rules, engine.validate_rules(rules)
+
+
+def _settings_changed(older: dict, newer: dict) -> bool:
+    """Same rulebook, but the runs audited with different settings (V6): another
+    repository, region, organization or AWS account. Known only when both runs saved
+    run-context.json; a changed rulebook has its own note."""
+    if older["rules_sha256"] != newer["rules_sha256"]:
+        return False
+    before, after = runner.saved_context(older), runner.saved_context(newer)
+    if not before or not after:
+        return False
+
+    def audited(record: dict):
+        account = ((record.get("targets") or {}).get("aws") or {}).get("account")
+        return record.get("effective_rules_sha256"), account
+
+    return audited(before) != audited(after)
 
 
 # --------------------------------------------------------------------- app ----
@@ -349,7 +377,12 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
         trend = trend[:TREND_RUNS]
         for index, run in enumerate(trend):  # newest first
             older = trend[index + 1] if index + 1 < len(trend) else None
-            run["rulebook_changed"] = bool(older) and older["rules_sha256"] != run["rules_sha256"]
+            if older and older["rules_sha256"] != run["rules_sha256"]:
+                run["rulebook_changed"] = "rulebook changed"
+            elif older and _settings_changed(older, run):
+                run["rulebook_changed"] = "settings changed"
+            else:
+                run["rulebook_changed"] = ""
         job = app.state.jobs.current()
         return render(
             request,
@@ -366,12 +399,10 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
     # ----------------------------------------------------------- run audit
 
     def run_page(request: Request, status: int = 200, error=None, problems=()):
-        rules, rule_problems = _load_rules(settings.rules_file)
-        try:
-            disabled, settings_problem = config.disabled_rules(), None
-        except config.SettingsError as e:
-            disabled, settings_problem = [], str(e)
-        enabled = [r["id"] for r in rules if r["id"] not in set(disabled)]
+        context, settings_problem = _settings()
+        rules, rule_problems = _load_rules(settings.rules_file, context)
+        disabled = set(context.disabled_rules) if context else set()
+        enabled = [r["id"] for r in rules if r["id"] not in disabled]
         job = app.state.jobs.current()
         return render(
             request,
@@ -383,7 +414,7 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
             enabled=enabled,
             rule_problems=rule_problems,
             settings_problem=settings_problem,
-            checks=checks.readiness(),
+            checks=checks.readiness(context=context, problem=settings_problem),
             job=job,
             elapsed=app.state.jobs.elapsed(job) if job else None,
             error=error,
@@ -411,7 +442,7 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
         except run_options.OptionsError as e:
             listed = e.code in (run_options.AI_SETTINGS, run_options.SETTINGS_FILE)
             return run_page(request, 400, OPTION_MESSAGES[e.code], e.problems if listed else ())
-        rules, rule_problems = _load_rules(settings.rules_file)
+        rules, rule_problems = _load_rules(settings.rules_file, options.context)
         if rule_problems:
             return run_page(request, 400, "The rulebook can't be used:", rule_problems)
         try:
@@ -472,6 +503,12 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
             runs = queries.list_runs(conn, RECENT_RUNS)
         if result is None:
             raise HTTPException(404, "One of these runs doesn't exist.")
+        if _settings_changed(result["older"], result["newer"]):
+            result["notes"].append(
+                "the settings changed between the two runs (what was audited: the repository,"
+                " region, organization or AWS account): a verdict can change because of that,"
+                " not only because a setting in the account did"
+            )
         return render(
             request, "compare.html", title="Compare runs", section="runs", runs=runs, result=result
         )
@@ -613,9 +650,10 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
     # ---------------------------------------------------------------- rules
 
     def rules_view(request: Request, status: int = 200, error: str | None = None):
-        rules, problems = _load_rules(settings.rules_file)
+        context, settings_problem = _settings()
+        rules, problems = _load_rules(settings.rules_file, context)
         try:
-            disabled, settings_problem = set(config.disabled_rules()), None
+            disabled = set(config.disabled_rules())
         except config.SettingsError as e:
             disabled, settings_problem = set(), str(e)
         groups: dict[str, list[dict]] = {}
@@ -643,7 +681,8 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
             settings_problem=settings_problem,
             enabled=sum(rule.get("id") not in disabled for rule in rules),
             total=len(rules),
-            settings_path=config.settings_path().name,
+            disabled_file=config.disabled_path().name,
+            warnings=context.warnings if context else (),
             error=error,
         )
 
@@ -659,7 +698,7 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
         enabled: Annotated[bool, Form()] = False,
     ):
         auth.check_csrf(request, csrf)
-        rules, problems = _load_rules(settings.rules_file)
+        rules, _ = _load_rules(settings.rules_file, None)  # only the rule IDs matter here
         known = [rule.get("id") for rule in rules]
         if rule_id not in known:
             raise HTTPException(404, f"There is no rule {rule_id}.")

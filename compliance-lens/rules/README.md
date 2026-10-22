@@ -25,7 +25,7 @@ collector for it exists in `compliancelens/connectors/`).
 | `title` | yes | The rule in plain words |
 | `severity` | yes | `low`, `medium` or `high` |
 | `collector` | yes* | `<system>.<function>` in `compliancelens/connectors/`, e.g. `aws.users_without_mfa` |
-| `params` | no | Settings passed to the collector, e.g. `{ repo: "owner/name", branch: main }` |
+| `params` | no | Settings passed to the collector. Since V6 the account-specific ones (repository, branch, organization, region, the HR list) come from `config/settings.yaml`; a value written here wins over the settings |
 | `check` | yes* | How to judge the collected data (see below) |
 | `framework_ref` | no | Matching CIS / SOC 2 control, e.g. `CIS AWS 1.10` |
 | `screenshot` | V3 | The web page to screenshot for people (see "Screenshots" below) |
@@ -162,8 +162,11 @@ Notes:
 - AWS-05 judges the four **bucket-level** Block Public Access flags. The account-wide
   flags are saved in the evidence too, for context.
 - GH-01/GH-02 read **classic** branch protection; rulesets are not seen.
-- GH-05, GH-06, GH-07 and HR-01 read the organization from `GITHUB_ORG` in `.env` (or an
-  `org:` param).
+- **Targets come from `config/settings.yaml` (V6).** Before a run the settings fill the
+  params a card leaves out: `repo` (organization/name) and `branch` for GH-01 to GH-04,
+  `org` for GH-05 and HR-01, the employee list and allowlists for HR-01, and `region` for
+  every `aws.*` rule. A card that writes its own value keeps it. The starter rulebook
+  names no account, and each run saves the rules as it ran them (`run-context.json`).
 
 ## Screenshots (V3)
 
@@ -182,14 +185,14 @@ never changes an API rule's verdict. HR-01 has none (it checks a local CSV).
     capture: { full_page: true }                   # or { target: <locator> }; default: the window
     mask:                                          # optional: hide private parts
       - { css: ".avatar" }
-    vars: { bucket: my-test-bucket }               # optional: extra URL values
+    vars: { page: settings }                       # optional: extra URL values
     timeout_ms: 20000                              # optional: 1000 to 60000
 ```
 
 | Field | Meaning |
 | --- | --- |
 | `site` | `github` or `aws`. The URL must be https on that site's hosts. |
-| `url` | `{name}` placeholders come from `screenshot.vars`, then `params`; `{org}` also from `GITHUB_ORG`, `{region}` from `AWS_DEFAULT_REGION` (default `us-east-1`). Values are URL-encoded. |
+| `url` | `{name}` placeholders come from `screenshot.vars`, then `params`. The settings (V6) fill `{org}`, `{region}`, `{repo}`, `{rule}` (the classic branch protection rule's number) and `{bucket}` when a card doesn't; a missing one only costs that screenshot (`config_error`, naming the setting). Values are URL-encoded. |
 | `wait_for` | Something that appears **only** when the evidence has loaded. Not `{role: main}`: a sign-in page has one too. |
 | `steps` | Only `wait_for`, `scroll_to` and `click`. A click must be a **link or tab** with a name, and names like Delete, Save, Disable, Confirm are refused. Nothing can type, tick or select. |
 | `capture` | `full_page: true` for the whole page, `target: <locator>` for one element. |
@@ -238,11 +241,12 @@ ai_check)", or why the screenshot is missing. Add an `ai_check` to make it a vis
   title: main branch requires at least 1 review
   severity: high
   collector: github.branch_protection
-  params: { repo: "your-org/compliancelens-test", branch: main }
+  params: {}   # repository and branch: config/settings.yaml
   check: { field: required_approving_review_count, op: ">=", value: 1 }
 ```
 
-**Before running:** set `repo:` in GH-01 to GH-04 to your test repo.
+**Before running:** fill in `config/settings.yaml` (copy `config/settings.example.yaml`);
+`python audit.py settings` shows what the rules will check.
 
 **Watch out:** YAML reads `yes`, `no`, `on` and `off` as true/false. Write `true` / `false`
 for booleans and quote text that looks like one.

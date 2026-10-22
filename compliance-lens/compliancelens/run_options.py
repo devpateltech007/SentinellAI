@@ -4,9 +4,12 @@
 choice the command line refuses is refused in the dashboard too, and neither can
 forget the AI by accident (runner.run_audit() without AI options runs with it off).
 
-Without an explicit list of rules, a run takes every rule that is turned on in
-config/settings.yaml (config.py). An explicit list wins: a rule turned off can still
-be run by name.
+Without an explicit list of rules, a run takes every rule that is turned on
+(config/disabled_rules.yaml, config.py). An explicit list wins: a rule turned off can
+still be run by name.
+
+The settings (config/settings.yaml: what to audit) are resolved here once (V6), and the
+run uses exactly those: the runner applies them to the rules and saves them with the run.
 
 Problems raise OptionsError with a code, so each front end names its own controls
 (--cross-check on the command line, a checkbox in the dashboard).
@@ -21,7 +24,7 @@ from compliancelens.evaluator import settings as ai_settings
 NO_AI_CONFLICT = "no_ai_conflict"  # AI off, yet a cross-check, a refresh or a model asked for
 CROSS_CHECK_NEEDS_SCREENSHOTS = "cross_check_needs_screenshots"
 AI_SETTINGS = "ai_settings"  # the AI settings in .env can't be used
-SETTINGS_FILE = "settings_file"  # config/settings.yaml can't be used
+SETTINGS_FILE = "settings_file"  # config/settings.yaml (or disabled_rules.yaml) can't be used
 
 
 class OptionsError(ValueError):
@@ -38,6 +41,7 @@ class RunOptions:
     disabled: list[str] = field(default_factory=list)  # turned off (only when rule_ids is None)
     screenshots: bool = True
     ai: runner.AIOptions = field(default_factory=lambda: runner.AIOptions(enabled=False))
+    context: config.RunContext | None = None  # the settings, resolved once (None: at run time)
 
 
 def prepare(
@@ -49,7 +53,7 @@ def prepare(
     refresh_ai: bool = False,
     ai_model: str | None = None,
 ) -> RunOptions:
-    """Check the choices and resolve the AI settings and the rules turned off.
+    """Check the choices and resolve the settings, the rules turned off and the AI settings.
 
     Raises OptionsError.
     """
@@ -62,20 +66,19 @@ def prepare(
         raise OptionsError(
             CROSS_CHECK_NEEDS_SCREENSHOTS, ["a cross-check reads screenshots: turn them on"]
         )
-    disabled = []
-    if rule_ids is None:
-        try:
-            disabled = config.disabled_rules()
-        except config.SettingsError as e:
-            raise OptionsError(SETTINGS_FILE, [str(e)])
+    try:
+        context = config.resolve()
+    except config.SettingsError as e:
+        raise OptionsError(SETTINGS_FILE, e.problems)
+    disabled = list(context.disabled_rules) if rule_ids is None else []
     if not use_ai:
-        return RunOptions(rule_ids, disabled, screenshots, runner.AIOptions(enabled=False))
+        return RunOptions(rule_ids, disabled, screenshots, runner.AIOptions(enabled=False), context)
     try:
         settings = ai_settings.resolve(model=ai_model)
     except ai_settings.AISettingsError as e:
         raise OptionsError(AI_SETTINGS, e.problems)
     ai = runner.AIOptions(settings=settings, refresh=refresh_ai, cross_check=cross_check)
-    return RunOptions(rule_ids, disabled, screenshots, ai)
+    return RunOptions(rule_ids, disabled, screenshots, ai, context)
 
 
 def run(rules_file: Path, options: RunOptions, on_result=None, on_event=None):
@@ -88,4 +91,5 @@ def run(rules_file: Path, options: RunOptions, on_result=None, on_event=None):
         ai_options=options.ai,
         disabled=options.disabled,
         on_event=on_event,
+        context=options.context,
     )

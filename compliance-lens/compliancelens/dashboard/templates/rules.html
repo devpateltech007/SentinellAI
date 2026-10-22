@@ -3,8 +3,9 @@
 <h1>Rules</h1>
 {% if error %}<p class="notice bad" role="alert">{{ error }}</p>{% endif %}
 {% if problems %}<div class="notice bad"><p>The rulebook has problems:</p><ul>{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul></div>{% endif %}
-{% if settings_problem %}<p class="notice bad">{{ settings_problem }} Fix or delete the file to change rules here.</p>{% endif %}
-<p>{{ enabled }} of {{ total }} rules are on. Turning a rule off applies to the next audit only (saved in <code>config/{{ settings_path }}</code>);
+{% if settings_problem %}<p class="notice bad">{{ settings_problem }}</p>{% endif %}
+{% for w in warnings %}<p class="notice">{{ w }}</p>{% endfor %}
+<p>{{ enabled }} of {{ total }} rules are on. Turning a rule off applies to the next audit only (saved in <code>config/{{ disabled_file }}</code>);
   past runs keep the rules they ran. An audit without every rule is <strong>partial</strong> and doesn't set the score.
   Rule contents are edited in the rulebook (<code>rules/</code>), not here.</p>
 {% for system, rules in groups.items() %}

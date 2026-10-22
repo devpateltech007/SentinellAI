@@ -83,7 +83,7 @@ def path_problem(path) -> str | None:
     return None
 
 
-def _display(folder: Path) -> str:
+def display_dir(folder: Path) -> str:
     """The folder relative to the project when it is inside it (no home folder in evidence)."""
     try:
         return folder.relative_to(PROJECT_ROOT).as_posix()
@@ -151,7 +151,7 @@ def read_document(params: dict) -> dict:
     if problem:
         raise ValueError(problem)
     folder = policies_dir()
-    info = {"path": name, "folder": _display(folder)}
+    info = {"path": name, "folder": display_dir(folder)}
 
     def refused(status: str, reason: str, **extra) -> dict:
         return {"status": status, "reason": reason, **info, **extra}

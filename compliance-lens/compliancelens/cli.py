@@ -10,6 +10,7 @@
     python audit.py run --refresh-ai    ask the AI again instead of reusing cached answers
     python audit.py run --ai-model openai/<model>   another model for this run only
     python audit.py history             past runs and their scores
+    python audit.py settings            what audits check (config/settings.yaml) and from where
     python audit.py verify run-0007     re-hash a run's files and report any change
     python audit.py login github        log in by hand once, for screenshots (or: aws)
     python audit.py ai-test             check the AI model set in .env (one text, one image)
@@ -234,7 +235,7 @@ def _run(
         typer.echo(line)
     if summary.skipped:
         typer.echo(
-            f"Turned off in {display_path(config.settings_path())} (not run):"
+            f"Turned off in {display_path(config.disabled_path())} (not run):"
             f" {', '.join(summary.skipped)}."
         )
     if summary.scope != db.FULL:
@@ -314,6 +315,45 @@ def history(
             f"{evidence.run_name(r['id']):<10} {started:<17} {r['status']:<9} {r['scope']:<8}"
             f" {r['pass_count']:>4}  {r['fail_count']:>4}  {r['review_count']:>6}"
         )
+
+
+def _setting_text(value) -> str:
+    if isinstance(value, list):
+        return ", ".join(value) if value else "(none)"
+    return "—" if value is None else str(value)
+
+
+@app.command("settings")
+def show_settings() -> None:
+    """Show what audits check (config/settings.yaml) and where each value comes from."""
+    path = config.settings_path()
+    try:
+        context = config.resolve()
+    except config.SettingsError as e:
+        typer.echo(f"{display_path(path)} has problems:")
+        for problem in e.problems:
+            typer.echo(f"  - {problem}")
+        raise typer.Exit(2)
+    if context.settings_sha256 is None:
+        typer.echo(
+            f"No {display_path(path)} yet: copy config/settings.example.yaml there and fill it in."
+        )
+    else:
+        typer.echo(f"Settings from {display_path(path)}:")
+    for key in config.KEYS:
+        value = _setting_text(context.get(key))
+        typer.echo(f"  {key:<27} {value:<40} ({context.sources[key]})")
+    if context.repository:
+        typer.echo(f"  GitHub repository rules check {context.repository}.")
+    for key, what in context.missing().items():
+        typer.echo(f"Not set: {key}. Without it, {what} will be NEEDS REVIEW.")
+    for key, what in config.OPTIONAL.items():
+        if not context.get(key):
+            typer.echo(f"Not set: {key} (optional). Without it, {what} are skipped.")
+    for warning in context.warnings:
+        typer.echo(f"Warning: {warning}")
+    off = ", ".join(context.disabled_rules) or "none"
+    typer.echo(f"Rules turned off ({display_path(config.disabled_path())}): {off}.")
 
 
 @app.command()

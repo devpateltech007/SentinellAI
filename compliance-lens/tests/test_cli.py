@@ -13,7 +13,7 @@ import pytest
 from PIL import Image
 from typer.testing import CliRunner
 
-from compliancelens import __version__, cli, engine, evidence, locking, runner
+from compliancelens import __version__, cli, config, engine, evidence, locking, runner
 from compliancelens.connectors import browser
 from compliancelens.evaluator.providers import base as provider_base
 from compliancelens.storage import db
@@ -251,15 +251,59 @@ def test_real_rulebook_without_credentials_needs_review(monkeypatch):
     # The DOC rules find no policies folder; no AI key either, and nothing PASSes.
     assert "the document was not read: the policies folder" in result.output
     assert "Screenshots: 0 of 15 saved." in result.output
-    assert "AWS: 8 not saved (session missing). Fix: python audit.py login aws" in result.output
-    assert "GitHub: 4 not saved (session missing). Fix: python audit.py login github" in (
-        result.output
-    )
-    assert "GitHub: 3 not saved (config error)" in result.output  # GITHUB_ORG not set
+    # No config/settings.yaml: the screenshots that need a setting say which one.
+    assert "AWS: 2 not saved (config error)" in result.output  # no screenshot bucket
+    assert "AWS: 6 not saved (session missing). Fix: python audit.py login aws" in result.output
+    assert "GitHub: 7 not saved (config error)" in result.output  # no organization or repository
     run, results = stored(1)
     assert run["status"] == "complete"
     assert len(results) == 19
     assert {r["screenshot_status"] for r in results} == {"session_missing", "config_error", None}
+
+
+# --- settings (V6) ----------------------------------------------------------------
+
+
+def write_settings(text):
+    path = config.settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def test_settings_without_a_file():
+    result = invoke("settings")
+    assert result.exit_code == 0, result.output
+    assert "settings.yaml yet: copy config/settings.example.yaml there" in result.output
+    assert "aws.region" in result.output and "(default)" in result.output
+    assert "Not set: github.org. Without it, GitHub organization rules" in result.output
+    assert "Not set: aws.screenshot_bucket (optional)" in result.output
+    assert "Rules turned off (" in result.output and "): none." in result.output
+
+
+def test_settings_from_a_file():
+    write_settings(
+        "company: Example Labs\ngithub: {org: lab, repo: test, protection_rule_id: 5}\n"
+        "aws: {screenshot_bucket: b-1}\nhr: {allow_aws: [bot]}\n"
+    )
+    config.set_rule_enabled("HR-01", False, ["HR-01"])
+    result = invoke("settings")
+    assert result.exit_code == 0, result.output
+    assert "Settings from " in result.output
+    assert "github.org" in result.output and "(settings.yaml)" in result.output
+    assert "GitHub repository rules check lab/test." in result.output
+    assert "Not set:" not in result.output
+    assert "bot" in result.output and "(none)" in result.output  # allow_github
+    assert "): HR-01." in result.output
+
+
+def test_settings_warnings_and_problems(monkeypatch):
+    write_settings("aws: {region: eu-west-1}\n")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    assert "Warning: aws.region is 'eu-west-1'" in invoke("settings").output
+    write_settings("nope: 1\n")
+    result = invoke("settings")
+    assert result.exit_code == 2
+    assert "settings.yaml has problems:\n  - settings.yaml: nope: unknown setting" in result.output
 
 
 # --- history -----------------------------------------------------------------------
@@ -411,8 +455,9 @@ def test_run_saves_stamped_screenshots(screenshot_rules, temp_storage):
     assert meta["requested_url"] == "https://github.com/a/b"
     assert json.loads((folder / "GH-06.json").read_text()) == {"screenshot_only": True}
     manifest = json.loads((folder / "manifest.json").read_text())
-    assert [f["path"] for f in manifest["files"]][:4] == [
+    assert [f["path"] for f in manifest["files"]][:5] == [
         "rulebook.yaml",
+        "run-context.json",
         "GH-01.json",
         "GH-01.meta.json",
         "GH-01.png",
@@ -420,7 +465,7 @@ def test_run_saves_stamped_screenshots(screenshot_rules, temp_storage):
 
     result = invoke("verify", "run-0001")
     assert result.exit_code == 0, result.output
-    assert "OK: 11 files match" in result.output  # rulebook + 4 JSON + 4 meta + 2 PNG
+    assert "OK: 12 files match" in result.output  # rulebook + context + 4 JSON + 4 meta + 2 PNG
 
 
 def test_verify_catches_edited_screenshot(screenshot_rules, temp_storage):
@@ -566,7 +611,7 @@ def test_verify_unchanged_run(rules):
     audit(rules)
     result = invoke("verify", "run-0001")
     assert result.exit_code == 0, result.output
-    assert "OK: 7 files match their recorded SHA-256 hashes." in result.output
+    assert "OK: 8 files match their recorded SHA-256 hashes." in result.output
 
 
 def test_verify_catches_edited_evidence(rules, temp_storage):
@@ -878,7 +923,7 @@ def test_document_rules_save_the_exact_document(document_rules, temp_storage):
 
     result = invoke("verify", "run-0001")
     assert result.exit_code == 0, result.output
-    assert "OK: 15 files match" in result.output  # rulebook + 4 rules x 2 + 2 docs + 4 AI records
+    assert "OK: 16 files match" in result.output  # rulebook + context + 4x2 + 2 docs + 4 AI
 
 
 def test_verify_catches_an_edited_document(document_rules, temp_storage):

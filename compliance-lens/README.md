@@ -108,9 +108,13 @@ below is done by **you**, signed in as an admin (AWS root/admin, GitHub owner).
     the research experiment, which reads the base permission by API). The organization may
     have to approve the token. A token owned by your personal account can't read the
     organization.
-11. **Fill in `.env`:** `GITHUB_TOKEN=...` and `GITHUB_ORG=<your-org>`.
-12. **Point the GitHub rules at the repo.** In `rules/starter_rules.yaml`, set `repo:` in
-    GH-01 to GH-04 to `<your-org>/compliancelens-test`.
+11. **Fill in `.env`:** `GITHUB_TOKEN=...`.
+12. **Say what to audit** (V6): `cp config/settings.example.yaml config/settings.yaml` and set
+    `company`, `github.org`, `github.repo` (the name only), `aws.region`, and optionally
+    `github.protection_rule_id` (the number in the classic rule's Edit link, for the GH-01/GH-02
+    screenshots) and `aws.screenshot_bucket` (for the AWS-05/AWS-06 screenshots). Check it with
+    `python audit.py settings`. Nothing account-specific goes in the rulebook
+    (see [`config/README.md`](config/README.md)).
 
 GH-05 lists members without two-factor authentication; GitHub only shows this to
 **organization owners**, so the token's owner must be one (and has 2FA on).
@@ -188,8 +192,9 @@ python audit.py run --cross-check   # the AI also reads code rules' screenshots 
 python audit.py run --refresh-ai    # ask the AI again instead of reusing cached answers
 python audit.py run --ai-model openai/<model>   # another model, for this run only
 python audit.py history --limit 5
-# Rules turned off in config/settings.yaml (disabled_rules) are left out and named;
-# a run without every rule is "partial". See config/README.md.
+python audit.py settings            # what audits check (config/settings.yaml) and from where
+# Rules turned off in config/disabled_rules.yaml (the dashboard's Rules page) are left out
+# and named; a run without every rule is "partial". See config/README.md.
 python audit.py --help
 ```
 
@@ -377,6 +382,6 @@ passwords: anyone with the file is logged in.
 | A screenshot shows loading spinners | It waits for a heading, not for the data (AWS pages also wait until no spinner is left; "still loading after 10 s" means that never happened) | Wait for something only shown with the data (see `rules/README.md`) |
 | `AI provider error: could not connect` | The network dropped the upload (seen with large pictures); it is tried up to 5 times | Run again, or check the connection / VPN |
 | `AI not configured` | No key for the model in `.env` | Add `COMPLIANCELENS_AI_API_KEY`, then `make aitest` |
-| `GITHUB_ORG not set` (config error) | The URL needs `{org}` | Add `GITHUB_ORG` to `.env` |
+| `github.org is not set in config/settings.yaml` (config error) | The URL needs `{org}` (or `{repo}`, `{rule}`, `{bucket}`: the reason names the setting) | Set it in `config/settings.yaml`; `python audit.py settings` shows what is set |
 | A screenshot shows something private | Not masked yet | Add a `mask:` locator to the rule card |
 | You need an audit now but logins expired | | `python audit.py run --no-screenshots` |

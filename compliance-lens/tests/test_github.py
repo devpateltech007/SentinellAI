@@ -258,8 +258,16 @@ def test_org_in_params_wins_over_env(token, org):
 
 
 def test_missing_org_is_an_error(token):
-    with pytest.raises(RuntimeError, match="GITHUB_ORG"):
+    with pytest.raises(RuntimeError, match="set github.org in config/settings.yaml"):
         github.org_members_without_2fa({})
+
+
+def test_missing_repo_is_an_error(token):
+    with pytest.raises(RuntimeError, match="set github.org and github.repo"):
+        github.secret_scanning({})
+    check = {"field": "dependabot_alerts", "op": "==", "value": True}
+    r = run("github.dependabot_alerts", check, {})
+    assert r["verdict"] == "NEEDS REVIEW" and "github.repo" in r["reason"]
 
 
 @responses.activate

@@ -52,7 +52,7 @@
       <td>{{ run.counts.effective.PASS }}</td>
       <td>{{ run.counts.effective.FAIL }}</td>
       <td>{{ run.counts.effective["NEEDS REVIEW"] }}</td>
-      <td>{% if run.rulebook_changed %}<span class="tag">rulebook changed</span>{% endif %}</td>
+      <td>{% if run.rulebook_changed %}<span class="tag">{{ run.rulebook_changed }}</span>{% endif %}</td>
     </tr>
     {% endfor %}
     </tbody>

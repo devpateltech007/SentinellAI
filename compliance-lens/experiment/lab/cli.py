@@ -13,14 +13,13 @@ Exit codes: 0 done, 1 something failed (see the output), 2 a usage or setup prob
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Annotated
 
 import typer
 from dotenv import load_dotenv
 
-from compliancelens import engine, locking
+from compliancelens import config, engine, locking
 from compliancelens.connectors import browser
 from compliancelens.evaluator import settings as ai_settings
 from experiment.lab import PROJECT_ROOT, analyze, capture, cases, labels, labels_path, run, world
@@ -53,7 +52,7 @@ def _fail(message: str, code: int = 2):
 
 @app.callback()
 def main_callback() -> None:
-    load_dotenv(PROJECT_ROOT / ".env")  # GITHUB_TOKEN, GITHUB_ORG, AWS_PROFILE, the AI key...
+    load_dotenv(PROJECT_ROOT / ".env")  # GITHUB_TOKEN, AWS_PROFILE, the AI key...
 
 
 def _load(rule: list[str] | None = None, case: list[str] | None = None, pilot: bool = False):
@@ -94,24 +93,38 @@ def plan(rule: RuleOption = None, case: CaseOption = None, pilot: PilotOption = 
         typer.echo(f"{item.id} ({item.rule}, {item.state}): {item.describe()}")
 
 
-def _region() -> str:
-    return os.environ.get("AWS_DEFAULT_REGION", "").strip() or "us-east-1"
+def _context() -> config.RunContext:
+    """The settings (config/settings.yaml), or exit 2 saying what is wrong with them."""
+    try:
+        return config.resolve()
+    except config.SettingsError as e:
+        _fail("config/settings.yaml has problems:\n" + "\n".join(f"  - {p}" for p in e.problems))
+
+
+def _github_target(context: config.RunContext) -> tuple[str, str]:
+    """(organization, repository) for the GitHub changes, or exit 2 naming the setting."""
+    org, repo = context.get("github.org"), context.repository
+    if not org:
+        _fail("github.org is not set in config/settings.yaml.")
+    if not repo:
+        _fail("github.repo is not set in config/settings.yaml.")
+    return org, repo
 
 
 def _setups(rule_ids, need_aws: bool = False) -> world.Setup:
     """The logins that make the changes, checked (exits 2 with the fix if one is not usable)."""
     rule_ids = set(rule_ids)
     aws_setup = github_setup = None
+    context = _context()
     try:
         if need_aws or rule_ids & AWS_RULES:
-            aws_setup = world.AwsSetup.from_env(_region())
+            aws_setup = world.AwsSetup.from_env(context.get("aws.region"))
             typer.echo(f"AWS changes as:    {aws_setup.identity()}")
         if rule_ids & GITHUB_RULES:
-            org = os.environ.get("GITHUB_ORG", "").strip()
-            if not org:
-                _fail("GITHUB_ORG is not set in .env.")
-            repo = cases.experiment_rules()["GH-01"]["params"]["repo"]
-            github_setup = world.GithubSetup(world.github_token(), org, repo)
+            org, repo = _github_target(context)
+            github_setup = world.GithubSetup(
+                world.github_token(), org, repo, context.get("github.branch")
+            )
             typer.echo(f"GitHub changes as: {github_setup.identity(rule_ids)}")
     except world.SetupError as e:
         _fail(str(e))
@@ -133,7 +146,8 @@ def check() -> None:
         ok &= mark == "✓"
         fix = "found" if mark == "✓" else f"run: python audit.py login {site}"
         typer.echo(f"{mark} saved {site} login for pictures ({fix})")
-    rules = cases.experiment_rules()
+    context = _context()
+    rules = cases.experiment_rules(context=context)
     for rule_id in cases.RULE_IDS:
         rule = rules[rule_id]
         try:
@@ -144,7 +158,7 @@ def check() -> None:
         else:
             typer.echo(f"✓ {rule_id}: the audit's read-only login reads the API")
     try:
-        setup = world.AwsSetup.from_env(_region())
+        setup = world.AwsSetup.from_env(context.get("aws.region"))
         typer.echo(f"✓ AWS setup login: {setup.identity()}")
         left = setup.leftovers()
         if left:
@@ -155,9 +169,11 @@ def check() -> None:
         ok = False
         typer.echo(f"✗ AWS setup login: {e}")
     try:
-        org = os.environ.get("GITHUB_ORG", "").strip()
         github_setup = world.GithubSetup(
-            world.github_token(), org, rules["GH-01"]["params"]["repo"]
+            world.github_token(),
+            context.get("github.org") or "",
+            context.repository or "",
+            context.get("github.branch"),
         )
         typer.echo(f"✓ GitHub setup login: {github_setup.identity(set(cases.RULE_IDS))}")
     except world.SetupError as e:

@@ -9,7 +9,7 @@ import pytest
 from lab_helpers import captured
 from typer.testing import CliRunner
 
-from compliancelens import engine, locking
+from compliancelens import config, engine, locking
 from compliancelens.connectors import browser
 from compliancelens.evaluator import providers
 from compliancelens.evaluator.providers import base
@@ -140,8 +140,9 @@ class FakeAws:
 
 
 class FakeGithub:
-    def __init__(self, token, org, repo):
+    def __init__(self, token, org, repo, branch="main"):
         self.args = (token, org, repo)
+        self.branch = branch
 
     def identity(self, rule_ids):
         return "neels"
@@ -154,16 +155,21 @@ def logins(monkeypatch):
     )
     monkeypatch.setattr(world, "GithubSetup", FakeGithub)
     monkeypatch.setattr(world, "github_token", lambda: "t")
-    monkeypatch.setenv("GITHUB_ORG", "test-org")
+    monkeypatch.setenv("GITHUB_ORG", "test-org")  # the old .env name still works
+    write_settings("github: {repo: test-repo, branch: trunk}\n")
+
+
+def write_settings(text):
+    path = config.settings_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
 
 
 def test_setups_check_the_logins(logins, capsys):
     setup = cli._setups({"AWS-01", "GH-06"})
-    assert isinstance(setup.aws, FakeAws) and setup.github.args == (
-        "t",
-        "test-org",
-        "compliancelens-lab-sjsu/compliancelens-test",
-    )
+    assert isinstance(setup.aws, FakeAws)
+    assert setup.github.args == ("t", "test-org", "test-org/test-repo")
+    assert setup.github.branch == "trunk"
     out = capsys.readouterr().out
     assert (
         "AWS changes as:    arn:aws:iam::ACCOUNT:user/admin" in out
@@ -173,11 +179,28 @@ def test_setups_check_the_logins(logins, capsys):
     assert only_github.aws is None
 
 
-def test_setups_without_an_org(logins, monkeypatch):
+def test_setups_without_an_org(logins, monkeypatch, capsys):
     monkeypatch.delenv("GITHUB_ORG")
     with pytest.raises(cli.typer.Exit) as e:
         cli._setups({"GH-06"})
     assert e.value.exit_code == 2
+    assert "github.org is not set in config/settings.yaml" in capsys.readouterr().out
+
+
+def test_setups_without_a_repo(logins, capsys):
+    write_settings("company: x\n")
+    with pytest.raises(cli.typer.Exit) as e:
+        cli._setups({"GH-01"})
+    assert e.value.exit_code == 2
+    assert "github.repo is not set in config/settings.yaml" in capsys.readouterr().out
+
+
+def test_setups_with_broken_settings(logins, capsys):
+    write_settings("nope: 1\n")
+    with pytest.raises(cli.typer.Exit) as e:
+        cli._setups({"AWS-01"})
+    assert e.value.exit_code == 2
+    assert "config/settings.yaml has problems:\n  - settings.yaml: nope" in capsys.readouterr().out
 
 
 def test_setups_with_a_bad_login(monkeypatch):

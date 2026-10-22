@@ -14,7 +14,7 @@
   {% if rule_problems %}
   <div class="notice bad"><p>The rulebook can't be used:</p><ul>{% for p in rule_problems %}<li>{{ p }}</li>{% endfor %}</ul></div>
   {% elif settings_problem %}
-  <p class="notice bad">config/settings.yaml has a problem: {{ settings_problem }}</p>
+  <p class="notice bad">The settings have a problem: {{ settings_problem }}</p>
   {% else %}
   <p>{{ enabled|length }} of {{ rules_total }} rules are turned on{% if enabled|length < rules_total %} (a <strong>partial</strong> audit: it won't set the score){% endif %}. <a href="/rules">Change on the Rules page</a>.</p>
   {% endif %}

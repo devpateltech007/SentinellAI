@@ -18,6 +18,12 @@ The rulebook is read once (V5): the rules that run, the hash recorded and the co
 saved in the run folder (rulebook.yaml, in the manifest and checked by verify) all
 come from the same bytes, so a past result can be read against the rule as it was.
 
+Settings (V6): the settings resolved once for the audit (config.py) are applied to the
+rules before they are checked, and run-context.json (in the manifest) saves them with
+the effective rules, what was audited (the masked AWS account, the region, the GitHub
+organization and repository) and the run's options. A report reads an old run from it,
+never from today's settings.
+
 Progress (V5): `on_event` hears when the run is recorded, when each rule starts and
 finishes, and when the run finishes or fails, for the dashboard's progress display.
 A broken listener never stops the audit; it becomes a warning.
@@ -40,17 +46,20 @@ read and hashed, so the saved copy is exactly what was judged.
 import contextlib
 import datetime
 import json
-from collections.abc import Callable
+import subprocess
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from compliancelens import __version__, engine, evidence, locking
-from compliancelens.connectors import browser, files
+from compliancelens import __version__, config, engine, evidence, locking
+from compliancelens.connectors import aws, browser, files
 from compliancelens.evaluator import ai, images
 from compliancelens.evaluator import cache as ai_cache
 from compliancelens.storage import db
 
 PRIMARY, CROSS_CHECK = "primary", "cross_check"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONTEXT_VERSION = 1  # run-context.json's format
 
 
 class StorageError(RuntimeError):
@@ -447,6 +456,104 @@ class _Events:
             self.warnings.append(f"progress display stopped: {e}")
 
 
+def _git_state() -> dict:
+    """The code's git commit, and whether it had uncommitted changes (V6). Nulls when
+    git or the repository isn't there (an installed copy)."""
+
+    def git(*args) -> str:
+        done = subprocess.run(
+            ["git", "-C", str(PROJECT_ROOT), *args],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=True,
+        )
+        return done.stdout.strip()
+
+    try:
+        commit = git("rev-parse", "HEAD")
+        dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
+    except (OSError, subprocess.SubprocessError):
+        return {"commit": None, "dirty": None}
+    return {"commit": commit, "dirty": dirty}
+
+
+def _aws_identity(context: config.RunContext, selected: list[dict]) -> dict:
+    """Which AWS account the audit read (masked), or why it isn't known. Only asked when
+    a rule reads AWS; a failure never stops the audit (those rules say why themselves)."""
+    if not any(str(r.get("collector", "")).startswith(("aws.", "hr.")) for r in selected):
+        return {"account": None, "identity": None, "note": "no rule in this run reads AWS"}
+    try:
+        return aws.caller_identity({"region": context.get("aws.region")})
+    except Exception as e:
+        reason = aws.ACCOUNT_ID.sub("************", str(e))[:300]
+        return {"account": None, "identity": None, "note": f"not known: {reason}"}
+
+
+def _context_record(
+    context: config.RunContext,
+    rules: list[dict],
+    selected: list[dict],
+    skipped: list[str],
+    scope: str,
+    rulebook: bytes,
+    screenshots: bool,
+    options: AIOptions,
+) -> dict:
+    """run-context.json: what this run used and audited, so a report never rebuilds it
+    from today's settings. No secrets: no keys, tokens, passwords or full account ID."""
+    settings = options.settings
+    targets = context.record()
+    targets["aws"].update(_aws_identity(context, selected))
+    targets["policies_folder"] = files.display_dir(files.policies_dir())
+    return {
+        "context_version": CONTEXT_VERSION,
+        "company": targets.pop("company"),
+        "targets": targets,
+        "sources": dict(context.sources),
+        "settings_sha256": context.settings_sha256,
+        "rules_sha256": evidence.sha256_bytes(rulebook),
+        "effective_rules_sha256": effective_rules_sha256(rules),
+        "tool_version": __version__,
+        "git": _git_state(),
+        "selection": {
+            "rule_ids": [rule["id"] for rule in selected],
+            "skipped": list(skipped),
+            "scope": scope,
+            "rules_total": len(rules),
+        },
+        "options": {
+            "screenshots": screenshots,
+            "ai": options.enabled,
+            "ai_model": settings.name if options.enabled and settings is not None else None,
+            "cross_check": options.cross_check,
+            "refresh_ai": options.refresh,
+        },
+        "rules": rules,
+    }
+
+
+def effective_rules_sha256(rules: list[dict]) -> str:
+    """The hash of the rules as an audit ran them (the rulebook with the settings in)."""
+    return evidence.sha256_bytes(evidence.to_json_bytes(rules))
+
+
+def saved_context(run: Mapping) -> dict | None:
+    """A complete run's run-context.json (V6), read only if it is exactly the file its
+    manifest lists; None for older runs or a missing or changed file."""
+    if not run["run_dir"] or not run["manifest_sha256"]:
+        return None
+    run_dir = evidence.evidence_root() / run["run_dir"]
+    data = evidence.read_listed(run_dir, run["manifest_sha256"], evidence.RUN_CONTEXT)
+    if data is None:
+        return None
+    try:
+        record = json.loads(data)
+    except ValueError:
+        return None
+    return record if isinstance(record, dict) else None
+
+
 def choose_rules(rules: list[dict], rule_ids, disabled=()) -> tuple[list[dict], list[str]]:
     """The rules to run and the IDs left out because they are turned off.
 
@@ -470,6 +577,7 @@ def run_audit(
     ai_options: AIOptions | None = None,
     disabled=(),
     on_event: Callable[[Progress], None] | None = None,
+    context: config.RunContext | None = None,
 ) -> RunSummary:
     """Run the rules, save everything, and return the summary.
 
@@ -481,13 +589,18 @@ def run_audit(
     `rule_ids` None runs every rule not in `disabled`; an empty list is refused
     (a RulebookError), never taken as "all".
 
+    `context` is the audit's settings, resolved once (run_options.prepare() does it);
+    without one they are resolved here (config.SettingsError if they can't be used).
+
     Raises engine.RulebookError (or OSError/ValueError) for a bad rulebook,
     locking.Busy if another audit or experiment capture is running, and StorageError
     if the results could not be saved.
     """
     options = ai_options or AIOptions(enabled=False)
+    context = context if context is not None else config.resolve()
     rulebook = Path(rules_file).read_bytes()  # the only read: what runs is what is saved
-    rules = engine.parse_rules(rulebook.decode("utf-8"), rules_file)
+    # The settings go in before the rules are checked: a card may leave its targets out.
+    rules = config.apply(engine.parse_rules(rulebook.decode("utf-8"), rules_file), context)
     problems = engine.validate_rules(rules)
     if problems:
         raise engine.RulebookError(problems)
@@ -524,7 +637,13 @@ def run_audit(
                 conn, run_id, _relative(run_dir, root), _relative(run_dir / copy["path"], root)
             )
             audit = _Audit(conn, run_id, run_dir, root, shooter, options)
-            audit.saved.append(copy)
+            record = _context_record(
+                context, rules, selected, skipped, scope, rulebook, screenshots, options
+            )
+            saved_context_file = evidence.write_file(
+                run_dir, evidence.RUN_CONTEXT, evidence.to_json_bytes(record)
+            )
+            audit.saved += [copy, saved_context_file]
             for rule in selected:
                 events.send(RULE_STARTED, rule_id=rule["id"])
                 result = audit.process(rule)
