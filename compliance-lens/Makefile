@@ -20,6 +20,7 @@ setup:  ## Create .venv, install everything (and Chromium), turn on git hooks
 	@if [ -f ../.pre-commit-config.yaml ]; then $(BIN)/pre-commit install; \
 	else echo "No ../.pre-commit-config.yaml yet: skipping git hooks"; fi
 	@echo "Done. Next: cp .env.example .env  and fill it in."
+	@echo "PDF reports need the Pango libraries (macOS: brew install pango)."
 
 test:  ## Run all tests with a coverage report
 	$(BIN)/pytest --cov
@@ -45,9 +46,9 @@ verify:  ## Check a run's evidence: make verify RUN=run-0007
 	@if [ -z "$(RUN)" ]; then echo "Usage: make verify RUN=run-0007"; exit 2; fi
 	$(BIN)/python audit.py verify $(RUN)
 
-report:  ## Export a run's audit report to reports/: make report RUN=run-0042 [FORMAT=html]
-	@if [ -z "$(RUN)" ]; then echo "Usage: make report RUN=run-0042 [FORMAT=html]"; exit 2; fi
-	$(BIN)/python audit.py report $(RUN) --format $(or $(FORMAT),html)
+report:  ## Export a run's audit report: make report RUN=run-0042 [FORMAT=html|pdf|both]
+	@if [ -z "$(RUN)" ]; then echo "Usage: make report RUN=run-0042 [FORMAT=html|pdf|both]"; exit 2; fi
+	$(BIN)/python audit.py report $(RUN) --format $(or $(FORMAT),both)
 
 login:  ## Save a login for screenshots: make login SITE=github (or aws)
 	@if [ -z "$(SITE)" ]; then echo "Usage: make login SITE=github   (or SITE=aws)"; exit 2; fi

@@ -1,7 +1,6 @@
 # Runtime libraries: what the tool needs to run an audit.
 # Pinned to exact versions so every machine gets the same setup.
 # pyproject.toml reads this file, so this is the single source of truth.
-# Later versions add: weasyprint (V6).
 anthropic==1.8.0       # Claude models (V4); imported only when an AI check runs
 boto3[crt]==1.43.106   # [crt] is needed for `aws login` credentials
 fastapi==0.150.0       # web dashboard (V5)
@@ -17,3 +16,4 @@ pyyaml==6.0.3
 requests==2.34.2
 typer==0.27.2          # command line: run, history, verify, login
 uvicorn==0.54.0        # serves the dashboard (V5)
+weasyprint==70.0       # the PDF report (V6); needs Pango: macOS `brew install pango`

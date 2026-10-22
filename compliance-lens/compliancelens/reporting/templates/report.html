@@ -12,7 +12,7 @@
 <main>
 
 <header class="cover">
-  <p class="kicker">ComplianceLens audit report</p>
+  <p class="kicker">ComplianceLens audit report · <span class="report-name">{{ r.export_name }}</span></p>
   <h1>{{ r.company or "Company not recorded" }}</h1>
   <p class="lead">Audit {{ r.name }} · {{ r.started_at|when }}</p>
   <div class="scoreline">

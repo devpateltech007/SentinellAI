@@ -18,6 +18,7 @@ Security on top of auth.py:
 
 import contextlib
 import json
+import re
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import quote
@@ -53,6 +54,9 @@ from compliancelens.formatting import (  # shared with the report (V6)
     verdict_class,
     when,
 )
+from compliancelens.reporting import data as report_data
+from compliancelens.reporting import export as report_export
+from compliancelens.reporting import pdf as report_pdf
 from compliancelens.storage import db
 
 HERE = Path(__file__).resolve().parent
@@ -83,6 +87,13 @@ SECURITY_HEADERS = {
     "Referrer-Policy": "no-referrer",
     "Cache-Control": "no-store",
 }
+
+
+# Exported reports (V6): only names the export writes, served only as downloads. A report
+# is self-contained: it may use its own styles and data: pictures, nothing else.
+REPORT_NAME = re.compile(r"(run-\d{4,})-r(\d+)\.(html|pdf)")
+REPORT_TYPES = {"html": "text/html; charset=utf-8", "pdf": "application/pdf"}
+REPORT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox"
 
 
 class NotSignedIn(Exception):
@@ -170,6 +181,36 @@ def _verify(run: dict) -> dict:
     except Exception as e:  # a broken database or folder must show, not crash the page
         return {"ok": False, "files": 0, "problems": [f"verify could not run: {e}"]}
     return {"ok": report.ok, "files": report.files_checked, "problems": report.problems}
+
+
+def report_file(run_id: int, name: str) -> Path | None:
+    """An exported report of this run inside the reports folder (links followed), or None."""
+    match = REPORT_NAME.fullmatch(name)
+    if not match or match.group(1) != evidence.run_name(run_id):
+        return None
+    root = report_export.reports_dir().resolve()
+    path = (root / match.group(1) / name).resolve()
+    return path if path.is_relative_to(root) and path.is_file() else None
+
+
+def _exports(run_id: int) -> list[dict]:
+    """The run's earlier reports, newest snapshot first: what their records name and is there."""
+    folder = report_export.reports_dir() / evidence.run_name(run_id)
+    found = []
+    for record_path in sorted(folder.glob("*.export.json")):
+        try:
+            record = json.loads(record_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(record, dict):
+            continue
+        listed = record.get("files")
+        names = sorted(listed) if isinstance(listed, dict) else []
+        files = [name for name in names if report_file(run_id, name)]
+        snapshot = record.get("review_snapshot")
+        if files and isinstance(snapshot, int):
+            found.append({"name": record.get("report"), "snapshot": snapshot, "files": files})
+    return sorted(found, key=lambda e: e["snapshot"], reverse=True)
 
 
 def _next_in_queue(conn, run_id: int, after: int) -> int | None:
@@ -467,13 +508,14 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
 
     # ------------------------------------------------------------- results
 
-    @pages.get("/runs/{run_id}")
-    def run_results(
+    def results_page(
         request: Request,
         run_id: int,
         verdict: str | None = None,
         system: str | None = None,
         severity: str | None = None,
+        status: int = 200,
+        export_error: report_data.ReportError | None = None,
     ):
         verdict = verdict if verdict in VERDICTS else None
         with _connect() as conn:
@@ -497,7 +539,62 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
             filters={"verdict": verdict, "system": system or "", "severity": severity or ""},
             verify=_verify(run),
             previous=previous,
+            exports=_exports(run_id),
+            export_error=export_error,
+            status=status,
         )
+
+    @pages.get("/runs/{run_id}")
+    def run_results(
+        request: Request,
+        run_id: int,
+        verdict: str | None = None,
+        system: str | None = None,
+        severity: str | None = None,
+    ):
+        return results_page(request, run_id, verdict, system, severity)
+
+    # -------------------------------------------------------------- reports (V6)
+
+    @pages.post("/runs/{run_id}/report")
+    def export_report(
+        request: Request,
+        run_id: int,
+        csrf: Annotated[str, Form()] = "",
+        report_format: Annotated[str, Form(alias="format")] = "",
+    ):
+        """Export the whole run (whatever the page's filters show) and download it."""
+        auth.check_csrf(request, csrf)
+        if report_format not in report_export.FORMATS:
+            raise HTTPException(400, "Choose HTML or PDF.")
+        try:
+            done = report_export.export(run_id, (report_format,))
+        except report_data.ReportError as e:
+            if e.code == report_data.NOT_FOUND:
+                raise HTTPException(404, f"There is no {evidence.run_name(run_id)}.")
+            return results_page(request, run_id, status=409, export_error=e)
+        except report_pdf.PdfUnavailable as e:
+            problem = report_data.ReportError("no_pdf", f"No PDF: {e}", "the HTML report works")
+            return results_page(request, run_id, status=503, export_error=problem)
+        except OSError as e:
+            problem = report_data.ReportError("not_written", f"The report can't be written: {e}")
+            return results_page(request, run_id, status=500, export_error=problem)
+        name = done.files[report_format].name
+        return RedirectResponse(f"/reports/{run_id}/{quote(name)}", status_code=303)
+
+    @pages.get("/reports/{run_id}/{name}")
+    def report_download(run_id: int, name: str):
+        path = report_file(run_id, name)
+        if path is None:
+            raise HTTPException(404, "There is no such report.")
+        response = FileResponse(
+            path,
+            media_type=REPORT_TYPES[path.suffix.lstrip(".")],
+            filename=path.name,
+            content_disposition_type="attachment",
+        )
+        response.headers["Content-Security-Policy"] = REPORT_CSP
+        return response
 
     def detail_page(request, result_id, status=200, error=None, note="", queue=False):
         with _connect() as conn:

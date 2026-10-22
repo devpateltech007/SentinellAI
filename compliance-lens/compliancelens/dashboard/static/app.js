@@ -36,8 +36,9 @@
     select.addEventListener("change", function () { select.form.submit(); });
   });
 
-  // One click, one submission (the server refuses a second one anyway).
-  document.querySelectorAll("form[method=post]").forEach(function (form) {
+  // One click, one submission (the server refuses a second one anyway). Not for report
+  // downloads: the page stays put after a download, and exporting again is harmless.
+  document.querySelectorAll("form[method=post]:not([data-download])").forEach(function (form) {
     form.addEventListener("submit", function (event) {
       if (form.dataset.sent === "1") { event.preventDefault(); return; }
       form.dataset.sent = "1";
