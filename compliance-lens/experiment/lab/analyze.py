@@ -14,6 +14,10 @@ interval, because 55 cases is a small sample.
     PASS when unclear   of the unclear pictures, how often the AI still said PASS
     consistency         cases whose repeats all gave the same verdict
 
+The repeats of a case look at the same picture, so its answers are not independent: the
+case level (V6) counts each case once, with the verdict most of its repeats gave (REVIEW
+when none has a majority), so n is the number of cases, not answers.
+
 Also: the same by rule, kind and the model's confidence; "medium → review" (what the
 numbers would be if medium-confidence answers were not trusted); wrong answers split
 into misread (the AI's `observed` value differs from the API's) and misjudged (it read
@@ -98,6 +102,15 @@ def scores(pairs: list[tuple[str, str]]) -> dict[str, Rate]:
         "review_recall": rate(lambda lab, ans: ans == REVIEW, lambda lab, ans: lab == REVIEW),
         "pass_when_unclear": rate(lambda lab, ans: ans == PASS, lambda lab, ans: lab == REVIEW),
     }
+
+
+def majority(verdicts: list[str]) -> str:
+    """The verdict more than half of a case's answers gave; REVIEW when none did (a case
+    the AI is split on would go to a person)."""
+    for value in (PASS, FAIL, REVIEW):
+        if verdicts.count(value) * 2 > len(verdicts):
+            return value
+    return REVIEW
 
 
 # ------------------------------------------------- misread or misjudged ----
@@ -288,6 +301,8 @@ def analyze(folder: Path, records: list[dict], rows: dict, expected=None) -> dic
         for r in chosen
         if truth_labels[r["case"]["id"]] != r["case"]["state"]
     ]
+    states = {r["case"]["id"]: r["case"]["state"] for r in chosen}
+    per_case = {case_id: majority(verdicts) for case_id, verdicts in sorted(given.items())}
     cost = run._cost(answers)
     paid = every + set_aside  # every attempt that reached the provider and was paid for
     return {
@@ -308,6 +323,8 @@ def analyze(folder: Path, records: list[dict], rows: dict, expected=None) -> dic
             [(by_id[a["case_id"]]["case"]["state"], AS_LABEL[a["verdict"]]) for a in answers]
         ),
         "label_vs_state": label_vs_state,  # empty for a pilot: its labels are the state
+        "case_level": scores([(truth_labels[c], verdict) for c, verdict in per_case.items()]),
+        "case_level_vs_state": scores([(states[c], verdict) for c, verdict in per_case.items()]),
         "consistency": consistency,
         "mistakes": mistakes,
         "statuses": {
@@ -398,21 +415,12 @@ def report(result: dict, agreement: dict | None = None) -> str:
             f"Labellers agreed on {agreement['agreed']} of {agreement['both_labelled']} pictures"
             f" (Cohen's κ = {agreement['kappa']:.2f})."
         )
-    overall, state = result["overall"], result["vs_state"]
-    if result["basis"] == "state":
-        measures = _table(
-            ["Measure", "AI"], [[label, overall[key].text()] for key, label in MEASURES]
-        )
-    else:
-        measures = _table(
-            ["Measure", "AI vs the labels", "AI vs the set-up state"],
-            [[label, overall[key].text(), state[key].text()] for key, label in MEASURES],
-        )
-    lines += ["", *measures]
+    lines += ["", *_measures(result, "overall", "vs_state")]
     lines += [
         "",
         f"Consistency over repeats: {result['consistency'].text()}.  "
         f"Invalid replies: {result['invalid_replies'].text()} of attempts.",
+        *_case_level(result),
         *_label_vs_state(result),
         "",
         "### By rule",
@@ -475,6 +483,33 @@ def report(result: dict, agreement: dict | None = None) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _measures(result: dict, labels_key: str, state_key: str) -> list[str]:
+    """Every measure, against the labels and (main run) against the set-up state."""
+    first, state = result[labels_key], result[state_key]
+    if result["basis"] == "state":
+        return _table(["Measure", "AI"], [[label, first[key].text()] for key, label in MEASURES])
+    return _table(
+        ["Measure", "AI vs the labels", "AI vs the set-up state"],
+        [[label, first[key].text(), state[key].text()] for key, label in MEASURES],
+    )
+
+
+def _case_level(result: dict) -> list[str]:
+    """The same measures with each case counted once (the majority of its repeats)."""
+    cases = result["case_level"]["accuracy"].n
+    return [
+        "",
+        "### Case level: each case counted once",
+        "",
+        "The repeats of a case look at the same picture, so they are not independent. Here"
+        " each case counts once, with the verdict most of its repeats gave (NEEDS REVIEW if"
+        f" none has a majority): n is {_count(cases, 'case')}, not"
+        f" {_count(result['answers'], 'answer')}.",
+        "",
+        *_measures(result, "case_level", "case_level_vs_state"),
+    ]
+
+
 def _label_vs_state(result: dict) -> list[str]:
     """A main run's cases whose final label isn't the setup's state, with every answer."""
     if result["basis"] == "state":
@@ -486,7 +521,7 @@ def _label_vs_state(result: dict) -> list[str]:
     lines += [
         "The labels say what two people saw in each picture; the set-up state is what the"
         " setup made true in the account. Every table here scores against the labels, except"
-        " the set-up state column above.",
+        " the set-up state columns above.",
         "",
     ]
     rows = [
