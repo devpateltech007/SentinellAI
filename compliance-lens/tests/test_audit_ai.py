@@ -247,8 +247,8 @@ def test_document_and_vision_rules_are_judged_by_the_ai(rules, model):
     result = verify()
     assert result.exit_code == 0, result.output
     assert (
-        "OK: 17 files match" in result.output
-    )  # rulebook + 4x2 + 2 PNG + 2 docs + 3 records + 1 input
+        "OK: 18 files match" in result.output
+    )  # rulebook + run context + 4x2 + 2 PNG + 2 docs + 3 records + 1 input
 
 
 def test_the_ai_judges_exactly_the_saved_picture(rules, model):

@@ -58,7 +58,7 @@ def unmatched_accounts(params: dict) -> dict:
         login.lower() for login in params.get("allow_github") or []
     }
 
-    aws_users = aws.iam_users({})["users"]
+    aws_users = aws.iam_users({"region": params.get("region")})["users"]
     github_members = github.org_members(params)["members"]
     return {
         "unmatched_aws": sorted(user for user in aws_users if user not in known_aws),

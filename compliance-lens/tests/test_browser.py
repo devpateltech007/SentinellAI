@@ -262,13 +262,21 @@ def test_org_param_wins_over_env(monkeypatch):
 
 
 def test_missing_org_is_a_config_error():
-    with pytest.raises(browser.ConfigError, match="GITHUB_ORG not set"):
+    with pytest.raises(browser.ConfigError, match="github.org is not set in config/settings"):
         browser.resolve_url(shot_rule("https://github.com/orgs/{org}"))
 
 
-def test_missing_value_is_a_config_error():
-    with pytest.raises(browser.ConfigError, match="no value for {repo}"):
+def test_a_missing_setting_names_the_setting():
+    # V6: these placeholders come from config/settings.yaml, so the reason names the setting.
+    with pytest.raises(browser.ConfigError, match="github.repo is not set in config/settings"):
         browser.resolve_url(shot_rule("https://github.com/{repo}", {"repo": ""}))
+    with pytest.raises(browser.ConfigError, match="aws.screenshot_bucket is not set"):
+        browser.resolve_url(shot_rule("https://github.com/{bucket}"))
+
+
+def test_missing_value_is_a_config_error():
+    with pytest.raises(browser.ConfigError, match="no value for {page}"):
+        browser.resolve_url(shot_rule("https://github.com/{page}"))
 
 
 def test_template_cannot_reach_python_objects():
@@ -491,7 +499,7 @@ def test_unknown_site_is_a_config_error(no_chromium):
 def test_missing_org_is_reported_not_raised(no_chromium):
     [result] = capture(github_rule("https://github.com/orgs/{org}/people"))
     assert result.status == browser.CONFIG_ERROR
-    assert "GITHUB_ORG not set" in result.reason
+    assert "github.org is not set" in result.reason
 
 
 def test_disallowed_url_is_a_config_error(no_chromium):
@@ -939,7 +947,7 @@ def test_audit_saves_stamped_screenshots_that_verify(logged_in, server, tmp_path
 
     _, report = runner.verify(summary.name)
     assert report.ok, report.problems
-    assert report.files_checked == 6  # rulebook + 2 JSON + 2 meta + 1 PNG
+    assert report.files_checked == 7  # rulebook + run context + 2 JSON + 2 meta + 1 PNG
     png.write_bytes(png.read_bytes() + b"x")
     _, report = runner.verify(summary.name)
     assert not report.ok

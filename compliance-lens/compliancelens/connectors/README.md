@@ -144,7 +144,7 @@ column can start loading after the `wait_for` element appeared. Still loading af
 | `access_denied` | HTTP 401/403/404, or "you don't have permission" | Check the account's role and the URL |
 | `navigation_error` | The page didn't load, gave HTTP 5xx, or left the site | Check the URL; try again |
 | `selector_timeout` | `wait_for` or a step's element never appeared | The page changed: update the rule card |
-| `config_error` | The URL can't be built (e.g. `GITHUB_ORG` missing) or isn't allowed | Fix `.env` or the rule card |
+| `config_error` | The URL can't be built (e.g. `github.repo` not set) or isn't allowed | Fix `config/settings.yaml` or the rule card |
 | `capture_error` | Chromium missing or crashed, or the picture can't be used | `python -m playwright install chromium` |
 
 A sign-in page, an MFA prompt or an error page is never saved as proof. Every status has

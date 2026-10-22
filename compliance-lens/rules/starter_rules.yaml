@@ -1,4 +1,4 @@
-# ComplianceLens rulebook (V4): 19 rules across AWS, GitHub, the HR list and policy documents.
+# ComplianceLens rulebook (V4; targets in the settings since V6): 19 rules across AWS, GitHub, the HR list and policy documents.
 # How to write a rule card: see rules/README.md.
 #
 # Who judges (V4): 14 rules are judged by code from API data; GH-06 and GH-07 by the AI
@@ -9,12 +9,15 @@
 # Each rule can be broken and fixed on purpose (or, where that is unsafe, is
 # tested with fake data): see scripts/README.md.
 #
-# GH-05, GH-06, GH-07 and HR-01 read the GitHub organization from GITHUB_ORG in .env.
+# What to audit comes from config/settings.yaml (V6; copy config/settings.example.yaml):
+# the GitHub organization, repository and branch, the AWS region, the screenshot targets
+# and the HR list. A setting fills only what a card leaves out, so a card may still name
+# its own value (see rules/README.md). Nothing account-specific is written here.
 #
 # V3 screenshots: every rule with a web page has a `screenshot:` block. The API data
-# stays the proof; the screenshot is for people. {region} comes from AWS_DEFAULT_REGION
-# and {org} from GITHUB_ORG. Log in once with `python audit.py login aws` / `github`.
-# The locators were written before the first live run: fix them if a page changed.
+# stays the proof; the screenshot is for people. {region}, {org}, {repo}, {rule} (the
+# classic branch protection rule's number) and {bucket} come from the settings. Log in
+# once with `python audit.py login aws` / `github`. If a page changed, fix its locators.
 
 # --- AWS -------------------------------------------------------------------
 
@@ -101,10 +104,9 @@
   collector: aws.s3_public_access
   params: {}
   check: { field: buckets_fully_blocked, op: all_true }
-  screenshot:   # the test bucket only; the API checks every bucket
+  screenshot:   # aws.screenshot_bucket only (a test bucket); the API checks every bucket
     site: aws
     url: "https://{region}.console.aws.amazon.com/s3/buckets/{bucket}?region={region}&tab=permissions"
-    vars: { bucket: compliancelens-test-sjsu-2026 }
     wait_for: { text: "Individual Block Public Access settings for this bucket" }   # On/Off has loaded
     mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
       - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
@@ -122,10 +124,9 @@
   collector: aws.s3_versioning
   params: {}
   check: { field: versioning_enabled, op: all_true }
-  screenshot:   # the test bucket only; the API checks every bucket
+  screenshot:   # aws.screenshot_bucket only (a test bucket); the API checks every bucket
     site: aws
     url: "https://{region}.console.aws.amazon.com/s3/buckets/{bucket}?region={region}&tab=properties"
-    vars: { bucket: compliancelens-test-sjsu-2026 }
     wait_for: { text: "Bucket Versioning" }
     steps:
       - scroll_to: { text: "Bucket Versioning" }
@@ -174,12 +175,11 @@
   framework_ref: CIS GitHub 1.1.3
   severity: high
   collector: github.branch_protection
-  params: { repo: "compliancelens-lab-sjsu/compliancelens-test", branch: main }
+  params: {}   # repository and branch: config/settings.yaml
   check: { field: required_approving_review_count, op: ">=", value: 1 }
-  screenshot:   # the classic rule for main; its number is in the rule's Edit link
+  screenshot:   # the classic rule for the branch: github.protection_rule_id in the settings
     site: github
     url: "https://github.com/{repo}/settings/branch_protection_rules/{rule}"
-    vars: { rule: 84086322 }
     wait_for: { text: "Require a pull request before merging" }
     capture: { full_page: true }
     mask:
@@ -194,12 +194,11 @@
   title: Force pushes to main are blocked
   severity: high
   collector: github.force_push_protection
-  params: { repo: "compliancelens-lab-sjsu/compliancelens-test", branch: main }
+  params: {}   # repository and branch: config/settings.yaml
   check: { field: allow_force_pushes, op: "==", value: false }
-  screenshot:   # the classic rule for main; its number is in the rule's Edit link
+  screenshot:   # the classic rule for the branch: github.protection_rule_id in the settings
     site: github
     url: "https://github.com/{repo}/settings/branch_protection_rules/{rule}"
-    vars: { rule: 84086322 }
     wait_for: { text: "Require a pull request before merging" }
     capture: { full_page: true }
     mask:
@@ -209,7 +208,7 @@
   title: Secret scanning is enabled
   severity: medium
   collector: github.secret_scanning
-  params: { repo: "compliancelens-lab-sjsu/compliancelens-test" }
+  params: {}   # repository: config/settings.yaml
   check: { field: secret_scanning, op: in, value: [enabled] }
   screenshot:
     site: github
@@ -223,7 +222,7 @@
   title: Dependabot alerts are enabled
   severity: medium
   collector: github.dependabot_alerts
-  params: { repo: "compliancelens-lab-sjsu/compliancelens-test" }
+  params: {}   # repository: config/settings.yaml
   check: { field: dependabot_alerts, op: "==", value: true }
   screenshot:
     site: github
@@ -293,10 +292,7 @@
   framework_ref: SOC 2 CC6.2
   severity: high
   collector: hr.unmatched_accounts
-  params:
-    employees_file: data/employees.csv
-    allow_aws: [compliancelens-audit]   # service accounts with no employee
-    allow_github: []
+  params: {}   # the employee list and the service accounts: hr in config/settings.yaml
   check: { custom: no_unmatched_accounts }
 
 # --- Policy documents (V4) ----------------------------------------------------

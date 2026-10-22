@@ -6,9 +6,11 @@ picture is taken (`view`: a research browser profile, or the audit's own when
 empty) and its kind: plain, or a hard case (dark theme, small text, below the fold,
 covered, a prompt injection, or a deliberately unclear picture).
 
-The rules are the rulebook's own cards, so the AI gets exactly the wording an audit
-uses. Two changes, for the experiment only: GH-06 is also judged by code (from
-github.org_settings), and AWS-05 is judged on the one bucket its picture shows.
+The rules are the rulebook's own cards, with config/settings.yaml applied as an audit
+applies it (V6: the repository, organization, region and screenshot targets), so the AI
+gets exactly the wording an audit uses. Two changes, for the experiment only: GH-06 is
+also judged by code (from github.org_settings), and AWS-05 is judged on the one bucket
+its picture shows.
 """
 
 import copy
@@ -19,7 +21,7 @@ from pathlib import Path
 
 import yaml
 
-from compliancelens import engine
+from compliancelens import config, engine
 from compliancelens.cli import RULES_FILE
 from compliancelens.connectors import browser
 from experiment.lab import EXPERIMENT_DIR, world
@@ -181,10 +183,17 @@ def select(found: list[Case], rule_ids=None, case_ids=None, pilot: bool = False)
 # ------------------------------------------------------------------- rules ----
 
 
-def experiment_rules(path: Path = RULES_FILE) -> dict[str, dict]:
-    """The five rules, from the rulebook, ready to be judged by code and by the AI."""
+def experiment_rules(
+    path: Path = RULES_FILE, context: config.RunContext | None = None
+) -> dict[str, dict]:
+    """The five rules, from the rulebook with the settings applied, ready to be judged by
+    code and by the AI. `context` is the resolved settings (resolved here if None)."""
     try:
-        rules = {rule["id"]: rule for rule in engine.load_rules(path)}
+        context = context if context is not None else config.resolve()
+    except config.SettingsError as e:
+        raise CasesError([f"config/settings.yaml: {problem}" for problem in e.problems])
+    try:
+        rules = {rule["id"]: rule for rule in config.apply(engine.load_rules(path), context)}
     except (OSError, ValueError) as e:
         raise CasesError([f"can't read the rulebook: {e}"])
     missing = [rule_id for rule_id in RULE_IDS if rule_id not in rules]

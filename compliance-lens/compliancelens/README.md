@@ -9,7 +9,7 @@ names can't contain one.) `../audit.py` just starts `cli.main()`.
 | `cli.py` | V2 | The commands (`run`, `history`, `verify`, `login`) and what they print |
 | `runner.py` | V2 | Runs an audit and saves it (files, screenshots, database); verifies a saved run |
 | `engine.py` | V1 | Loads and checks rules (V4: rule kinds, `ai_check`), calls collectors, applies checks, builds verdicts |
-| `config.py` | V5 | `config/settings.yaml`: which rules are turned off for future audits |
+| `config.py` | V5, V6 | `config/settings.yaml`: what audits check (resolved once per audit, applied to the rules); `config/disabled_rules.yaml`: which rules are turned off |
 | `run_options.py` | V5 | One set of run choices for the CLI and the dashboard (AI, screenshots, rules), checked the same way; starts the run |
 | `locking.py` | V5 | One audit at a time: the lock shared by audits, the dashboard and the experiment's capture |
 | `queries.py` | V5 | What the database says, ready to show: machine and effective verdicts, run states (incl. interrupted), the review queue, run comparison |

@@ -23,7 +23,7 @@ Then edit `data/employees.csv` to match your test accounts. Columns:
 | `github_login` | Their GitHub login (blank if none) |
 
 Service accounts with no employee, like the tool's own `compliancelens-audit`, are
-listed in HR-01's `allow_aws` / `allow_github` params in `rules/starter_rules.yaml`.
+listed under `hr: allow_aws` / `allow_github` in `config/settings.yaml` (V6).
 Put your own GitHub login in the CSV (or in `allow_github`) so the org owner matches.
 
 **Break and fix:** set `intern-bob`'s status to `terminated` → HR-01 FAIL; back to

@@ -626,7 +626,7 @@ An AI-written executive summary is optional. If you add it, label it as AI-gener
 - [ ] Unit tests for every operator and connector (mocked)
 - [ ] Golden-file test: a fixed evidence folder always produces the same report
 - [ ] Tamper test: an edited evidence file fails verify
-- [ ] AI safety tests: invalid JSON, UNSURE, injected text all become NEEDS REVIEW
+- [ ] AI safety tests: invalid JSON and UNSURE become NEEDS REVIEW; injected text never decides the verdict (a clearly non-compliant injection sample may correctly be FAIL)
 - [ ] One end-to-end run against the real test accounts
 - [ ] Test coverage above 70%
 
@@ -639,6 +639,8 @@ An AI-written executive summary is optional. If you add it, label it as AI-gener
 - [ ] Rehearse the demo script twice, with a recorded backup video
 
 **Done when:** a stranger can clone the repo, follow the README, run an audit and get a PDF report.
+
+**V6 decisions (Oct 21, 2026):** targets (company, GitHub organization/repository/branch, AWS region, screenshot bucket, HR list) move to a hand-written `config/settings.yaml`, and the Rules page writes its own `config/disabled_rules.yaml`; each run saves `run-context.json` (the settings and rules it used) in its evidence folder, so a report never rebuilds an old audit from today's settings. A report is built from one saved review snapshot and never overwrites an earlier export; anything an older run did not save shows as "not recorded". Of the V2 live break-and-fix checks, only GH-04 is done live (GitHub's real "disabled" message); the others' FAIL states are proven by the automated tests. The committed sample report comes from a made-up audit, never from the real accounts. Details: `Project Progress.md`, V6 D1–D13.
 
 ## Version 7: Final presentation and stretch goals (week 15)
 
@@ -708,7 +710,7 @@ Most tests run offline against fake or recorded data, so they are fast, free and
 | Recorded API | GitHub responses saved as JSON fixtures | pytest fixtures / responses | V1 |
 | Integrity | Edited evidence fails verify | pytest | V2 |
 | Screenshot | Capture works on a local test HTML page | Playwright | V3 |
-| AI safety | Bad JSON, UNSURE, low confidence, injected text all become NEEDS REVIEW | pytest with a fake AI client | V4 |
+| AI safety | Bad JSON, UNSURE and low confidence become NEEDS REVIEW; injected text never decides the verdict | pytest with a fake AI client | V4 |
 | Golden report | Same evidence always renders the same report | pytest | V6 |
 | End to end | One real run against the test accounts | manual + script | V6 |
 

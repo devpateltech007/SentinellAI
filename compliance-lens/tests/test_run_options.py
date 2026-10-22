@@ -104,7 +104,22 @@ def test_a_broken_settings_file_stops_the_run(temp_storage):
     with pytest.raises(run_options.OptionsError) as e:
         run_options.prepare(use_ai=False)
     assert e.value.code == run_options.SETTINGS_FILE
-    assert run_options.prepare(["AWS-01"], use_ai=False).rule_ids == ["AWS-01"]  # not read
+    assert e.value.problems == ["settings.yaml: nope: unknown setting"]
+    with pytest.raises(run_options.OptionsError):  # V6: named rules need the targets too
+        run_options.prepare(["AWS-01"], use_ai=False)
+
+
+def test_the_settings_are_resolved_once(temp_storage, monkeypatch):
+    calls = []
+    real = config.resolve
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(config, "resolve", counting)
+    options = run_options.prepare(use_ai=False)
+    assert len(calls) == 1 and options.context.get("aws.region") == "us-east-1"
 
 
 # --- choosing rules -----------------------------------------------------------------
@@ -126,7 +141,8 @@ def test_rules_turned_off_are_left_out_and_named(rules):
     result = invoke("run", "--rules-file", rules, "--no-ai")
     assert result.exit_code == 0, result.output
     assert "AWS-02" not in result.output.split("Turned off")[0]
-    assert "Turned off in " in result.output and "settings.yaml (not run): AWS-02." in result.output
+    assert "Turned off in " in result.output
+    assert "disabled_rules.yaml (not run): AWS-02." in result.output
     assert "Partial run (2 rule(s))" in result.output
     run = stored_run()
     assert (run["scope"], json.loads(run["rule_ids"]), run["rules_total"]) == (

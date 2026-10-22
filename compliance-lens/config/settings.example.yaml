@@ -1,0 +1,30 @@
+# ComplianceLens settings: what an audit checks (V6). No secrets here: tokens, keys and
+# passwords stay in .env, browser logins in sessions/.
+#
+#   cp config/settings.example.yaml config/settings.yaml    then fill in your own values
+#   python audit.py settings                                 shows what an audit will use
+#
+# config/settings.yaml is gitignored and only you edit it: the tool never rewrites it.
+# Each audit saves the values it used with its evidence (run-context.json), so changing
+# them later never changes an older audit or its report. See config/README.md.
+
+company: Example Labs              # shown on the report's cover
+
+github:
+  org: your-org                    # the organization (GH-05 to GH-07, HR-01)
+  repo: your-repo                  # the repository's name only (GH-01 to GH-04)
+  branch: main
+  # Optional: the number in the classic branch protection rule's Edit link
+  # (Settings > Branches > Edit: .../settings/branch_protection_rules/<number>).
+  # Only the GH-01/GH-02 screenshots need it.
+  protection_rule_id: 12345678
+
+aws:
+  region: us-east-1                # used by the API checks and the console screenshots alike
+  # Optional: the one bucket the AWS-05/AWS-06 screenshots show (the API checks every bucket).
+  screenshot_bucket: your-test-bucket
+
+hr:
+  employees_file: data/employees.csv   # copy data/employees.example.csv
+  allow_aws: [compliancelens-audit]    # service accounts that belong to no employee
+  allow_github: []

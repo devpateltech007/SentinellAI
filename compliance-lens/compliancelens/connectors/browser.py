@@ -48,7 +48,7 @@ AUTH_CHALLENGE = "auth_challenge"  # MFA, "Confirm access", CAPTCHA
 ACCESS_DENIED = "access_denied"  # logged in, but not allowed to see the page
 NAVIGATION_ERROR = "navigation_error"  # the page did not load, or left the site
 SELECTOR_TIMEOUT = "selector_timeout"  # the evidence never appeared (page changed?)
-CONFIG_ERROR = "config_error"  # e.g. GITHUB_ORG missing for the URL
+CONFIG_ERROR = "config_error"  # e.g. a setting the URL needs is not set
 CAPTURE_ERROR = "capture_error"  # Chromium missing or crashed, unusable image
 STATUSES = (
     CAPTURED,
@@ -122,7 +122,7 @@ class LoginError(RuntimeError):
 
 
 class ConfigError(ValueError):
-    """A screenshot URL can't be built (e.g. GITHUB_ORG is not set)."""
+    """A screenshot URL can't be built (e.g. a setting it needs is not set)."""
 
 
 # ------------------------------------------------------------------ sites ----
@@ -246,7 +246,16 @@ def save_session(site_name: str, state: dict) -> Path:
 # ------------------------------------------------------------------- URLs ----
 
 PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
-# Placeholders that come from .env when the rule's params don't set them.
+# Placeholders that config/settings.yaml fills in (V6, config.apply) when the rule card
+# doesn't: a missing one only costs that screenshot (config_error), naming the setting.
+SETTINGS_PLACEHOLDERS = {
+    "org": "github.org",
+    "region": "aws.region",
+    "repo": "github.repo",
+    "rule": "github.protection_rule_id",
+    "bucket": "aws.screenshot_bucket",
+}
+# Older direct callers (no settings applied): these still come from .env.
 ENV_PLACEHOLDERS = {"org": "GITHUB_ORG", "region": "AWS_DEFAULT_REGION"}
 DEFAULT_VALUES = {"region": "us-east-1"}
 
@@ -270,7 +279,11 @@ def _value(rule: dict, name: str) -> str:
         value = os.environ.get(ENV_PLACEHOLDERS[name], "").strip() or DEFAULT_VALUES.get(name)
         if value:
             return value
-        raise ConfigError(f"{ENV_PLACEHOLDERS[name]} not set (needed for the screenshot URL)")
+    if name in SETTINGS_PLACEHOLDERS:
+        raise ConfigError(
+            f"{SETTINGS_PLACEHOLDERS[name]} is not set in config/settings.yaml"
+            " (needed for the screenshot URL)"
+        )
     raise ConfigError(f"no value for {{{name}}} in the screenshot URL")
 
 
@@ -414,7 +427,7 @@ def screenshot_problems(rule: dict) -> list[str]:
         problems.append("needs a url")
     else:
         params = rule.get("params") if isinstance(rule.get("params"), dict) else {}
-        known = set(variables) | set(params) | set(ENV_PLACEHOLDERS)
+        known = set(variables) | set(params) | set(SETTINGS_PLACEHOLDERS)
         for name in PLACEHOLDER.findall(url):
             if name not in known:
                 problems.append(f"no value for {{{name}}} (add it to params or screenshot.vars)")

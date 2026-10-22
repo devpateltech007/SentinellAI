@@ -115,11 +115,22 @@ def _get_all(url: str, params: dict | None = None) -> list:
 
 
 def _org(params: dict) -> str:
-    """The organization from the rule's params, or GITHUB_ORG in .env."""
+    """The organization from the rule's params (config/settings.yaml fills it in), or
+    GITHUB_ORG in .env for older direct callers."""
     org = params.get("org") or os.environ.get("GITHUB_ORG", "").strip()
     if not org:
-        raise RuntimeError("GitHub organization not set (add GITHUB_ORG to .env)")
+        raise RuntimeError("GitHub organization not set (set github.org in config/settings.yaml)")
     return org
+
+
+def _repo(params: dict) -> str:
+    """The repository's full name, organization/name, from the rule's params."""
+    repo = params.get("repo")
+    if not repo:
+        raise RuntimeError(
+            "GitHub repository not set (set github.org and github.repo in config/settings.yaml)"
+        )
+    return repo
 
 
 # -------------------------------------------------------- repository ----
@@ -130,7 +141,7 @@ def _branch_protection(params: dict) -> dict | None:
 
     Rulesets are a separate GitHub feature and are not visible here.
     """
-    url = f"{API}/repos/{params['repo']}/branches/{params['branch']}/protection"
+    url = f"{API}/repos/{_repo(params)}/branches/{params['branch']}/protection"
     response = _get(url)
     if response.status_code == 404 and _message(response) == "Branch not protected":
         return None
@@ -160,7 +171,7 @@ def secret_scanning(params: dict) -> dict:
     GitHub only shows these settings to callers with admin access, so a missing
     block means "can't see", which is an error, not a FAIL.
     """
-    response = _get(f"{API}/repos/{params['repo']}")
+    response = _get(f"{API}/repos/{_repo(params)}")
     response.raise_for_status()
     settings = response.json().get("security_and_analysis")
     if not isinstance(settings, dict):
@@ -183,7 +194,7 @@ def dependabot_alerts(params: dict) -> dict:
     A 404 can also mean a wrong repo or no access, so only GitHub's exact
     "disabled" message counts as off; anything else is an error.
     """
-    response = _get(f"{API}/repos/{params['repo']}/vulnerability-alerts")
+    response = _get(f"{API}/repos/{_repo(params)}/vulnerability-alerts")
     if response.status_code == 204:
         return {"dependabot_alerts": True}
     if response.status_code == 404 and _message(response) == DEPENDABOT_DISABLED:

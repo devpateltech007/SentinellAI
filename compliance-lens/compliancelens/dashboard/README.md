@@ -20,7 +20,7 @@ failures, look at the evidence and settle the uncertain results.
 | Rule detail | `/results/<id>` | The collected data, screenshot, policy document text, the AI's answer (model, quote, cache, cost), hashes and `verify`, the rule as that run read it, every review and the review form. |
 | Review queue | `/queue` | The results of a run still NEEDS REVIEW; work through them one by one. |
 | Compare | `/compare` | Two runs side by side, by rule ID: changed, same, not run; notes when a comparison is weaker (partial or unfinished run, changed rulebook). |
-| Rules | `/rules` | The rulebook, read-only, by system; turn rules on or off for future audits (`config/settings.yaml`). |
+| Rules | `/rules` | The rulebook, read-only, by system; turn rules on or off for future audits (`config/disabled_rules.yaml`). |
 
 ## How it behaves
 

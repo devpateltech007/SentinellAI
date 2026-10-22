@@ -228,8 +228,8 @@ Rename one file in the folder: only that rule becomes NEEDS REVIEW ("not found")
 | Do this | Expected reason |
 | --- | --- |
 | Remove `GITHUB_TOKEN` from `.env` | GH-01 to GH-05: `GITHUB_TOKEN not set`; HR-01 too |
-| Remove `GITHUB_ORG` from `.env` | GH-05 and HR-01: `GitHub organization not set` |
-| Put a wrong repo name in `rules/starter_rules.yaml` | `404 ... Not Found` |
+| Remove `github.org` from `config/settings.yaml` (and `GITHUB_ORG` from `.env`) | GH-05 and HR-01: `GitHub organization not set` |
+| Put a wrong repository name in `config/settings.yaml` | `404 ... Not Found` |
 | Set `AWS_PROFILE` to a profile that doesn't exist | `config profile ... could not be found` |
 | Run `aws logout --profile compliancelens` | AWS rules: a login/credentials error |
 | Rename `data/employees.csv` | HR-01: `employee list not found` |

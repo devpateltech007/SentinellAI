@@ -255,6 +255,30 @@ def test_the_trend_marks_a_changed_rulebook(admin, rules):
     assert admin.get("/").text.count("rulebook changed") == 1
 
 
+def test_changed_settings_are_marked(admin, rules):
+    # V6: same rulebook, another organization: the trend and the comparison say so.
+    rules.write_text(RULES.replace("https://github.com/orgs/a", "https://github.com/orgs/{org}"))
+    settings_file = config.settings_path()
+    settings_file.parent.mkdir(parents=True)
+    settings_file.write_text("github: {org: one}\n")
+    audit(rules)
+    settings_file.write_text("github: {org: two}\n")
+    audit(rules)
+    audit(rules)
+    home = admin.get("/").text
+    assert home.count("settings changed") == 1 and "rulebook changed" not in home
+    assert "the settings changed between the two runs" in admin.get("/compare?a=1&b=2").text
+    assert "the settings changed" not in admin.get("/compare?a=2&b=3").text
+    run_folder = next(evidence.evidence_root().glob("*/run-0001"))
+    (run_folder / evidence.RUN_CONTEXT).unlink()  # unknown for a run without one
+    assert "the settings changed" not in admin.get("/compare?a=1&b=2").text
+    rules.write_text(rules.read_text().replace("value: 12", "value: 10"))
+    settings_file.write_text("github: {org: three}\n")
+    audit(rules)
+    compared = admin.get("/compare?a=3&b=4").text
+    assert "the rulebook changed" in compared and "the settings changed" not in compared
+
+
 def test_history_pages_and_compares(admin, rules):
     for _ in range(dashboard.PAGE_SIZE + 2):
         runner.run_audit(rules, ["AWS-01"], screenshots=False)
@@ -588,10 +612,10 @@ def test_a_broken_settings_file_or_rulebook_is_shown(admin, rules):
     path = config.settings_path()
     path.parent.mkdir(parents=True)
     path.write_text("nope: 1\n")
-    assert "unknown setting(s) nope" in admin.get("/rules").text
+    assert "nope: unknown setting" in admin.get("/rules").text
     response = post(admin, "/rules/AWS-01", {}, "/rules")
     assert response.status_code == 400 and "unknown setting" in response.text
-    assert "config/settings.yaml has a problem" in admin.get("/run").text
+    assert "The settings have a problem" in admin.get("/run").text
     rules.write_text("- {id: X}\n")
     assert "The rulebook has problems" in admin.get("/rules").text
 
@@ -651,7 +675,8 @@ def test_no_second_audit_while_one_runs(admin, no_sleep):
 
 def test_the_page_shows_what_is_missing(admin):
     page = admin.get("/run").text
-    assert "Missing · GitHub:" in page and "GITHUB_TOKEN and GITHUB_ORG not set" in page
+    assert "Missing · GitHub:" in page and "GITHUB_TOKEN not set" in page
+    assert "Missing · Settings:" in page and "github.org and github.repo not set" in page
     assert "python audit.py login github" in page
 
 

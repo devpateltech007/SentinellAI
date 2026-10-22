@@ -180,6 +180,14 @@ def test_rules_need_a_screenshot_and_an_ai_check(tmp_path, monkeypatch):
         cases.experiment_rules()
 
 
+def test_the_rules_need_usable_settings(temp_storage):
+    path = temp_storage / "config" / "settings.yaml"
+    path.parent.mkdir()
+    path.write_text("nope: 1\n")
+    with pytest.raises(cases.CasesError, match="config/settings.yaml: settings.yaml: nope"):
+        cases.experiment_rules()
+
+
 def test_aws05_pictures_and_judges_only_the_case_bucket():
     rules = cases.experiment_rules()
     case = cases.Case(id="x", rule="AWS-05", state="FAIL", kind="plain", setup={})
@@ -188,7 +196,7 @@ def test_aws05_pictures_and_judges_only_the_case_bucket():
     assert browser.resolve_url(rule).startswith(
         "https://us-east-1.console.aws.amazon.com/s3/buckets/clx-b-1"
     )
-    assert rules["AWS-05"]["screenshot"]["vars"]["bucket"] != "clx-b-1"  # a copy
+    assert rules["AWS-05"]["screenshot"].get("vars", {}).get("bucket") != "clx-b-1"  # a copy
     data = {
         "bucket_flags": {"clx-b-1": {"BlockPublicAcls": False}, "other": {"BlockPublicAcls": True}},
         "buckets_fully_blocked": {"clx-b-1": False, "other": True},

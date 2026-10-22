@@ -8,6 +8,8 @@
         DOC-01.ai.json     V4: the AI check: decision, settings and every attempt
         GH-06.ai-input.png V4: the exact picture the AI was sent
         AWS-01.crosscheck.json  V4 (--cross-check): the AI's reading of a code rule's screenshot
+        rulebook.yaml      V5: the exact rulebook the run read
+        run-context.json   V6: the settings and the rules as the run used them, what it audited
         manifest.json      every file of the run with its sha256
 
 Every hash is the SHA-256 of the exact bytes written to disk. The manifest's own
@@ -41,6 +43,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ENV_VAR = "COMPLIANCELENS_EVIDENCE_DIR"
 MANIFEST = "manifest.json"
 RULEBOOK = "rulebook.yaml"  # V5: the exact rulebook a run read
+RUN_CONTEXT = "run-context.json"  # V6: the settings and effective rules a run used
 MANIFEST_VERSION = 1
 # Files the operating system drops into folders by itself; verify ignores them.
 IGNORED_FILES = {".DS_Store", "Thumbs.db", "desktop.ini"}
@@ -263,6 +266,21 @@ def write_manifest(run_dir: Path, run_info: dict, files: list[dict]) -> str:
     data = to_json_bytes(manifest)
     write_atomic(run_dir / MANIFEST, data)
     return sha256_bytes(data)
+
+
+def read_listed(run_dir: Path, manifest_sha256: str, name: str) -> bytes | None:
+    """One file of a run, only if it is exactly the file its manifest lists, and the
+    manifest is the one whose hash the database recorded; else None (missing, changed,
+    not listed). For reading a run file without a full `verify`."""
+    try:
+        manifest = (Path(run_dir) / MANIFEST).read_bytes()
+        if sha256_bytes(manifest) != manifest_sha256:
+            return None
+        listed = _manifest_files(manifest).get(name)
+        data = (Path(run_dir) / name).read_bytes() if listed else None
+    except (OSError, ValueError, AttributeError):
+        return None
+    return data if data is not None and sha256_bytes(data) == listed else None
 
 
 # ----------------------------------------------------------- verifying ----

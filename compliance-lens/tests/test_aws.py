@@ -5,6 +5,7 @@ page of users), so those use botocore's Stubber or a recorded credential report.
 """
 
 import datetime
+import types
 from pathlib import Path
 
 import boto3
@@ -147,7 +148,7 @@ def test_users_are_read_across_pages(monkeypatch):
     stub.add_response(
         "list_users", {"Users": users(["u100", "u101"]), "IsTruncated": False}, {"Marker": "m1"}
     )
-    monkeypatch.setattr(aws, "_iam", lambda: client)
+    monkeypatch.setattr(aws, "_iam", lambda params=None: client)
     with stub:
         assert aws.iam_users({})["count"] == 102
 
@@ -166,7 +167,7 @@ def test_root_with_mfa_passes(monkeypatch):
         "get_account_summary",
         {"SummaryMap": {"AccountMFAEnabled": 1, "AccountAccessKeysPresent": 0}},
     )
-    monkeypatch.setattr(aws, "_iam", lambda: client)
+    monkeypatch.setattr(aws, "_iam", lambda params=None: client)
     with stub:
         r = run(
             "AWS-03", "aws.root_account_mfa", {"field": "AccountMFAEnabled", "op": "==", "value": 1}
@@ -177,7 +178,7 @@ def test_root_with_mfa_passes(monkeypatch):
 def test_root_mfa_missing_from_summary_needs_review(monkeypatch):
     client, stub = stubbed("iam")
     stub.add_response("get_account_summary", {"SummaryMap": {}})
-    monkeypatch.setattr(aws, "_iam", lambda: client)
+    monkeypatch.setattr(aws, "_iam", lambda params=None: client)
     with stub:
         r = run(
             "AWS-03", "aws.root_account_mfa", {"field": "AccountMFAEnabled", "op": "==", "value": 1}
@@ -188,7 +189,7 @@ def test_root_mfa_missing_from_summary_needs_review(monkeypatch):
 def test_permission_error_needs_review(monkeypatch):
     client, stub = stubbed("iam")
     stub.add_client_error("get_account_summary", "AccessDenied", "not allowed")
-    monkeypatch.setattr(aws, "_iam", lambda: client)
+    monkeypatch.setattr(aws, "_iam", lambda params=None: client)
     with stub:
         r = run(
             "AWS-03", "aws.root_account_mfa", {"field": "AccountMFAEnabled", "op": "==", "value": 1}
@@ -284,18 +285,18 @@ def test_account_level_not_set_counts_as_off(s3):
 
 
 def test_account_level_error_is_recorded_not_raised(monkeypatch):
-    def denied(service):
+    def denied(service, params=None):
         raise ClientError({"Error": {"Code": "AccessDenied", "Message": "no"}}, "GetCallerIdentity")
 
     monkeypatch.setattr(aws, "_client", denied)
-    assert "AccessDenied" in aws._account_public_access_block()["error"]
+    assert "AccessDenied" in aws._account_public_access_block({})["error"]
 
 
 def test_bucket_error_is_raised(monkeypatch):
     client, stub = stubbed("s3")
     stub.add_response("list_buckets", {"Buckets": [{"Name": "some-bucket"}]})
     stub.add_client_error("get_public_access_block", "AccessDenied", "no")
-    monkeypatch.setattr(aws, "_client", lambda service: client)
+    monkeypatch.setattr(aws, "_client", lambda service, params=None: client)
     with stub, pytest.raises(ClientError):
         aws.s3_public_access({})
 
@@ -374,11 +375,10 @@ def test_trail_logging(cloudtrail):
     assert result["trails"][0]["multi_region"] is True
 
 
-def test_trail_from_another_region_is_seen(cloudtrail, monkeypatch):
+def test_trail_from_another_region_is_seen(cloudtrail):
     cloudtrail.create_trail(Name="main", S3BucketName="trail-logs", IsMultiRegionTrail=True)
     cloudtrail.start_logging(Name="main")
-    monkeypatch.setenv("AWS_DEFAULT_REGION", "eu-west-1")
-    assert aws.cloudtrail_logging({})["logging_trails"] == ["main"]
+    assert aws.cloudtrail_logging({"region": "eu-west-1"})["logging_trails"] == ["main"]
 
 
 def test_cloudtrail_verdicts(cloudtrail):
@@ -455,7 +455,7 @@ def test_report_that_never_finishes_needs_review(monkeypatch, no_sleep):
         def generate_credential_report(self):
             return {"State": "INPROGRESS"}
 
-    monkeypatch.setattr(aws, "_iam", SlowIam)
+    monkeypatch.setattr(aws, "_iam", lambda params=None: SlowIam())
     r = run("AWS-08", "aws.unused_users", {"field": "count", "op": "==", "value": 0})
     assert r["verdict"] == "NEEDS REVIEW"
     assert "not ready" in r["reason"]
@@ -469,3 +469,31 @@ def test_clients_retry_throttling(iam):
     retries = aws._iam().meta.config.retries
     assert retries["mode"] == "standard"
     assert retries["total_max_attempts"] == 5
+
+
+def test_the_region_comes_from_the_params(monkeypatch):
+    # V6: config/settings.yaml puts the region in every AWS rule's params, so the API
+    # checks use the same region as the screenshots, whatever boto3 would pick itself.
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "us-east-1")
+    assert aws._client("cloudtrail", {"region": "eu-west-2"}).meta.region_name == "eu-west-2"
+    assert aws._client("cloudtrail", {}).meta.region_name == "us-east-1"
+    assert aws._iam({"region": "ap-south-1"}).meta.config.retries["total_max_attempts"] == 5
+
+
+def test_caller_identity_is_masked(iam):
+    found = aws.caller_identity({"region": "us-east-1"})
+    assert found["account"] == "********" + "123456789012"[-4:]
+    assert found["identity"] and "123456789012" not in found["identity"]
+
+
+def test_caller_identity_masks_account_ids(monkeypatch):
+    replies = iter(
+        [
+            {"Account": "", "Arn": "arn:aws:sts::111122223333:assumed-role/r/111122223333"},
+            {"Account": "111122223333", "Arn": "odd"},
+        ]
+    )
+    sts = types.SimpleNamespace(get_caller_identity=lambda: next(replies))
+    monkeypatch.setattr(aws, "_client", lambda service, params=None: sts)
+    assert aws.caller_identity({}) == {"account": None, "identity": "assumed-role/r/************"}
+    assert aws.caller_identity({}) == {"account": "********3333", "identity": None}

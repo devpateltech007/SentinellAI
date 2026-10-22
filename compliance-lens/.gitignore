@@ -47,8 +47,10 @@ experiment/data/
 *.db-shm
 *.db.lock
 
-# Local settings (V5): which rules are turned off (config/README.md).
+# Local settings (config/README.md): what to audit (V6, written by you) and which rules
+# are turned off (written by the dashboard). Only config/settings.example.yaml is committed.
 config/settings.yaml
+config/disabled_rules.yaml
 *.sqlite
 *.sqlite3
 
