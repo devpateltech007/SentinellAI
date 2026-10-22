@@ -6,7 +6,7 @@ names can't contain one.) `../audit.py` just starts `cli.main()`.
 | Path | Version | Job |
 | --- | --- | --- |
 | `__init__.py` | V1 | Version number |
-| `cli.py` | V2 | The commands (`run`, `history`, `verify`, `login`) and what they print |
+| `cli.py` | V2 | The commands (`run`, `history`, `verify`, `login`; V6: `settings`, `report`) and what they print |
 | `runner.py` | V2 | Runs an audit and saves it (files, screenshots, database); verifies a saved run |
 | `engine.py` | V1 | Loads and checks rules (V4: rule kinds, `ai_check`), calls collectors, applies checks, builds verdicts |
 | `config.py` | V5, V6 | `config/settings.yaml`: what audits check (resolved once per audit, applied to the rules); `config/disabled_rules.yaml`: which rules are turned off |
@@ -14,12 +14,13 @@ names can't contain one.) `../audit.py` just starts `cli.main()`.
 | `locking.py` | V5 | One audit at a time: the lock shared by audits, the dashboard and the experiment's capture |
 | `queries.py` | V5 | What the database says, ready to show: machine and effective verdicts, run states (incl. interrupted), the review queue, run comparison |
 | `review.py` | V5 | Human reviews: checks (note, verdict, complete run, stale form) and saves one append-only row |
-| `evidence.py` | V2 | Evidence files, meta files, screenshot banners (V3), saved documents (V4), manifest, SHA-256 checks |
+| `evidence.py` | V2 | Evidence files, meta files, screenshot banners (V3), saved documents (V4), manifest, SHA-256 checks; every write is atomic, with its own temporary file |
+| `formatting.py` | V6 | How times, scores, costs and methods read: shared by the dashboard and the report |
 | `connectors/` | V1 | Collect evidence from one system each; `browser.py` (V3) takes screenshots; `files.py` (V4) reads policy documents |
 | `storage/` | V2 | SQLite results database |
 | `evaluator/` | V4 | AI checks for screenshots and documents (any model, set in `.env`) |
 | `dashboard/` | V5 | Web dashboard (FastAPI): pages, sign-in, background audits ([README](dashboard/README.md)) |
-| `reporting/` | V6 | Audit reports: `data.py` reads a saved audit once (one database snapshot, one review snapshot, verified evidence only); HTML/PDF next |
+| `reporting/` | V6 | Audit reports: `data.py` reads a saved audit once (one database snapshot, one review snapshot, verified evidence only); `report.py` renders one self-contained HTML page; `export.py` writes it to `reports/` ([README](reporting/README.md)); PDF next |
 
 Flow: `cli` (or the dashboard) → `run_options` → `runner` → `engine` → `connectors` → `engine` check → `connectors/browser`
 screenshot (V3, rules with a `screenshot:` block) → `evaluator` AI check (V4, document and

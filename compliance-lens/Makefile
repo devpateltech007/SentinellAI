@@ -6,7 +6,7 @@ VENV   := .venv
 BIN    := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format audit crosscheck history verify login aitest dashboard experiment analyze clean
+.PHONY: help setup test lint format audit crosscheck history verify report login aitest dashboard experiment analyze clean
 
 help:  ## Show this list
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
@@ -44,6 +44,10 @@ history:  ## Show past audit runs
 verify:  ## Check a run's evidence: make verify RUN=run-0007
 	@if [ -z "$(RUN)" ]; then echo "Usage: make verify RUN=run-0007"; exit 2; fi
 	$(BIN)/python audit.py verify $(RUN)
+
+report:  ## Export a run's audit report to reports/: make report RUN=run-0042 [FORMAT=html]
+	@if [ -z "$(RUN)" ]; then echo "Usage: make report RUN=run-0042 [FORMAT=html]"; exit 2; fi
+	$(BIN)/python audit.py report $(RUN) --format $(or $(FORMAT),html)
 
 login:  ## Save a login for screenshots: make login SITE=github (or aws)
 	@if [ -z "$(SITE)" ]; then echo "Usage: make login SITE=github   (or SITE=aws)"; exit 2; fi

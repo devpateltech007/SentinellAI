@@ -17,6 +17,7 @@ touch a real account.
 | `github/org_members_2fa_disabled.json` | One org member without 2FA (GH-05 FAIL) |
 | `github/rate_limited.json` | 403 "API rate limit exceeded" body |
 | `github/org_settings_read.json` | Organization seen with Administration read: base permission `read` (GH-06 PASS; tests change the value) |
+| `report/expected.html` | The golden report (V6): the made-up audit of `tests/report_helpers.py` with its reviews, made at a fixed time. Rewrite it after a deliberate change with `UPDATE_GOLDEN=1 pytest tests/test_report.py` and read the diff |
 | `github/org_no_admin_fields.json` | Organization seen without Administration read: no Member privileges settings (GH-06 NEEDS REVIEW) |
 | `aws/credential_report.csv` | IAM credential report: root row, recent, never-used, old console and old key users (AWS-08) |
 | `hr/employees.csv` | Fake employee list: active, terminated and on-leave people (HR-01) |

@@ -175,6 +175,7 @@ Defaults used in this repo: AWS region `us-east-1`, AWS profile `compliancelens`
 | `make dashboard` | The web dashboard on <http://127.0.0.1:8000>: run audits, read results, review |
 | `make history` | Past runs, newest first, with PASS / FAIL / NEEDS REVIEW totals |
 | `make verify RUN=run-0007` | Re-hash a run's files and report anything changed or missing |
+| `make report RUN=run-0007` | Export the run's audit report to `reports/run-0007/` (offline; see [`reports/README.md`](reports/README.md)) |
 | `make login SITE=github` | Log in by hand and save the login for screenshots (`SITE=aws` too) |
 | `make test` | Run tests with a coverage report (must stay ≥ 70%) |
 | `make lint` | Check code style with ruff (changes nothing) |
@@ -192,6 +193,8 @@ python audit.py run --cross-check   # the AI also reads code rules' screenshots 
 python audit.py run --refresh-ai    # ask the AI again instead of reusing cached answers
 python audit.py run --ai-model openai/<model>   # another model, for this run only
 python audit.py history --limit 5
+python audit.py report run-0007     # the audit report (HTML) in reports/run-0007/, from the saved run only
+python audit.py report run-0007 --snapshot 3   # as it was after review #3
 python audit.py settings            # what audits check (config/settings.yaml) and from where
 # Rules turned off in config/disabled_rules.yaml (the dashboard's Rules page) are left out
 # and named; a run without every rule is "partial". See config/README.md.

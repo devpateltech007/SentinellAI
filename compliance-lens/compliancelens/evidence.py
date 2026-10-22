@@ -27,12 +27,14 @@ This is tamper-evident, not tamper-proof: someone who can rewrite the files,
 the manifest and the database together can hide a change.
 """
 
+import contextlib
 import datetime
 import hashlib
 import io
 import json
 import os
 import re
+import secrets
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -110,19 +112,28 @@ def sha256_file(path: Path) -> str:
 def write_atomic(path: Path, data: bytes, mode: int | None = None) -> None:
     """Write to a temporary file, then rename it into place.
 
-    A crash leaves either the old file or the new one, never half a file.
-    `mode` (e.g. 0o600 for saved logins) is set before any data is written.
+    A crash leaves either the old file or the new one, never half a file. Each write has
+    its own temporary name (V6), so two writers of the same file at once (two report
+    exports, two dashboard tabs) never write into each other's. `mode` (e.g. 0o600 for
+    saved logins) is set before any data is written.
     """
     path = Path(path)
-    tmp = path.with_name(f".{path.name}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o666 if mode is None else mode)
-    with os.fdopen(fd, "wb") as f:
-        if mode is not None:
-            os.fchmod(f.fileno(), mode)  # also when an old temporary file was left behind
-        f.write(data)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, path)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(4)}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666 if mode is None else mode)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            if mode is not None:
+                os.fchmod(f.fileno(), mode)  # exactly this mode, whatever the umask
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink()
+        raise
+    with contextlib.suppress(FileNotFoundError):  # the one name used before V6, if a crash left it
+        path.with_name(f".{path.name}.tmp").unlink()
 
 
 # ------------------------------------------------------------ writing ----

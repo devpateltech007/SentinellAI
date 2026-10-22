@@ -1,0 +1,87 @@
+/* ComplianceLens audit report (V6): one self-contained page for the screen and for print.
+   Verdicts are always written as text; colour only repeats them. */
+
+:root {
+  --ink: #1b1f24;
+  --muted: #59636e;
+  --line: #d0d7de;
+  --paper: #ffffff;
+  --band: #f6f8fa;
+  --pass: #1a7f37;
+  --pass-bg: #dafbe1;
+  --fail: #b42318;
+  --fail-bg: #ffebe9;
+  --review: #9a6700;
+  --review-bg: #fff8c5;
+  --accent: #0b4f9c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 15px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+main { max-width: 960px; margin: 0 auto; padding: 32px 16px 48px; }
+
+h1, h2, h3 { line-height: 1.25; margin: 0 0 8px; }
+h1 { font-size: 30px; }
+h2 { font-size: 22px; margin-top: 40px; padding-bottom: 6px; border-bottom: 2px solid var(--ink); }
+h3 { font-size: 17px; }
+p { margin: 0 0 10px; }
+code, pre, .hash { font-family: "SFMono-Regular", Menlo, Consolas, monospace; font-size: 13px; }
+.hash, .wrap { overflow-wrap: anywhere; word-break: break-word; }
+.muted { color: var(--muted); }
+
+.cover { border-bottom: 1px solid var(--line); padding-bottom: 20px; }
+.kicker { text-transform: uppercase; letter-spacing: .08em; font-size: 12px; color: var(--accent); font-weight: 600; }
+.lead { font-size: 17px; color: var(--muted); }
+.scoreline { display: flex; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.score { font-size: 34px; font-weight: 700; }
+
+dl.facts { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 6px 16px; margin: 16px 0; }
+dl.facts dt { font-weight: 600; color: var(--muted); }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+
+.notice { background: var(--band); border-left: 4px solid var(--accent); padding: 10px 14px; margin: 12px 0; }
+.notice.partial { border-left-color: var(--review); }
+
+.verdict {
+  display: inline-block; padding: 1px 8px; border-radius: 4px; font-weight: 700;
+  font-size: 13px; white-space: nowrap; border: 1px solid currentColor;
+}
+.verdict.pass { color: var(--pass); background: var(--pass-bg); }
+.verdict.fail { color: var(--fail); background: var(--fail-bg); }
+.verdict.review { color: var(--review); background: var(--review-bg); }
+.verdict.none { color: var(--muted); }
+
+table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+thead th { background: var(--band); border-bottom: 2px solid var(--line); }
+td.hash { font-size: 12px; }
+
+.finding { border: 1px solid var(--line); border-left-width: 6px; border-radius: 6px; padding: 14px 16px; margin: 16px 0; }
+.finding.fail { border-left-color: var(--fail); }
+.finding.review { border-left-color: var(--review); }
+.finding.pass { border-left-color: var(--pass); }
+.finding .meta { color: var(--muted); font-size: 14px; }
+.changed { font-weight: 600; color: var(--accent); }
+
+figure { margin: 12px 0; }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+pre { background: var(--band); border: 1px solid var(--line); border-radius: 4px; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+img.shot { display: block; max-width: 100%; height: auto; border: 1px solid var(--line); }
+
+.ai { background: var(--band); border-radius: 4px; padding: 8px 12px; margin: 10px 0; font-size: 14px; }
+.fix { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 10px; }
+.missing { font-style: italic; color: var(--muted); }
+
+footer { margin-top: 40px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+
+@media (max-width: 600px) {
+  dl.facts { grid-template-columns: 1fr; }
+  table { font-size: 13px; }
+}
