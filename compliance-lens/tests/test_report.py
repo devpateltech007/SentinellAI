@@ -2,6 +2,7 @@
 page, which is self-contained, escapes everything, puts failures first, says what older
 runs didn't save, and is exported without ever overwriting an earlier one."""
 
+import base64
 import json
 import os
 import re
@@ -35,15 +36,43 @@ def invoke(*args):
 # ----------------------------------------------------------------- the page ----
 
 
+def comparable(html: str) -> str:
+    """The page without what depends on the machine, not on the report: Pillow draws the
+    made-up screenshots and their banners a little differently on macOS and Linux, so the
+    pictures' bytes, every hash that covers them (most of the appendix) and the pictures'
+    sizes differ. test_the_hashes_shown_are_the_files checks those against the real files."""
+    html = re.sub(r"data:image/png;base64,[A-Za-z0-9+/=]+", "data:image/png;base64,PICTURE", html)
+    html = re.sub(r"\b[0-9a-f]{64}\b", "SHA256", html)
+    return re.sub(r"(\.png</td><td>)\d+(</td>)", r"\1BYTES\2", html)
+
+
 def test_the_golden_report(run_id):
-    # The made-up audit, its reviews and a fixed time always give exactly this page.
+    # The made-up audit, its reviews and a fixed time always give this page (see comparable()).
     # After a deliberate change to the report: UPDATE_GOLDEN=1 pytest tests/test_report.py
     made_up.reviewed(run_id)
-    html = page(run_id)
+    html = comparable(page(run_id))
     if os.environ.get("UPDATE_GOLDEN"):
         GOLDEN.parent.mkdir(parents=True, exist_ok=True)
         GOLDEN.write_text(html, encoding="utf-8")
     assert html == GOLDEN.read_text(encoding="utf-8")
+
+
+def test_the_hashes_shown_are_the_files(run_id):
+    # What comparable() leaves out of the golden page, checked against the run's real files.
+    made_up.reviewed(run_id)
+    html = page(run_id)
+    run_folder = next(evidence.evidence_root().glob("*/run-0001"))
+    rows = re.findall(
+        r'<td class="wrap">([^<]+)</td><td>(\d+)</td><td class="hash">([0-9a-f]{64})', html
+    )
+    assert len(rows) == len(list(run_folder.iterdir())) - 1  # every file but the manifest
+    for name, size, digest in rows:
+        assert evidence.sha256_file(run_folder / name) == digest, name
+        assert (run_folder / name).stat().st_size == int(size), name
+    assert evidence.sha256_file(run_folder / "manifest.json") in html
+    for found in re.findall(r"data:image/png;base64,([A-Za-z0-9+/=]+)", html):
+        png = base64.b64decode(found)
+        assert evidence.sha256_bytes(png) in html  # each picture is a file listed above
 
 
 def test_the_page_is_self_contained(run_id):
