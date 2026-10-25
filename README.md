@@ -12,7 +12,8 @@ start with its [README](compliance-lens/README.md).
 
 ## Status
 
-**Current version: V5, tagged `v5.0` (version 0.5.0).**
+**Current version: V5, tagged `v5.0` (version 0.5.0); V6 is being finished** (its code is
+in `main`; the live checks and the release are left).
 
 | Version | What it added | Status |
 | --- | --- | --- |
@@ -21,7 +22,7 @@ start with its [README](compliance-lens/README.md).
 | V3 Screenshots | Playwright screenshots with a banner, saved logins, login problems reported | ✅ `v3.0` |
 | V4 AI evaluation | Any AI model judges screenshots and policy documents; 19 rules | ✅ `v4.0` |
 | V5 Dashboard and review | Web dashboard, human reviews, run comparison, rules on/off; the research experiment's main run | ✅ `v5.0` |
-| V6 Reports and polish | HTML/PDF report, export, polish | ⬜ weeks 13–14 |
+| V6 Reports and polish | HTML/PDF audit report and export, a settings file, logging, the experiment's write-up | 🟡 code done; live checks and release left |
 | V7 Final presentation | Demo, slides, stretch goals | ⬜ week 15 |
 
 The plan is in [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md),
@@ -46,6 +47,12 @@ and what's done (with every decision and a dated log) is in
 - **Web dashboard (V5):** start an audit and watch its progress, read each result with
   its evidence, review uncertain results (reviews are added, never edited), compare two
   runs, and turn rules on or off. It runs on your computer only, behind a password.
+- **Audit report (V6):** one HTML page and a PDF of it, built from the saved run only: a
+  cover with what was audited and the score, the failures first with their evidence and
+  suggested fixes, every human review, and every evidence file's SHA-256. See the
+  [sample report](compliance-lens/docs/sample-report.pdf) (a made-up audit).
+
+![The dashboard's Results page for a made-up audit](compliance-lens/docs/images/dashboard-results.png)
 
 ## Quick start
 
@@ -55,6 +62,7 @@ make setup               # Python 3.11+, installs everything + Chromium
 cp .env.example .env     # fill it in: see "Account setup" in compliance-lens/README.md
 make test                # the tests, no accounts needed
 make audit               # a real audit (without accounts every rule says why it can't decide)
+make report RUN=run-0001 # its report, HTML and PDF (the PDF needs: brew install pango)
 make dashboard           # the web dashboard on http://127.0.0.1:8000
 ```
 
@@ -74,8 +82,8 @@ then judged each picture 3 times.
 
 All 6 false PASSes are two AWS-02 pictures that both people labelled FAIL, although the
 rule's written condition, the setup and the code all say PASS. The code reading the API
-matched the setup in 55 of 55 cases. The whole run cost $0.05. Details:
-[`docs/experiment-main-run.md`](compliance-lens/docs/experiment-main-run.md).
+matched the setup in 55 of 55 cases. The whole run cost $0.05. The write-up, with
+figures and examples: [`docs/experiment-writeup.md`](compliance-lens/docs/experiment-writeup.md).
 
 ## Repository layout
 

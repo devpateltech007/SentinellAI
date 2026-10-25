@@ -13,12 +13,13 @@ No real account, network or key is used.
 import datetime
 import io
 import json
+import os
 import re
 import types
 
 from PIL import Image, ImageDraw
 
-from compliancelens import config, engine, review, runner
+from compliancelens import config, engine, evidence, review, runner
 from compliancelens.connectors import browser, files
 from compliancelens.evaluator import ai, providers
 from compliancelens.evaluator.providers import base
@@ -174,8 +175,40 @@ class FakeShooter:
         pass
 
 
-def build(monkeypatch, rules_text: str = RULES, rule_ids=None) -> int:
-    """Run the made-up audit (inside conftest's temporary folders). Returns its run ID."""
+def isolate(monkeypatch, folder) -> None:
+    """Every folder and setting the tool reads, in `folder`: for the scripts that build
+    the made-up audit outside the tests (conftest does this for every test)."""
+    from compliancelens import logsetup
+    from compliancelens.reporting import export
+
+    for name, place in (
+        (evidence.ENV_VAR, "evidence"),
+        (db.ENV_VAR, "compliance.db"),
+        (browser.ENV_VAR, "sessions"),
+        (config.ENV_VAR, "config/settings.yaml"),
+        (export.ENV_VAR, "reports"),
+        (logsetup.ENV_VAR, "logs"),
+    ):
+        monkeypatch.setenv(name, str(folder / place))
+    for name in list(os.environ):  # nothing from this computer's own setup
+        if name.startswith(("COMPLIANCELENS_AI_", "GITHUB_", "AWS_", "DASHBOARD_")):
+            monkeypatch.delenv(name)
+
+
+def comparable(html: str) -> str:
+    """A report page without what depends on the machine, not on the report: Pillow draws
+    the made-up screenshots and their banners a little differently on macOS and Linux, so
+    the pictures' bytes, every hash that covers them (most of the appendix) and the
+    pictures' sizes differ. test_the_hashes_shown_are_the_files checks those against the
+    real files."""
+    html = re.sub(r"data:image/png;base64,[A-Za-z0-9+/=]+", "data:image/png;base64,PICTURE", html)
+    html = re.sub(r"\b[0-9a-f]{64}\b", "SHA256", html)
+    return re.sub(r"(\.png</td><td>)\d+(</td>)", r"\1BYTES\2", html)
+
+
+def build(monkeypatch, rules_text: str = RULES, rule_ids=None, version: str = VERSION) -> int:
+    """Run the made-up audit (inside conftest's temporary folders, or isolate()'s).
+    Returns its run ID. `version` is the tool version it records."""
     root = config.settings_path().parent
     root.mkdir(parents=True, exist_ok=True)
     config.settings_path().write_text(SETTINGS)
@@ -195,7 +228,7 @@ def build(monkeypatch, rules_text: str = RULES, rule_ids=None) -> int:
     for module in (engine, runner):
         monkeypatch.setattr(module, "_now", lambda: CLOCK)
     monkeypatch.setattr(ai, "_now", lambda: CLOCK.isoformat())
-    monkeypatch.setattr(runner, "__version__", VERSION)
+    monkeypatch.setattr(runner, "__version__", version)
     monkeypatch.setattr(runner, "_git_state", lambda: dict(GIT))
     from compliancelens import run_options  # here: it reads the AI settings set above
 

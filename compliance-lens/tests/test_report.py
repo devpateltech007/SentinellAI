@@ -36,21 +36,12 @@ def invoke(*args):
 # ----------------------------------------------------------------- the page ----
 
 
-def comparable(html: str) -> str:
-    """The page without what depends on the machine, not on the report: Pillow draws the
-    made-up screenshots and their banners a little differently on macOS and Linux, so the
-    pictures' bytes, every hash that covers them (most of the appendix) and the pictures'
-    sizes differ. test_the_hashes_shown_are_the_files checks those against the real files."""
-    html = re.sub(r"data:image/png;base64,[A-Za-z0-9+/=]+", "data:image/png;base64,PICTURE", html)
-    html = re.sub(r"\b[0-9a-f]{64}\b", "SHA256", html)
-    return re.sub(r"(\.png</td><td>)\d+(</td>)", r"\1BYTES\2", html)
-
-
 def test_the_golden_report(run_id):
-    # The made-up audit, its reviews and a fixed time always give this page (see comparable()).
+    # The made-up audit, its reviews and a fixed time always give this page
+    # (see report_helpers.comparable()).
     # After a deliberate change to the report: UPDATE_GOLDEN=1 pytest tests/test_report.py
     made_up.reviewed(run_id)
-    html = comparable(page(run_id))
+    html = made_up.comparable(page(run_id))
     if os.environ.get("UPDATE_GOLDEN"):
         GOLDEN.parent.mkdir(parents=True, exist_ok=True)
         GOLDEN.write_text(html, encoding="utf-8")

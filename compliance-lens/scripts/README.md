@@ -18,6 +18,8 @@ To check one rule quickly: `python audit.py run --rule AWS-05` (recorded as a pa
 | `make_sample_pdfs.py` | V4: writes `policies/examples/*/password-policy.pdf` from the text inside it (`--check`: compare with the committed PDFs) |
 | `export_experiment_json.py` | V6: writes the experiment's main run as `docs/experiment-results.json` (numbers only, no paths), from the private data (`--check`: compare with the committed file) |
 | `plot_experiment.py` | V6: draws `docs/figures/*.svg` from that JSON alone; same JSON, same bytes (`--check`: compare with the committed SVGs) |
+| `make_sample_report.py` | V6: writes `docs/sample-report.html` and `.pdf` from the made-up audit of `tests/report_helpers.py` (`--check`: the committed HTML still matches; run it again at each release) |
+| `make_screenshots.py` | V6: runs the dashboard on the same made-up audit (this computer only, a throwaway password) and saves `docs/images/dashboard-*.png` |
 | `crop_examples.py` | V6: cuts the example pictures `docs/figures/example-*.png` from the private pictures, user names covered. Look at them before committing |
 
 **Never commit:** passwords, access keys or tokens inside a script.
