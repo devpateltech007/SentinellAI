@@ -342,6 +342,16 @@ version (e.g. `compliancelens/v2-rules-evidence`), merged through a pull request
 `make setup` installs the pre-commit hook, which blocks a commit if gitleaks finds
 something that looks like a secret.
 
+## Logs
+
+Every command, the dashboard and the experiment write to `logs/compliancelens.log`
+(gitignored; 5 older files of 1 MB are kept). It holds what the terminal only sums up:
+each run's start and end (or why it failed), every rule's verdict and how long it took to
+collect, screenshot and judge, report exports, reviews saved (never their notes), and the
+full details of any crash. `audit.py run` prints the run's time and its slowest rules.
+Secrets never reach the log: tokens, keys, passwords, Authorization values and AWS account
+IDs are replaced with `[hidden]`. Use another folder with `COMPLIANCELENS_LOG_DIR=...`.
+
 ## Security
 
 - Read-only access only: AWS SecurityAudit policy, a GitHub token without write scopes.

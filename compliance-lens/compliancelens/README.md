@@ -16,6 +16,7 @@ names can't contain one.) `../audit.py` just starts `cli.main()`.
 | `review.py` | V5 | Human reviews: checks (note, verdict, complete run, stale form) and saves one append-only row |
 | `evidence.py` | V2 | Evidence files, meta files, screenshot banners (V3), saved documents (V4), manifest, SHA-256 checks; every write is atomic, with its own temporary file |
 | `formatting.py` | V6 | How times, scores, costs and methods read: shared by the dashboard and the report |
+| `logsetup.py` | V6 | The log file `logs/compliancelens.log` (rotating, UTC) for the CLI, the dashboard and the experiment, with every secret hidden |
 | `connectors/` | V1 | Collect evidence from one system each; `browser.py` (V3) takes screenshots; `files.py` (V4) reads policy documents |
 | `storage/` | V2 | SQLite results database |
 | `evaluator/` | V4 | AI checks for screenshots and documents (any model, set in `.env`) |

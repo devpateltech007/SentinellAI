@@ -20,9 +20,13 @@
 Exit codes: 0 done (FAIL verdicts are results, not errors), 1 verify found a
 problem, the run could not be saved, a login was not saved or an AI check failed,
 2 a configuration or usage error.
+
+Every command logs to logs/compliancelens.log (V6, logsetup.py). An unexpected crash
+prints one line and leaves its details (secrets hidden) in that file.
 """
 
 import datetime
+import logging
 from collections import Counter
 from pathlib import Path
 from typing import Annotated
@@ -30,11 +34,21 @@ from typing import Annotated
 import typer
 from dotenv import load_dotenv
 
-from compliancelens import __version__, config, engine, evidence, locking, run_options, runner
+from compliancelens import (
+    __version__,
+    config,
+    engine,
+    evidence,
+    locking,
+    logsetup,
+    run_options,
+    runner,
+)
 from compliancelens.connectors import browser
 from compliancelens.evaluator import ai, answer, prompt, providers, smoke
 from compliancelens.evaluator import settings as ai_settings
 from compliancelens.evaluator.providers import base as provider_base
+from compliancelens.formatting import duration
 from compliancelens.reporting import data as report_data
 from compliancelens.reporting import export as report_export
 from compliancelens.reporting import pdf as report_pdf
@@ -238,6 +252,9 @@ def _run(
     typer.echo(format_totals(summary))
     for line in format_screenshots(summary) + format_ai_summary(summary):
         typer.echo(line)
+    if summary.seconds is not None:
+        slowest = ", ".join(f"{rule_id} {duration(s)}" for rule_id, s in summary.slowest())
+        typer.echo(f"Took {duration(summary.seconds)} (slowest: {slowest}).")
     if summary.skipped:
         typer.echo(
             f"Turned off in {display_path(config.disabled_path())} (not run):"
@@ -251,7 +268,8 @@ def _run(
 
 @app.callback(invoke_without_command=True)
 def main_callback(ctx: typer.Context) -> None:
-    load_dotenv(PROJECT_ROOT / ".env")  # GITHUB_TOKEN, GITHUB_ORG, AWS_PROFILE, ...
+    load_dotenv(PROJECT_ROOT / ".env")  # GITHUB_TOKEN, AWS_PROFILE, the AI key, ...
+    logsetup.setup("cli")
     if ctx.invoked_subcommand is None:  # plain `python audit.py` runs the audit
         raise typer.Exit(_run(None, RULES_FILE))
 
@@ -550,5 +568,15 @@ def ai_test(
     typer.echo(f"Both checks passed: {settings.name} works.")
 
 
+log = logging.getLogger(__name__)
+
+
 def main() -> None:
-    app(prog_name="audit.py")
+    """`python audit.py`. A crash prints one line; its details go to the log."""
+    try:
+        app(prog_name="audit.py")
+    except Exception as e:
+        log.exception("audit.py stopped unexpectedly")
+        where = display_path(logsetup.log_dir() / logsetup.FILE_NAME)
+        print(f"Stopped unexpectedly ({type(e).__name__}). The details are in {where}.")
+        raise SystemExit(1)

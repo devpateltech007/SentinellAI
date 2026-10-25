@@ -19,7 +19,7 @@ from typing import Annotated
 import typer
 from dotenv import load_dotenv
 
-from compliancelens import config, engine, locking
+from compliancelens import config, engine, locking, logsetup
 from compliancelens.connectors import browser
 from compliancelens.evaluator import settings as ai_settings
 from experiment.lab import PROJECT_ROOT, analyze, capture, cases, labels, labels_path, run, world
@@ -53,6 +53,7 @@ def _fail(message: str, code: int = 2):
 @app.callback()
 def main_callback() -> None:
     load_dotenv(PROJECT_ROOT / ".env")  # GITHUB_TOKEN, AWS_PROFILE, the AI key...
+    logsetup.setup("experiment")
 
 
 def _load(rule: list[str] | None = None, case: list[str] | None = None, pilot: bool = False):
