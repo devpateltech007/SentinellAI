@@ -23,7 +23,9 @@ import contextlib
 import datetime
 import fcntl
 import json
+import logging
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -38,6 +40,7 @@ FORMATS = (HTML, PDF)
 BOTH = "both"  # what `audit.py report --format both` and the make target mean
 RECORD_VERSION = 1
 LOCK_FILE = ".export.lock"
+log = logging.getLogger(__name__)
 NOTE = (
     "Hashes of the exported report files. They describe the report, not the evidence: the"
     " audit's evidence hashes are in its manifest (source_manifest_sha256)."
@@ -130,7 +133,12 @@ def export(run_id: int, formats=(HTML,), snapshot: int | None = None) -> Exporte
     unknown = [fmt for fmt in formats if fmt not in FORMATS]
     if unknown or not formats:
         raise ValueError(f"unknown report format(s): {', '.join(unknown) or 'none given'}")
-    data = report_data.load(run_id, snapshot)
+    began = time.monotonic()
+    try:
+        data = report_data.load(run_id, snapshot)
+    except report_data.ReportError as e:
+        log.warning("no report of run-%04d: %s", run_id, e.message)
+        raise
     folder = reports_dir() / data.name
     folder.mkdir(parents=True, exist_ok=True)
     record_path = folder / f"{data.export_name}.export.json"
@@ -154,6 +162,16 @@ def export(run_id: int, formats=(HTML,), snapshot: int | None = None) -> Exporte
                 evidence.write_atomic(path, content)
                 generated[path.name] = at
                 done.made.append(fmt)
+        except Exception as e:
+            log.warning("%s: export stopped: %s: %s", data.export_name, type(e).__name__, e)
+            raise
         finally:  # the record always names exactly the files that are there
             evidence.write_atomic(record_path, _record(data, folder, generated))
+    log.info(
+        "%s exported in %.1f s: made %s, kept %s",
+        data.export_name,
+        time.monotonic() - began,
+        ", ".join(done.made) or "nothing",
+        ", ".join(done.kept) or "nothing",
+    )
     return done

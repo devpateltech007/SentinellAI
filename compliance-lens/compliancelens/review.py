@@ -21,12 +21,14 @@ A new audit gets new results: a review of an older run's result is not carried o
 """
 
 import datetime
+import logging
 
 from compliancelens import engine
 from compliancelens.storage import db
 
 VERDICTS = (engine.PASS, engine.FAIL, engine.NEEDS_REVIEW)
 MAX_NOTE = 2000
+log = logging.getLogger(__name__)
 MAX_REVIEWER = 100
 
 
@@ -81,7 +83,16 @@ def _save(conn, result_id: int, note: str, reviewer: str, seen, now, choose) -> 
     except BaseException:
         conn.rollback()
         raise
-    return db.add_override(conn, result_id, verdict, reviewer, note, now or _now())  # commits
+    review_id = db.add_override(conn, result_id, verdict, reviewer, note, now or _now())  # commits
+    log.info(  # who and what, never the note: it is the reviewer's own words
+        "review %d saved: run-%04d %s %s -> %s",
+        review_id,
+        result["run_id"],
+        result["rule_id"],
+        latest["new_verdict"] if latest else result["verdict"],
+        verdict,
+    )
+    return review_id
 
 
 def record(

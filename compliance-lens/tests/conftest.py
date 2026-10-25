@@ -1,8 +1,8 @@
 """Shared test setup. Runs automatically before every test.
 
 Makes sure no test can ever touch a real AWS or GitHub account or AI provider, the
-real compliance.db, evidence/, sessions/, reports/ or policies folder, and that no test
-really sleeps.
+real compliance.db, evidence/, sessions/, reports/, logs/ or policies folder, and that no
+test really sleeps.
 """
 
 import os
@@ -13,7 +13,7 @@ import httpx2
 import pytest
 import requests.adapters
 
-from compliancelens import config, evidence, locking
+from compliancelens import config, evidence, locking, logsetup
 from compliancelens.connectors import aws, browser, files, github
 from compliancelens.dashboard import auth as dashboard_auth
 from compliancelens.evaluator import ai
@@ -60,10 +60,13 @@ def temp_storage(tmp_path, monkeypatch):
     monkeypatch.setenv(config.ENV_VAR, str(tmp_path / "config" / "settings.yaml"))
     # Exported reports (V6): never the real reports/ folder.
     monkeypatch.setenv(report_export.ENV_VAR, str(tmp_path / "reports"))
+    # The log (V6): never the real logs/ folder, and closed after each test.
+    monkeypatch.setenv(logsetup.ENV_VAR, str(tmp_path / "logs"))
     # The research experiment's pictures, answers and labels (never experiment/labels.csv).
     monkeypatch.setenv(lab.DATA_ENV, str(tmp_path / "experiment"))
     monkeypatch.setenv(lab.LABELS_ENV, str(tmp_path / "experiment" / "labels.csv"))
-    return tmp_path
+    yield tmp_path
+    logsetup.reset()
 
 
 @pytest.fixture(autouse=True)

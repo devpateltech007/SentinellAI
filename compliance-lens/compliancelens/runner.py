@@ -28,6 +28,11 @@ Progress (V5): `on_event` hears when the run is recorded, when each rule starts 
 finishes, and when the run finishes or fails, for the dashboard's progress display.
 A broken listener never stops the audit; it becomes a warning.
 
+Logging and timing (V6): each run's start, end or failure and each rule's verdict go to
+the log (logsetup.py), with how long each rule took to collect, screenshot and judge.
+The summary keeps the times too, so `audit.py run` can name the slowest rules. Times are
+not evidence: they stay out of the run folder.
+
 A screenshot problem (no login, expired login, a changed page) never changes an
 API rule's verdict: the API data is the proof and the screenshot supports it. The
 problem is recorded with the result and printed with the fix.
@@ -46,7 +51,9 @@ read and hashed, so the saved copy is exactly what was judged.
 import contextlib
 import datetime
 import json
+import logging
 import subprocess
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,6 +65,8 @@ from compliancelens.evaluator import cache as ai_cache
 from compliancelens.storage import db
 
 PRIMARY, CROSS_CHECK = "primary", "cross_check"
+log = logging.getLogger(__name__)
+_clock = time.monotonic  # tests replace it so times are fixed
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONTEXT_VERSION = 1  # run-context.json's format
 
@@ -109,6 +118,13 @@ class RunSummary:
     ai: dict | None = None  # AI totals of the run, when any AI check ran
     warnings: list[str] = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)  # turned off in config/settings.yaml
+    timings: dict[str, dict] = field(default_factory=dict)  # rule ID -> seconds per step (V6)
+    seconds: float | None = None  # the whole run, from its start to its manifest (V6)
+
+    def slowest(self, count: int = 3) -> list[tuple[str, float]]:
+        """The rules that took longest, slowest first: [(rule ID, seconds)]."""
+        times = [(rule_id, step["total"]) for rule_id, step in self.timings.items()]
+        return sorted(times, key=lambda item: item[1], reverse=True)[:count]
 
     @property
     def name(self) -> str:
@@ -228,6 +244,7 @@ class _Audit:
         )
         self.ai_checks = 0
         self.results, self.saved = [], []  # the results, and every file written for them
+        self.timings = {}  # rule ID -> seconds per step
 
     def rel(self, name: str) -> str:
         return _relative(self.run_dir / name, self.root)
@@ -347,7 +364,9 @@ class _Audit:
     # ------------------------------------------------------------------ rule
 
     def process(self, rule: dict) -> dict:
+        began = _clock()
         result = engine.run_rule(rule)
+        collected = _clock()
         kind = engine.rule_kind(rule)
         first = len(self.saved)  # the manifest lists a rule's JSON and meta files first
         source = _save_source(self.run_dir, result)
@@ -375,6 +394,7 @@ class _Audit:
                 )
             screenshot_row = _screenshot_row(shot, self.run_dir, self.root)
 
+        pictured = _clock()
         checks = []  # (role, outcome, meta block)
         if kind == engine.KIND_DOCUMENT:
             outcome = self._check(
@@ -392,6 +412,7 @@ class _Audit:
             )
             checks.append((CROSS_CHECK, outcome))
 
+        judged = _clock()
         blocks = []
         for role, outcome in checks:
             if role == PRIMARY:  # the AI's verdict is the rule's verdict
@@ -419,6 +440,31 @@ class _Audit:
             self._record_ai(result_id, rule, outcome, block, role)
         self.saved[first:first] = [raw, meta]
         self.results.append(result)
+        done = _clock()
+        timing = {
+            "collect": collected - began,
+            "screenshot": pictured - collected,
+            "ai": judged - pictured,
+            "total": done - began,
+        }
+        self.timings[rule["id"]] = timing
+        shot = (result.get("screenshot") or {}).get("status", "none")
+        answer = (result.get("ai") or {}).get("status", "none")
+        cached = " (cached)" if (result.get("ai") or {}).get("from_cache") else ""
+        log.info(
+            "%s %s: %s by %s in %.1f s (collect %.1f s, screenshot %s %.1f s, AI %s%s %.1f s)",
+            evidence.run_name(self.run_id),
+            rule["id"],
+            result["verdict"],
+            result["method"],
+            timing["total"],
+            timing["collect"],
+            shot,
+            timing["screenshot"],
+            answer,
+            cached,
+            timing["ai"],
+        )
         return result
 
     def ai_summary(self) -> dict | None:
@@ -611,7 +657,7 @@ def run_audit(
 
     lock = locking.AuditLock(locking.AUDIT).acquire()
     root = evidence.evidence_root()
-    started = _now()
+    started, began = _now(), _clock()
     shooter, conn = None, None
     try:
         # Chromium starts only when the first rule needs it (and has a saved login).
@@ -630,6 +676,16 @@ def run_audit(
         lock.set_run(run_id)
         events.run_id = run_id
         events.send(RUN_STARTED)
+        log.info(
+            "%s started: %d of %d rules (%s), screenshots %s, AI %s%s",
+            evidence.run_name(run_id),
+            len(selected),
+            len(rules),
+            scope,
+            "on" if screenshots else "off",
+            options.settings.name if options.enabled and options.settings else "off",
+            ", cross-check" if options.cross_check else "",
+        )
         try:
             run_dir = evidence.create_run_dir(root, started.date(), run_id)
             copy = evidence.write_rulebook(run_dir, rulebook)
@@ -673,8 +729,23 @@ def run_audit(
             with contextlib.suppress(Exception):
                 db.fail_run(conn, run_id, _now().isoformat(), str(e))
             events.send(RUN_FAILED, error=str(e))
+            log.exception("%s failed: %s: %s", evidence.run_name(run_id), type(e).__name__, e)
             raise StorageError(f"{evidence.run_name(run_id)} could not be saved: {e}")
         events.send(RUN_FINISHED)
+        seconds = _clock() - began
+        verdicts = [r["verdict"] for r in audit.results]
+        log.info(
+            "%s finished in %.1f s: %d PASS, %d FAIL, %d NEEDS REVIEW; AI %d call(s), %s",
+            evidence.run_name(run_id),
+            seconds,
+            verdicts.count(engine.PASS),
+            verdicts.count(engine.FAIL),
+            verdicts.count(engine.NEEDS_REVIEW),
+            (ai_summary or {}).get("calls", 0),
+            "cost unknown"
+            if ai_summary and ai_summary.get("cost_usd") is None
+            else f"${(ai_summary or {}).get('cost_usd') or 0:.4f}",
+        )
     finally:
         try:
             if shooter is not None:
@@ -685,7 +756,15 @@ def run_audit(
             lock.release()
     warnings = list(options.settings.warnings) if ai_summary and options.settings else []
     return RunSummary(
-        run_id, run_dir, scope, audit.results, ai_summary, warnings + events.warnings, skipped
+        run_id,
+        run_dir,
+        scope,
+        audit.results,
+        ai_summary,
+        warnings + events.warnings,
+        skipped,
+        audit.timings,
+        seconds,
     )
 
 

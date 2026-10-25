@@ -11,6 +11,7 @@ from pathlib import Path
 import uvicorn
 from dotenv import load_dotenv
 
+from compliancelens import logsetup
 from compliancelens.cli import PROJECT_ROOT, RULES_FILE
 from compliancelens.dashboard import app, auth
 
@@ -37,7 +38,13 @@ def main(argv: list[str] | None = None) -> int:
     if not _is_loopback(args.host):
         print(f"Warning: listening on {args.host}: other computers can reach the sign-in page.")
     print(f"ComplianceLens dashboard: http://{args.host}:{args.port}/  (Ctrl+C to stop)")
-    uvicorn.run(app.create_app(settings), host=args.host, port=args.port, workers=1)
+    uvicorn.run(
+        app.create_app(settings),
+        host=args.host,
+        port=args.port,
+        workers=1,
+        log_config=logsetup.uvicorn_config(),  # the terminal as before, plus logs/ (V6)
+    )
     return 0
 
 
