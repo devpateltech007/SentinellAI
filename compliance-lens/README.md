@@ -7,8 +7,8 @@ defaults to PASS: any error or unclear result becomes NEEDS REVIEW.
 
 This is a 15-week semester project. The full plan is in
 [`../ComplianceLens Project Plan.md`](../ComplianceLens%20Project%20Plan.md).
-**Current version: V5 (web dashboard and human review), tagged `v5.0`** (version
-0.5.0): 19 rules across AWS, GitHub,
+**Current version: V6 (reports and polish), being finished** (version 0.6.0.dev0; the last
+release is `v5.0`): 19 rules across AWS, GitHub,
 an HR employee list and policy documents. Every run is saved as hashed evidence files
 plus a SQLite history, and `verify` reports any evidence file changed after the audit.
 Rules with a web page also get a screenshot with a banner (rule, UTC time, URL), taken
@@ -16,6 +16,11 @@ with a login you save once by hand. An AI model of your choice (set in `.env`) j
 what code can't: two settings only shown as screenshots, and three policy documents.
 Anything the AI can't answer clearly is NEEDS REVIEW, never PASS. A web dashboard (V5)
 runs audits, shows the evidence and records human reviews without editing any result.
+V6 adds the audit report (HTML and PDF, from the saved run only), a settings file for what
+to audit, and a log file. See a [sample report](docs/sample-report.pdf) made from a
+made-up audit.
+
+![The dashboard's Results page for a made-up audit](docs/images/dashboard-results.png)
 
 ---
 
@@ -32,8 +37,13 @@ make aitest               # check the AI model and key in .env (V4)
 make audit                # run a real audit
 make history              # list past runs
 make verify RUN=run-0001  # check a run's evidence was not changed
+make report RUN=run-0001  # the audit report, HTML and PDF, in reports/run-0001/ (V6)
 make dashboard            # the web dashboard on http://127.0.0.1:8000 (V5)
 ```
+
+Before the first real audit, say what to audit: `cp config/settings.example.yaml
+config/settings.yaml`, fill it in, and check it with `python audit.py settings` (V6; see
+"Account setup").
 
 Without any accounts set up, `make audit` still runs: every rule shows NEEDS REVIEW
 with the reason (for example "GITHUB_TOKEN not set"). It never crashes. Without saved
@@ -48,6 +58,9 @@ AI rules say "AI not configured".
 - **AWS CLI v2**, recent enough to have `aws login`: `brew install awscli`
 - **Chromium for Playwright** (V3, about 150 MB): `make setup` installs it. To install it
   again: `.venv/bin/python -m playwright install chromium`.
+- **Pango, for PDF reports** (V6): on macOS `brew install pango`; on Ubuntu
+  `sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0`. Without it
+  everything else works, the HTML report included; asking for a PDF says how to fix it.
 
 ## Account setup
 
@@ -267,6 +280,8 @@ rules/*.yaml → engine → connectors (AWS, GitHub, HR, files) → check → ve
    data is the proof, the picture is for people.
 5. `runner.py` adds the banner, saves the PNG, the raw evidence and a meta file per rule,
    a manifest of every file with its SHA-256, and a row per result in SQLite (`compliance.db`).
+   Since V6 it also saves `run-context.json`: the settings and the rules exactly as the run
+   used them, and what it audited.
 
 6. **AI rules (V4).** GH-07 has only a screenshot, and DOC-01 to DOC-03 read a policy
    document (`policies/`). The AI model set in `.env` judges them
@@ -278,6 +293,14 @@ rules/*.yaml → engine → connectors (AWS, GitHub, HR, files) → check → ve
    the code rules' screenshots; that records agreement but never changes a verdict.
    GH-06 was an AI rule until V6; the research experiment showed its value is readable
    from the API, so code judges it now and its AI check is a cross-check.
+
+7. **Reports (V6).** `python audit.py report run-NNNN` (or the dashboard's Download HTML /
+   Download PDF) builds the audit report from the saved run only: it must be finished and
+   verify, every file it shows is checked against its hash, and anything an older run didn't
+   save says "not recorded". One self-contained HTML page (and a PDF of it) with a cover,
+   a summary, the findings failures first with their evidence and suggested fixes, every
+   human review, and an appendix of every file's SHA-256. Reports go to `reports/` and are
+   never overwritten: a later review makes a new one. See [`reports/README.md`](reports/README.md).
 
 **Tamper detection.** `verify` re-hashes every file and compares it with the manifest,
 and the manifest and evidence hashes with the database. Editing, deleting or adding a
