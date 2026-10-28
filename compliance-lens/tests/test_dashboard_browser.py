@@ -109,3 +109,27 @@ def test_an_audit_and_a_review_in_a_real_browser(chromium, site):
     finally:
         chrome.close()
         playwright.stop()
+
+
+def test_turning_a_rule_off_keeps_the_page_where_it_was(chromium, site):
+    playwright = browser._start_playwright()
+    chrome = browser._launch(playwright)
+    try:
+        page = chrome.new_page(viewport={"width": 900, "height": 200})
+        page.goto(f"{site}/rules")
+        page.fill("#password", PASSWORD)
+        page.click("form[action='/login'] button")
+        page.wait_for_url(f"{site}/rules")
+
+        row_top = page.evaluate("document.getElementById('GH-01').getBoundingClientRect().top")
+        page.evaluate(f"window.scrollTo(0, {row_top} - 80)")  # the row in the middle
+        before = page.evaluate("window.scrollY")
+        assert before > 0
+
+        page.click("#GH-01 button")
+        page.wait_for_selector("#GH-01.off")
+        assert page.url == f"{site}/rules"  # no #GH-01 to jump to
+        assert page.evaluate("window.scrollY") == before
+    finally:
+        chrome.close()
+        playwright.stop()

@@ -578,7 +578,7 @@ def test_comparing_two_runs(admin, rules):
 
 def test_turning_rules_off_and_on(admin):
     response = post(admin, "/rules/AWS-02", {}, "/rules")  # no "enabled": turn off
-    assert (response.status_code, response.headers["location"]) == (303, "/rules#AWS-02")
+    assert (response.status_code, response.headers["location"]) == (303, "/rules")
     assert config.disabled_rules() == ["AWS-02"]
     page = admin.get("/rules").text
     assert "3 of 4 rules are on" in page and 'class="off"' in page

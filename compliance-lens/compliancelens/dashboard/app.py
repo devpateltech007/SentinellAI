@@ -755,7 +755,7 @@ def create_app(settings: auth.Settings, job_manager: jobs.JobManager | None = No
             config.set_rule_enabled(rule_id, enabled, known)
         except config.SettingsError as e:
             return rules_view(request, 400, str(e))
-        return RedirectResponse(f"/rules#{quote(rule_id)}", status_code=303)
+        return RedirectResponse("/rules", status_code=303)  # app.js keeps the scroll
 
     # ------------------------------------------------------------- evidence
 
