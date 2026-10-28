@@ -45,5 +45,21 @@
     });
   });
 
+  // Turning a rule on or off reloads the Rules page: open it where it was, not at the top.
+  var SCROLL_KEY = "compliancelens.scroll";
+  document.querySelectorAll("form[data-keep-scroll]").forEach(function (form) {
+    form.addEventListener("submit", function () {
+      try {
+        var place = { path: window.location.pathname, y: window.scrollY };
+        window.sessionStorage.setItem(SCROLL_KEY, JSON.stringify(place));
+      } catch (e) { /* storage blocked: the page opens at the top */ }
+    });
+  });
+  try {
+    var saved = JSON.parse(window.sessionStorage.getItem(SCROLL_KEY) || "null");
+    window.sessionStorage.removeItem(SCROLL_KEY);
+    if (saved && saved.path === window.location.pathname) window.scrollTo(0, saved.y);
+  } catch (e) { /* storage blocked or unreadable: stay at the top */ }
+
   poll();
 })();

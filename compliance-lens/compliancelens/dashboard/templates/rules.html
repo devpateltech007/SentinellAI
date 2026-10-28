@@ -22,7 +22,7 @@
       <td class="reason">{{ rule.check }}</td>
       <td>{{ "yes" if rule.screenshot else "no" }}</td>
       <td>
-        <form method="post" action="/rules/{{ rule.id }}">
+        <form method="post" action="/rules/{{ rule.id }}" data-keep-scroll>
           <input type="hidden" name="csrf" value="{{ csrf }}">
           {% if rule.enabled %}
           <span class="on">On</span> <button type="submit" class="secondary">Turn off</button>
