@@ -13,7 +13,7 @@ an HR employee list and policy documents. Every run is saved as hashed evidence 
 plus a SQLite history, and `verify` reports any evidence file changed after the audit.
 Rules with a web page also get a screenshot with a banner (rule, UTC time, URL), taken
 with a login you save once by hand. An AI model of your choice (set in `.env`) judges
-what code can't: two settings only shown as screenshots, and three policy documents.
+what code can't: one setting only shown as a screenshot (GH-07), and three policy documents.
 Anything the AI can't answer clearly is NEEDS REVIEW, never PASS. A web dashboard (V5)
 runs audits, shows the evidence and records human reviews without editing any result.
 V6 adds the audit report (HTML and PDF, from the saved run only), a settings file for what

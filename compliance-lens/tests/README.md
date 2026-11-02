@@ -59,7 +59,7 @@ Doing those for real is unsafe or takes months.
 **Browser tests** need Chromium (`make setup` installs it). Without it they are skipped on a
 laptop, but in CI (`CI=true`) they fail instead, so they always run there.
 
-Coverage must stay at or above 70% (`make test` fails otherwise); it is 100% (V3, and V4 so far).
+Coverage must stay at or above 70% (`make test` fails otherwise); it is 100% (1,573 tests, V6, Nov 1).
 (`concurrency = ["thread", "greenlet"]` in `pyproject.toml` lets coverage follow Playwright.)
 
 **Never commit:** real tokens, real account data, or recorded replies with real names or emails.

@@ -21,7 +21,7 @@ names can't contain one.) `../audit.py` just starts `cli.main()`.
 | `storage/` | V2 | SQLite results database |
 | `evaluator/` | V4 | AI checks for screenshots and documents (any model, set in `.env`) |
 | `dashboard/` | V5 | Web dashboard (FastAPI): pages, sign-in, background audits ([README](dashboard/README.md)) |
-| `reporting/` | V6 | Audit reports: `data.py` reads a saved audit once (one database snapshot, one review snapshot, verified evidence only); `report.py` renders one self-contained HTML page; `export.py` writes it to `reports/` ([README](reporting/README.md)); PDF next |
+| `reporting/` | V6 | Audit reports: `data.py` reads a saved audit once (one database snapshot, one review snapshot, verified evidence only); `report.py` renders one self-contained HTML page; `pdf.py` draws the same page as a PDF; `export.py` writes them to `reports/` ([README](reporting/README.md)) |
 
 Flow: `cli` (or the dashboard) → `run_options` → `runner` → `engine` → `connectors` → `engine` check → `connectors/browser`
 screenshot (V3, rules with a `screenshot:` block) → `evaluator` AI check (V4, document and
