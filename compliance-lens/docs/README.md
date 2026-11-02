@@ -17,4 +17,13 @@
 - Final presentation slides and a link to the 5-minute demo video.
 - The short reflection: limitations, lessons learned, future work.
 
+**What a public clone can check:** the figures from the committed JSON
+(`python scripts/plot_experiment.py --check`), the sample report
+(`python scripts/make_sample_report.py --check`) and the sample policy PDFs
+(`python scripts/make_sample_pdfs.py --check`). The experiment's tables, its JSON and the
+example pictures (`python -m experiment.lab analyze`, `scripts/export_experiment_json.py`,
+`scripts/crop_examples.py`) are made from the captured pictures and the model's answers in
+`experiment/data/`, which stay private and are never committed: without them these stop
+and write nothing.
+
 **Never commit:** screenshots or reports that show real personal data. Blur or crop first.

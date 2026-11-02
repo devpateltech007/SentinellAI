@@ -33,17 +33,19 @@ automated tests (`make test`) with fake AWS/GitHub data instead.
 
 | Rule | Live break-and-fix | Why not, if not |
 | --- | --- | --- |
-| AWS-01, AWS-02 | ✅ | |
+| AWS-01, AWS-02 | ✅ (done live in V1) | |
 | AWS-03 root MFA | ❌ PASS only | Turning off root MFA is dangerous |
 | AWS-04 old access keys | ❌ PASS only | A key has to be 90 days old |
-| AWS-05, AWS-06, AWS-07 | ✅ | |
+| AWS-05, AWS-06, AWS-07 | ✅ possible (steps below) | Not flipped live: V6 (D8) closed them with the automated tests |
 | AWS-08 inactive users | ❌ PASS only (quick check below) | A user has to be idle 90 days |
-| GH-01 to GH-04 | ✅ | |
+| GH-01 | ✅ (done live in V1) | |
+| GH-02, GH-03 | ✅ possible (steps below) | Not flipped live: V6 (D8) closed them with the automated tests |
+| GH-04 | ✅ the one live flip still to do (V6 Stage 7) | |
 | GH-05 org 2FA | ❌ PASS only | GitHub requires 2FA for most accounts, so a member without it is hard to create |
 | GH-06 | ✅ (V6: code reads the API) | |
 | GH-07 | ✅ (V4: the AI reads the screenshot, so the verdict flips) | |
 | DOC-01 to DOC-03 | ✅ by switching the policy folder (no account change) | |
-| HR-01 | ✅ (edit the local CSV) | |
+| HR-01 | ✅ possible (edit the local CSV) | Not flipped live: V6 (D8) closed it with the automated tests |
 
 ---
 
@@ -119,8 +121,8 @@ AWS rebuilds the credential report at most **every 4 hours**, so sign-ins can ta
 4 hours to show. The evidence records `report_generated_at`.
 
 **Heads-up for the final demo:** `intern-bob` (created Oct 1, 2026) never signs in, so from
-about **Dec 30, 2026** AWS-08 will FAIL for `intern-bob`. That is correct behaviour, but the
-demo expects AWS-02 to be the only failure. A few days before the demo, sign in to the
+about **Dec 31, 2026** (more than 90 days after it was created) AWS-08 will FAIL for
+`intern-bob`. That is correct behaviour, but the demo expects AWS-02 to be the only failure. A few days before the demo, sign in to the
 console once as `intern-bob` (the next credential report, up to 4 hours later, shows it),
 or present it as a second planned failure.
 
@@ -141,10 +143,10 @@ or present it as a second planned failure.
 Deleting the whole rule also gives FAIL (an unprotected branch allows force pushes).
 
 **Screenshot of GH-01/GH-02:** the rule's own page, `.../settings/branch_protection_rules/<number>`
-(`vars.rule` in the rule card). Editing the rule keeps the number. If you **delete and
-re-create** the rule, the screenshot says `HTTP 404`: open Settings → Branches, the `main`
-rule's menu → Edit, and copy the new number from the address bar into `vars.rule` of GH-01
-and GH-02.
+(`github.protection_rule_id` in `config/settings.yaml`, V6). Editing the rule keeps the
+number. If you **delete and re-create** the rule, the screenshot says `HTTP 404`: open
+Settings → Branches, the `main` rule's menu → Edit, and copy the new number from the address
+bar into `github.protection_rule_id` (check it with `python audit.py settings`).
 
 ## GH-03: Secret scanning is enabled
 
@@ -164,14 +166,20 @@ setting: give it **Administration: Read-only**.
 | Fix | **Enable** | PASS |
 
 **First time only:** check GitHub's real "disabled" reply matches the one the tool expects.
-With alerts disabled:
+Before you break it, note (or screenshot) everything on that settings page: turning
+Dependabot alerts off may also turn off features that depend on them, such as Dependabot
+security updates, and the fix should put all of them back. With alerts disabled:
 
 ```bash
+python audit.py settings     # its last lines say "GitHub repository rules check <org>/<repo>"
 set -a; source .env; set +a
 curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
-  https://api.github.com/repos/$GITHUB_ORG/compliancelens-test/vulnerability-alerts
+  https://api.github.com/repos/<org>/<repo>/vulnerability-alerts
 ```
 
+Use the `<org>/<repo>` that `python audit.py settings` printed: since V6 they live in
+`config/settings.yaml`, and `GITHUB_ORG` in `.env` may be empty (then the address has no
+organization and GitHub answers a plain `Not Found`, which is not the reply to check).
 It should print `"message": "Vulnerability alerts are disabled."`. If the text differs,
 GH-04 shows NEEDS REVIEW instead of FAIL (safe, but wrong): put the real text in
 `DEPENDABOT_DISABLED` in `compliancelens/connectors/github.py` and in

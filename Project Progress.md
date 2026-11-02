@@ -3,9 +3,9 @@
 Tracks what has been done against [`ComplianceLens Project Plan.md`](ComplianceLens%20Project%20Plan.md).
 Update it whenever a checklist item is finished: tick the box, add a line to the log.
 
-**Current version:** V5 Dashboard and review ✅ tagged `v5.0` (Oct 21), version `0.5.0`. V6 started Oct 21 (version `0.6.0.dev0` while it is built; see "V6 Reports, polish and tests").
-**Current branch:** `main` (V4 merged in PRs #16–#24, V5 in #25–#31 plus the release PR; tags `v1.0` to `v5.0`)
-**Last updated:** Oct 21, 2026 (week 4)
+**Current version:** V5 Dashboard and review ✅ tagged `v5.0` (Oct 21), version `0.5.0`. V6's code and docs are merged (version `0.6.0.dev0` until its release); left: the live checks (Stage 7) and the release. V7 plan reviewed Nov 1 (see "V7 Final presentation").
+**Current branch:** `main` (V4 merged in PRs #16–#24, V5 in #25–#32, V6 in #33–#42; tags `v1.0` to `v5.0`)
+**Last updated:** Nov 1, 2026 (week 5)
 
 Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 
@@ -19,9 +19,50 @@ Status key: ✅ done · 🟡 in progress / partly done · ⬜ not started
 | V3 Screenshots | 6–7 | ✅ | Tagged `v3.0` (Oct 7). Real audit `run-0004`: 13 PASS / 1 FAIL / 2 NEEDS REVIEW, 15 of 15 screenshots, verify OK (47 files); tamper, missing-login and wrong-locator checks passed live. 551 tests, 100% coverage. Not run before the tag: expired AWS login (done live Oct 11, `run-0007`) and GH-06/07 break-and-fix ("V3 leftovers", both done later: Oct 11 and Oct 19) |
 | V4 AI evaluation | 8–10 | ✅ | Tagged `v4.0` (Oct 19), version 0.4.0. Started early. 6 stages. Stage 1 ✅ (PR #16): any AI model set in `.env`, `ai-test`; `openai/gpt-6-luna` chosen after measuring 5 cheap models. Stage 2 ✅ (PR #18): policy documents read and saved with each run, 5 sets of sample policies, rule kinds + `ai_check`, database schema 3 (real database upgraded; all 9 runs verify). Stage 3 ✅ (PR #19): the AI judge (safety table, retries, quote check), screenshot preparation, budget, cache; live: 17 of 17 right for $0.003. Stage 4 ✅ (PR #20): the AI in `audit.py run`, 19 rules; **live audit 18 PASS / 1 FAIL / 0 NEEDS REVIEW** (`run-0010`, $0.0010), repeat from cache for $0; GH-06/07 live flip FAIL → PASS (Oct 19). Stage 5 🟡: the experiment's tools are built (55 + 10 cases, setup that changes and puts back the accounts, capture, labelling packs, runs, analysis; 1,163 tests, 100%); pilot 10 of 10 right at a 4 MP picture limit ($0.0031). Stage 6 ✅: release. The experiment's main data collection (capture the 55 cases, labels by 2 people, 3 answers each, analysis) moved to V5 |
 | V5 Dashboard and review | 11–12 | ✅ | Tagged `v5.0` (Oct 21), version 0.5.0. Started early. Plan reviewed Oct 19 (decisions below). Dashboard: FastAPI + Jinja2 (no htmx, D9). Stage 1 ✅ (code): schema 4, the shared lock, scope by coverage, the queries and review services. Stage 2 ✅ (code): shared run options, rules turned off in `config/settings.yaml`, the rulebook read once and saved with each run, progress events. Stage 3 ✅ (code): the FastAPI dashboard, all pages, sign-in, background audits. Stage 4 ✅ (code): the experiment's fixes (D7) before its main run; 1,373 tests, 100%. Dashboard acceptance on the real accounts ✅ (Oct 20, `run-0042`/`run-0043`). Experiment: 55 cases captured ✅ (Oct 20), labelled by 2 people ✅ (Oct 21, κ = 0.97), main AI run and analysis ✅ (Oct 21, $0.054). Release ✅ (root README rewritten). The classmate usability test moved to V6 |
-| V6 Reports and polish | 13–14 | 🟡 | Started early (Oct 21). Plan reviewed against the code; decisions D1–D13 below. 9 stages (0–8), one PR each. Stage 0 ✅ (version 0.6.0.dev0, plan wording, V2 leftovers closed except GH-04). Stage 1 ✅ (code: settings file, run context). Stages 2–5 ✅ (fixes, report data, HTML and PDF report, dashboard downloads, logging and timing). Stage 6 ✅ (experiment write-up) |
-| V7 Final presentation | 15 | ⬜ | Folder ready: `docs/` |
+| V6 Reports and polish | 13–14 | 🟡 | Started early (Oct 21). Plan reviewed against the code; decisions D1–D14 below. 9 stages (0–8), one PR each. Stage 0 ✅ (version 0.6.0.dev0, plan wording, V2 leftovers closed except GH-04). Stage 1 ✅ (code: settings file, run context). Stages 2–5 ✅ (fixes, report data, HTML and PDF report, dashboard downloads, logging and timing). Stage 6 ✅ (experiment write-up). Stage 8's docs part ✅ (PR #41). Left: Stage 7 live acceptance, then rehearsals, the backup video and the release |
+| V7 Final presentation | 15 | ⬜ | Plan reviewed Nov 1 (risks R1–R8 below). Folder ready: `docs/` |
 | Research experiment | 8–14 | ✅ | V4: tools (`experiment/lab/`, 55 + 10 cases) and pilot (10 of 10 right). V5: capture ✅, labels ✅ (κ = 0.97), 3 answers per case ✅, analysis ✅ ([`docs/experiment-main-run.md`](compliance-lens/docs/experiment-main-run.md)). V6: write-up ✅ ([`docs/experiment-writeup.md`](compliance-lens/docs/experiment-writeup.md), figures, PR #36) |
+
+## V7 Final presentation ⬜ (plan reviewed Nov 1)
+
+V7 is the presentation, the 5-minute demo video, the short reflection and the handoff; the
+stretch goals come only after those. A V7 plan was drafted and checked against the code on
+Nov 1 (week 5; by the plan's calendar the presentation is in week 15, Jan 4–8, 2027).
+Baseline (`47e5921`): lint clean, 1,573 tests, 100% coverage; the public `--check` scripts
+(figures, sample report, sample PDFs) pass.
+
+Risks found in the review (the demo's steps for them are in
+[`docs/demo-script.md`](compliance-lens/docs/demo-script.md), "The week before"):
+
+| # | Risk | What to do |
+| --- | --- | --- |
+| R1 | **AWS-08 turns FAIL from about Dec 31, 2026**: `intern-bob` was created Oct 1 and never signs in, and a user who never signed in is counted from its creation | Sign in to the console once as `intern-bob` in December, then check AWS-08 is PASS. Otherwise the demo starts 14/2/3 and the MFA fix leaves a FAIL |
+| R2 | **The DOC rules may not be NEEDS REVIEW**: no fixed temperature, and one accepted answer on the ambiguous policies is cached and reused by every later run | Run DOC-01..03 on the ambiguous folder 5 times with `--refresh-ai`; if a later run says "cached from", tick "Ask the AI again" on the day |
+| R3 | **Nine weeks of drift**: a changed GitHub or AWS page breaks a screenshot's `wait_for` (GH-07, judged only from its picture, becomes NEEDS REVIEW); logins and tokens expire | A full audit, export and verify again in the week before |
+| R4 | **No real run's report has been exported yet** (the sample is the made-up audit); a real report carries every full-size screenshot | Time and size the real HTML and PDF export in Stage 7 |
+| R5 | **Expiry dates**: the organization-owned token the audit uses (V2) has no recorded end date (the first token, from V1, ends Jan 31, 2027) | Check it in GitHub's token list; also the AI key's credit and the AWS account's plan |
+| R6 | **The comparison after the live fix also lists DOC-01 as changed**: a review belongs to the audit it was made on | Say so in the demo; a likely question |
+| R7 | **The live MFA enrollment shows the MFA QR code** (a secret) | Blur it in the video; the device is removed after the demo |
+| R8 | **The repository is public, and gitleaks only runs before a commit** (not in CI) | Scan the whole history before the release; link the video rather than committing it |
+
+Also for Stage 7: the clean-clone check can't start from nothing on the same macOS user
+(`~/.aws`, Playwright's Chromium and Homebrew's Pango are shared): use a second macOS user,
+or write down what was inherited. Before the stretch goal of showing CIS / SOC 2 numbers in
+the report, check the 9 existing `framework_ref`s against a named benchmark version: AWS-01
+checks 12+ characters where CIS AWS 1.8 asks for 14, AWS-07 accepts any logging trail where
+CIS 3.1 asks for a multi-region one, and GH-01's "CIS GitHub 1.1.3" should be checked for
+the number of approvals it asks for; only AWS-08 says "adapted" today.
+
+Checklist (from the plan's final deliverables):
+
+- [ ] V6 closed: Stage 7, release `0.6.0`, tag `v6.0`
+- [ ] The week-before check on the real accounts (R1–R5)
+- [ ] Slides, with speaker notes and a PDF copy
+- [ ] The 5-minute demo video (a link, not a committed file)
+- [ ] The short reflection: limitations, lessons learned, future work
+- [ ] Two timed rehearsals of the whole presentation, with the fallback
+- [ ] Handoff: `docs/README.md` links every final file
+- [ ] Each stretch goal recorded as done or deferred: CIS / SOC 2 numbers in the report, Docker, scheduled audits and alerts, the AI rule designer, a third connector (comparing with the last audit was done in V5)
 
 ## V6 Reports, polish and tests 🟡 (started Oct 21)
 
@@ -62,7 +103,7 @@ Stages (one PR each):
 - [ ] Stage 7, live acceptance in one sitting: GH-04 flip, a full audit under 2 minutes, exports, reviews, offline export, missing login, tamper test on a copy, a clean clone that follows the README, the classmate usability test
 - [ ] Stage 8, READMEs, sample report, demo script, two rehearsals and a backup video, version `0.6.0`, tag `v6.0`
   - [x] The docs part (Oct 24): READMEs (root and `compliance-lens/`: V6 status, Pango, the settings file, `make report`, how reports work, a dashboard picture); `docs/sample-report.html` / `.pdf` from the made-up audit (`scripts/make_sample_report.py`, `--check`; a test fails if it falls out of date); `docs/images/dashboard-*.png` from the same made-up audit (`scripts/make_screenshots.py`); `docs/demo-script.md` (checklists, the 7 steps, fallbacks, a rehearsal log)
-  - [ ] After Stage 7: two rehearsals, the backup video, version `0.6.0`, the sample report made again, tag `v6.0`
+  - [ ] After Stage 7: two rehearsals, the backup video, version `0.6.0` (also the README's example output, which still says v0.5.0), the sample report made again, tag `v6.0`
 
 **Done when** (from the plan): a stranger can clone the repo, follow the README, run an audit and get a PDF report.
 
@@ -637,7 +678,9 @@ Undo each change afterwards (and run `aws login ...` again).
 - [x] V5: the experiment's main data collection (carried over from V4): capture, labels (κ = 0.97), main run, analysis (Oct 20–21)
 - [x] V5: dashboard and review (PRs #25–#29), live acceptance (Oct 20), release: version 0.5.0, tag `v5.0` (Oct 21)
 - [x] V6 Stage 0: plan reviewed against the code (D1–D13), version 0.6.0.dev0 (Oct 21)
-- [ ] V6: settings and run context, the report (HTML/PDF) and export, logging, the experiment write-up, live acceptance with the classmate usability test, release
+- [x] V6 code and docs: settings and run context, the report (HTML/PDF) and export, logging, the experiment write-up, READMEs, sample report, demo script (PRs #33–#42, Oct 21–24)
+- [ ] V6: live acceptance (Stage 7) with the classmate usability test, then the release
+- [ ] V7: see "V7 Final presentation" (the re-check in the week before, slides, video, reflection, handoff)
 - [ ] Confirm the assumptions in the Overview (Python, company tools, personal test accounts)
 
 ## Final deliverables (week 15)
@@ -655,6 +698,7 @@ Newest first. One line per meaningful change.
 
 | Date | Week | What was done |
 | --- | --- | --- |
+| 2026-11-01 | 5 | **V7 plan reviewed against the code.** Lint clean, 1,573 tests, 100% coverage. Risks R1–R8 written down (AWS-08 turns FAIL for `intern-bob` from about Dec 31; the ambiguous DOC answers can be cached; drift before week 15; no real report exported yet; token expiry; the comparison lists the reviewed DOC rule; the MFA QR code in the video; a public repository). Demo script: a "week before" check, the run options, notes and fallbacks. Stale docs fixed: GH-07 is the only AI screenshot rule (app README), PDF done (package README), the GH-04 check reads the organization and repository from the settings (scripts README, which also says which flips D8 closed by tests), the coverage line (tests README), what a public clone can check (docs README). |
 | 2026-10-24 | 4 | **V6 Stage 8, the docs part.** READMEs brought up to V6 (settings file, Pango, reports, a dashboard picture); a sample report (HTML and PDF) and the README's dashboard pictures, both from the made-up "Example Labs" audit and both made by script; the live demo script with its checklists and fallbacks. Left: Stage 7 live checks, then rehearsals, the video and the release. |
 | 2026-10-24 | 4 | **V6 Stage 5: logging and timing.** One rotating log (`logs/compliancelens.log`) for the CLI, the dashboard and the experiment: runs, per-rule verdicts and times, exports, reviews (never notes), crashes; secrets and account IDs hidden in every line and traceback. `audit.py run` prints the time and the slowest rules; a crash prints one line. Also fixed: the golden report test failed on Linux after #38 (Pillow draws the made-up pictures differently there), so it now compares without picture bytes and hashes, which another test checks against the files (PR #39). 1,569 tests, 100% coverage. |
 | 2026-10-22 | 4 | **V6 Stage 4: the PDF report and the dashboard's downloads.** `python audit.py report run-NNNN --format both` writes the HTML and a PDF made from it (WeasyPrint 70.0, A4, numbered pages, nothing loaded from outside the page); the Results page has Download HTML / Download PDF for the whole run. CI installs Pango and renders real PDFs. 1,556 tests, 100% coverage. |
