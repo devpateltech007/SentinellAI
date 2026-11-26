@@ -42,9 +42,10 @@
     site: aws
     url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/account_settings"
     wait_for: { text: "Password minimum length" }   # shown once the policy has loaded
-    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
-      - { pattern: "[0-9]{12}" }
+    mask:   # the account menu (its button and, if open, its panel), and every account ID:
+            # 12 digits (ARNs, bucket names, URLs) or 1234-5678-9012 (the menu's form)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button], #menu--account, [data-testid=awsc-nav-account-menu-content]" }
+      - { pattern: "[0-9]{12}|[0-9]{4}-[0-9]{4}-[0-9]{4}" }
   ai_check:   # --cross-check only
     expect: "The password policy's minimum password length is 12 characters or more."
     pass_if: ["Password minimum length shows 12 or more characters"]
@@ -67,9 +68,10 @@
     # the user table, once no column header shows a spinner: rows appear before the
     # MFA, activity, password and access key columns have loaded
     wait_for: { css: "table:has(a[href*='users/details']):not(:has(thead [class*='circle-left']))" }
-    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
-      - { pattern: "[0-9]{12}" }
+    mask:   # the account menu (its button and, if open, its panel), and every account ID:
+            # 12 digits (ARNs, bucket names, URLs) or 1234-5678-9012 (the menu's form)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button], #menu--account, [data-testid=awsc-nav-account-menu-content]" }
+      - { pattern: "[0-9]{12}|[0-9]{4}-[0-9]{4}-[0-9]{4}" }
   ai_check:   # --cross-check only
     expect: "Every IAM user who has a console password also has an MFA device."
     pass_if: ["Every user with a Password age shows an MFA device"]
@@ -91,9 +93,10 @@
     site: aws
     url: "https://{region}.console.aws.amazon.com/iam/home?region={region}#/home"
     wait_for: { text: "Root user has MFA" }
-    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
-      - { pattern: "[0-9]{12}" }
+    mask:   # the account menu (its button and, if open, its panel), and every account ID:
+            # 12 digits (ARNs, bucket names, URLs) or 1234-5678-9012 (the menu's form)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button], #menu--account, [data-testid=awsc-nav-account-menu-content]" }
+      - { pattern: "[0-9]{12}|[0-9]{4}-[0-9]{4}-[0-9]{4}" }
 
 - id: AWS-04
   title: No active access key is older than 90 days
@@ -114,9 +117,10 @@
     wait_for: { css: "table:has(a[href*='users/details']):not(:has(thead [class*='circle-left']))" }
     steps:
       - scroll_to: { role: columnheader, name: "Active key age" }
-    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
-      - { pattern: "[0-9]{12}" }
+    mask:   # the account menu (its button and, if open, its panel), and every account ID:
+            # 12 digits (ARNs, bucket names, URLs) or 1234-5678-9012 (the menu's form)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button], #menu--account, [data-testid=awsc-nav-account-menu-content]" }
+      - { pattern: "[0-9]{12}|[0-9]{4}-[0-9]{4}-[0-9]{4}" }
 
 - id: AWS-05
   title: Every S3 bucket blocks public access
@@ -134,9 +138,10 @@
     caption: "Shows the screenshot bucket only; the API checked every bucket."
     url: "https://{region}.console.aws.amazon.com/s3/buckets/{bucket}?region={region}&tab=permissions"
     wait_for: { text: "Individual Block Public Access settings for this bucket" }   # On/Off has loaded
-    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
-      - { pattern: "[0-9]{12}" }
+    mask:   # the account menu (its button and, if open, its panel), and every account ID:
+            # 12 digits (ARNs, bucket names, URLs) or 1234-5678-9012 (the menu's form)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button], #menu--account, [data-testid=awsc-nav-account-menu-content]" }
+      - { pattern: "[0-9]{12}|[0-9]{4}-[0-9]{4}-[0-9]{4}" }
   ai_check:   # --cross-check only: the picture shows one bucket, the API checks them all
     expect: "Block all public access is On for this bucket."
     pass_if: ["Block all public access shows On"]
@@ -160,9 +165,10 @@
     wait_for: { text: "Bucket Versioning" }
     steps:
       - scroll_to: { text: "Bucket Versioning" }
-    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
-      - { pattern: "[0-9]{12}" }
+    mask:   # the account menu (its button and, if open, its panel), and every account ID:
+            # 12 digits (ARNs, bucket names, URLs) or 1234-5678-9012 (the menu's form)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button], #menu--account, [data-testid=awsc-nav-account-menu-content]" }
+      - { pattern: "[0-9]{12}|[0-9]{4}-[0-9]{4}-[0-9]{4}" }
 
 - id: AWS-07
   title: At least one CloudTrail trail is logging
@@ -180,9 +186,10 @@
     wait_for: { css: "a[href*='trails/arn']" }   # a trail row has loaded
     steps:
       - scroll_to: { role: columnheader, name: "Status" }   # Logging
-    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
-      - { pattern: "[0-9]{12}" }
+    mask:   # the account menu (its button and, if open, its panel), and every account ID:
+            # 12 digits (ARNs, bucket names, URLs) or 1234-5678-9012 (the menu's form)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button], #menu--account, [data-testid=awsc-nav-account-menu-content]" }
+      - { pattern: "[0-9]{12}|[0-9]{4}-[0-9]{4}-[0-9]{4}" }
 
 - id: AWS-08
   title: No IAM user has been inactive for more than 90 days
@@ -200,9 +207,10 @@
     # the user table, once no column header shows a spinner: rows appear before the
     # MFA, activity, password and access key columns have loaded
     wait_for: { css: "table:has(a[href*='users/details']):not(:has(thead [class*='circle-left']))" }
-    mask:   # the account menu, and every 12-digit account ID (ARNs, bucket names, URLs)
-      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button]" }
-      - { pattern: "[0-9]{12}" }
+    mask:   # the account menu (its button and, if open, its panel), and every account ID:
+            # 12 digits (ARNs, bucket names, URLs) or 1234-5678-9012 (the menu's form)
+      - { css: "#nav-usernameMenu, [data-testid=awsc-nav-account-menu-button], #menu--account, [data-testid=awsc-nav-account-menu-content]" }
+      - { pattern: "[0-9]{12}|[0-9]{4}-[0-9]{4}-[0-9]{4}" }
 
 # --- GitHub ------------------------------------------------------------------
 

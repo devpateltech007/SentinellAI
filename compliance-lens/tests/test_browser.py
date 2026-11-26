@@ -19,6 +19,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+import yaml
 from PIL import Image, ImageStat
 
 from compliancelens import evidence, runner
@@ -26,6 +27,7 @@ from compliancelens.connectors import browser
 from compliancelens.storage import db
 
 PAGES_DIR = Path(__file__).parent / "fixtures" / "browser"
+RULES_FILE = Path(__file__).parents[1] / "rules" / "starter_rules.yaml"
 
 # path -> (file, needs the login cookie)
 PAGES = {
@@ -43,6 +45,7 @@ PAGES = {
     "/noaccess": ("noaccess.html", True),
     "/signout": ("signout.html", True),
     "/theme": ("theme.html", True),
+    "/aws-menu": ("aws_menu.html", True),
 }
 COOKIE = "session=ok"
 
@@ -687,6 +690,20 @@ def test_hidden_copies_are_skipped(logged_in, server):
         rule("/evidence", server, wait_for={"text": "Require reviews"}, timeout_ms=2000)
     )
     assert result.status == browser.CAPTURED, result.reason
+
+
+def test_aws_masks_hide_the_open_account_menu_and_account_ids(logged_in, server):
+    # The rulebook's own AWS mask, on a page like the console with its account menu open:
+    # the menu's panel lists the ID as 1234-5678-9012, the account name and the IAM user.
+    [aws01] = [r for r in yaml.safe_load(RULES_FILE.read_text()) if r["id"] == "AWS-01"]
+    mask = aws01["screenshot"]["mask"]
+    for target in ("#nav-usernameMenu", "#menu--account", "#arn", "#dashed"):
+        shot = {"capture": {"target": {"css": target}}, "wait_for": {"role": "heading"}}
+        [plain, masked] = capture(
+            rule("/aws-menu", server, **shot), rule("/aws-menu", server, mask=mask, **shot)
+        )
+        assert dark_pixels(plain.png) > 0, target  # readable without the masks
+        assert dark_pixels(masked.png) == 0, target  # hidden with them
 
 
 def test_pattern_mask_hides_matching_text(logged_in, server):

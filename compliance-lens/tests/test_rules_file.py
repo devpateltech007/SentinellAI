@@ -101,7 +101,14 @@ def test_screenshot_block_is_valid(rule):
 def test_screenshots_hide_private_details(rule):
     masks = rule["screenshot"].get("mask", [])
     if rule["screenshot"]["site"] == "aws":
-        assert {"pattern": "[0-9]{12}"} in masks  # account IDs in ARNs, bucket names, URLs
+        # Account IDs: 12 digits in ARNs, bucket names and URLs; dashed in the account menu.
+        [id_mask] = [m for m in masks if "pattern" in m]
+        for shown in ("123456789012", "arn:aws:iam::123456789012:user/x", "1234-5678-9012"):
+            assert re.search(id_mask["pattern"], shown), shown
+        # The account menu's button, and its panel (ID, account name, IAM user) if it's open.
+        [menu] = [m["css"] for m in masks if "css" in m]
+        assert "#nav-usernameMenu" in menu
+        assert "[data-testid=awsc-nav-account-menu-content]" in menu
     else:
         assert {"role": "button", "name": "Open user navigation menu"} in masks  # your avatar
 
