@@ -162,7 +162,21 @@ def test_git_state(monkeypatch):
         raise FileNotFoundError("git")
 
     monkeypatch.setattr(subprocess, "run", missing)
+    monkeypatch.delenv(runner.GIT_COMMIT_ENV, raising=False)
     assert runner._git_state() == {"commit": None, "dirty": None}
+
+
+def test_git_state_in_a_docker_image(monkeypatch):
+    def missing(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    monkeypatch.setattr(subprocess, "run", missing)
+    commit = "0123456789abcdef0123456789abcdef01234567"
+    monkeypatch.setenv(runner.GIT_COMMIT_ENV, f" {commit.upper()}\n")
+    assert runner._git_state() == {"commit": commit, "dirty": None}
+    for odd in ("", "unknown", commit[:12], commit + "0"):
+        monkeypatch.setenv(runner.GIT_COMMIT_ENV, odd)
+        assert runner._git_state() == {"commit": None, "dirty": None}
 
 
 def test_saved_context_of_older_and_odd_runs(rules, temp_storage):

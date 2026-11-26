@@ -52,6 +52,8 @@ import contextlib
 import datetime
 import json
 import logging
+import os
+import re
 import subprocess
 import time
 from collections.abc import Callable, Mapping
@@ -69,6 +71,7 @@ log = logging.getLogger(__name__)
 _clock = time.monotonic  # tests replace it so times are fixed
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONTEXT_VERSION = 1  # run-context.json's format
+GIT_COMMIT_ENV = "COMPLIANCELENS_GIT_COMMIT"  # set in the Docker image (V7)
 
 
 class StorageError(RuntimeError):
@@ -504,7 +507,9 @@ class _Events:
 
 def _git_state() -> dict:
     """The code's git commit, and whether it had uncommitted changes (V6). Nulls when
-    git or the repository isn't there (an installed copy)."""
+    git or the repository isn't there (an installed copy). A Docker image has no git:
+    it carries the commit it was built from in COMPLIANCELENS_GIT_COMMIT (V7), and
+    whether that build had uncommitted changes stays unknown."""
 
     def git(*args) -> str:
         done = subprocess.run(
@@ -520,6 +525,9 @@ def _git_state() -> dict:
         commit = git("rev-parse", "HEAD")
         dirty = bool(git("status", "--porcelain", "--untracked-files=no"))
     except (OSError, subprocess.SubprocessError):
+        built_from = os.environ.get(GIT_COMMIT_ENV, "").strip().lower()
+        if re.fullmatch(r"[0-9a-f]{40}", built_from):
+            return {"commit": built_from, "dirty": None}
         return {"commit": None, "dirty": None}
     return {"commit": commit, "dirty": dirty}
 

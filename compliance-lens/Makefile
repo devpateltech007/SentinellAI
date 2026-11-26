@@ -6,7 +6,7 @@ VENV   := .venv
 BIN    := $(VENV)/bin
 
 .DEFAULT_GOAL := help
-.PHONY: help setup test lint format audit crosscheck history verify report login aitest dashboard experiment analyze clean
+.PHONY: help setup test lint format audit crosscheck history verify report login aitest dashboard experiment analyze docker dockertest clean
 
 help:  ## Show this list
 	@grep -E '^[a-z]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-10s %s\n", $$1, $$2}'
@@ -65,6 +65,13 @@ experiment:  ## Research experiment: the AI judges every captured case 3 times (
 
 analyze:  ## Research experiment: the results tables (no AI call)
 	$(BIN)/python -m experiment.lab analyze
+
+docker:  ## Build the Docker image, with this git commit (see docker-compose.yml)
+	GIT_COMMIT=$$(git rev-parse HEAD) docker compose build
+
+dockertest:  ## Run all tests inside the Docker image (Linux)
+	docker build -t compliancelens-test:dev --target test .
+	docker run --rm compliancelens-test:dev
 
 clean:  ## Delete caches and the virtual environment (keeps evidence and logins)
 	rm -rf $(VENV) .pytest_cache .ruff_cache .coverage htmlcov build dist *.egg-info
