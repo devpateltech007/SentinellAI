@@ -1,8 +1,10 @@
-# ComplianceLens in Docker on this computer (Docker plan, stage 2).
+# ComplianceLens in Docker on this computer (Docker plan, stages 2 and 3).
 #
 #   make docker                                   build the image (with the git commit)
+#   docker compose up -d dashboard                the dashboard: http://127.0.0.1:8000
 #   docker compose run --rm audit history         any audit.py command
 #   docker compose run --rm audit run --no-screenshots
+#   docker compose down                           stop it
 #
 # The image holds only the program. Everything private stays in this folder on the
 # computer and is mounted in: settings, the employee list, policies, logins, evidence,
@@ -11,31 +13,45 @@
 #
 # Don't run an audit here and on the computer at the same time: the "one audit at a
 # time" lock is a file lock, and it doesn't reach across Docker's folder sharing.
+# (Between containers it works: the dashboard and `audit` refuse a second audit.)
+
+x-compliancelens: &compliancelens
+  image: compliancelens:dev
+  build:
+    context: .
+    target: runtime
+    args:
+      GIT_COMMIT: ${GIT_COMMIT:-}
+  env_file: .env                # tokens, AI key, AWS_PROFILE, dashboard password
+  environment:
+    # The database stays in this folder; its whole folder is mounted so SQLite's
+    # side files (-wal, -shm, .lock) sit next to it, as on the computer.
+    COMPLIANCELENS_DB: /app/db/compliance.db
+  volumes:
+    - ./config:/app/config      # the dashboard's Rules page writes disabled_rules.yaml
+    - ./data:/app/data
+    - ./policies:/app/policies:ro
+    - ./sessions:/app/sessions
+    - ./evidence:/app/evidence
+    - ./reports:/app/reports
+    - ./logs:/app/logs
+    - .:/app/db
+    # AWS CLI profiles and the `aws login` session. Writable: boto3 saves the
+    # refreshed sign-in there, the same as on the computer.
+    - ${HOME}/.aws:/home/app/.aws
 
 services:
   audit:
-    image: compliancelens:dev
-    build:
-      context: .
-      target: runtime
-      args:
-        GIT_COMMIT: ${GIT_COMMIT:-}
+    <<: *compliancelens
     entrypoint: ["python", "audit.py"]
     command: ["--help"]
-    env_file: .env                # tokens, AI key, AWS_PROFILE, dashboard password
-    environment:
-      # The database stays in this folder; its whole folder is mounted so SQLite's
-      # side files (-wal, -shm, .lock) sit next to it, as on the computer.
-      COMPLIANCELENS_DB: /app/db/compliance.db
-    volumes:
-      - ./config:/app/config
-      - ./data:/app/data
-      - ./policies:/app/policies:ro
-      - ./sessions:/app/sessions
-      - ./evidence:/app/evidence
-      - ./reports:/app/reports
-      - ./logs:/app/logs
-      - .:/app/db
-      # AWS CLI profiles and the `aws login` session. Writable: boto3 saves the
-      # refreshed sign-in there, the same as on the computer.
-      - ${HOME}/.aws:/home/app/.aws
+
+  dashboard:
+    <<: *compliancelens
+    # Listens on every address inside the container; Docker publishes it on this
+    # computer's 127.0.0.1 only, so other computers can't reach the sign-in page.
+    # (The dashboard's "other computers can reach" warning is about the container.)
+    command: ["python", "-m", "compliancelens.dashboard", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "127.0.0.1:${DASHBOARD_PORT:-8000}:8000"
+    restart: unless-stopped
