@@ -214,7 +214,7 @@ never changes an API rule's verdict. HR-01 has none (it checks a local CSV).
 | `wait_for` | Something that appears **only** when the evidence has loaded. Not `{role: main}`: a sign-in page has one too. |
 | `steps` | Only `wait_for`, `scroll_to` and `click`. A click must be a **link or tab** with a name, and names like Delete, Save, Disable, Confirm are refused. Nothing can type, tick or select. |
 | `capture` | `full_page: true` for the whole page, `target: <locator>` for one element. |
-| `mask` | Locators covered with a solid block before the picture is taken. Every AWS screenshot masks the account menu and `{ pattern: "[0-9]{12}" }` (account IDs in ARNs, bucket names and URLs); every GitHub screenshot masks your avatar. |
+| `mask` | Locators covered with a solid block before the picture is taken. Every AWS screenshot masks the account menu (its button, and its panel in case it is open: the panel lists the account ID, account name and IAM user) and `{ pattern: "[0-9]{12}\|[0-9]{4}-[0-9]{4}-[0-9]{4}" }` (account IDs in ARNs, bucket names and URLs, and the menu's dashed form); every GitHub screenshot masks your avatar. |
 
 **Locators** are one of `role` (+ optional `name`), `label`, `text`, `pattern` (a regular
 expression, e.g. `"[0-9]{12}"`) or `css`, plus optional `exact: true` (not with `pattern`).
