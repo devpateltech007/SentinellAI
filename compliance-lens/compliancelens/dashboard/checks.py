@@ -13,6 +13,8 @@ import datetime
 import os
 from dataclasses import dataclass
 
+import boto3
+
 from compliancelens import config
 from compliancelens.connectors import browser
 from compliancelens.evaluator import settings as ai_settings
@@ -84,9 +86,25 @@ def _github(context: config.RunContext | None) -> Check:
     return Check(True, "GitHub", f"token set, organization {org or '(not set)'}")
 
 
+SERVER_ROLES = {"iam-role": "EC2", "container-role": "container"}  # boto3's credential methods
+
+
+def server_role() -> str | None:
+    """The kind of server role boto3 found (V7, Docker on a server): an EC2 instance's IAM
+    role or a container's task role, which need no `aws login`. None on a laptop."""
+    try:
+        credentials = boto3.Session().get_credentials()
+    except Exception:  # a broken ~/.aws/config: the AWS rules will say why
+        return None
+    return SERVER_ROLES.get(getattr(credentials, "method", None))
+
+
 def _aws(context: config.RunContext | None) -> Check:
     login = aws_login_command(context)
     if not (os.environ.get("AWS_PROFILE") or os.environ.get("AWS_ACCESS_KEY_ID")):
+        role = server_role()
+        if role:
+            return Check(True, "AWS", f"this server's {role} IAM role (no sign-in needed)")
         return Check(
             False, "AWS", "no AWS_PROFILE: AWS rules will be NEEDS REVIEW", f"run: {login}"
         )

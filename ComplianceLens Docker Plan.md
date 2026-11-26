@@ -66,6 +66,19 @@ account ID in this file: the repository is public.
      dashed form (`1234-5678-9012`), so the account ID, account name and IAM user show.
   2. GH-05's screenshot taken by a non-member shows "We couldn't find any matching
      members", which looks like a PASS picture (the verdict comes from the API).
+  Item 1 is fixed separately (PR #49).
+- **Stage 5 🟡 prepared (Nov 26); the live run needs the account admin:**
+  `docker-compose.server.yml` (no `~/.aws`, host networking so the containers reach the
+  EC2 role's credentials, dashboard on the server's 127.0.0.1 only, reached by Session
+  Manager port forwarding); `docs/aws-server.md` (the admin's console steps: role with
+  SecurityAudit + AmazonSSMManagedInstanceCore, `t4g.small` Ubuntu Arm server with no
+  inbound port, an inline policy letting one IAM user open sessions on that server only;
+  then the commands to install, configure, run and clean up). The dashboard's AWS check
+  now recognises a server role ("this server's EC2 IAM role (no sign-in needed)")
+  instead of warning "no AWS_PROFILE". Tested locally: the container with no `~/.aws` and
+  no profile, given credentials only through the environment, gives the same AWS
+  verdicts (`run-0057`). Found: an **empty** `AWS_PROFILE` breaks boto3, so the server's
+  `.env` must leave it out. 1,580 tests, 100%.
 
 **Risks to watch**
 

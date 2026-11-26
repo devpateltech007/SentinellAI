@@ -1,0 +1,47 @@
+# ComplianceLens on a server in AWS (Docker plan, stage 5). Guide: docs/aws-server.md.
+#
+#   make docker                                            build (with the git commit)
+#   docker compose -f docker-compose.server.yml up -d dashboard
+#   docker compose -f docker-compose.server.yml run --rm audit run --no-screenshots
+#
+# Differences from docker-compose.yml (the laptop):
+# - No ~/.aws and no `aws login`: boto3 uses the server's IAM role. .env must NOT
+#   contain AWS_PROFILE at all (an empty one breaks boto3 too).
+# - Host networking: the containers reach the role's credentials (EC2 instance
+#   metadata) with no extra network hop, and the dashboard listens on the server's own
+#   127.0.0.1 only. Reach it through AWS Session Manager port forwarding; the server
+#   needs no open inbound port.
+
+x-compliancelens: &compliancelens
+  image: compliancelens:dev
+  build:
+    context: .
+    target: runtime
+    args:
+      GIT_COMMIT: ${GIT_COMMIT:-}
+  env_file: .env                # GitHub token, AI key, dashboard password; no AWS_PROFILE
+  environment:
+    COMPLIANCELENS_DB: /app/db/compliance.db
+    AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+  network_mode: host
+  shm_size: 1gb                 # Chromium needs more shared memory than Docker's 64 MB
+  volumes:
+    - ./config:/app/config
+    - ./data:/app/data
+    - ./policies:/app/policies:ro
+    - ./sessions:/app/sessions
+    - ./evidence:/app/evidence
+    - ./reports:/app/reports
+    - ./logs:/app/logs
+    - .:/app/db
+
+services:
+  audit:
+    <<: *compliancelens
+    entrypoint: ["python", "audit.py"]
+    command: ["--help"]
+
+  dashboard:
+    <<: *compliancelens
+    command: ["python", "-m", "compliancelens.dashboard", "--host", "127.0.0.1", "--port", "8000"]
+    restart: unless-stopped

@@ -14,6 +14,7 @@
 - [`sample-report.html`](sample-report.html) and [`sample-report.pdf`](sample-report.pdf): a sample audit report (V6), made from a made-up audit ("Example Labs"), never from real accounts (`python scripts/make_sample_report.py`; `--check` compares).
 - [`images/`](images): the README's dashboard pictures, of the same made-up audit (`python scripts/make_screenshots.py`).
 - [`demo-script.md`](demo-script.md): the live demo, step by step, with its checklists, fallbacks and rehearsal log (V6).
+- [`aws-server.md`](aws-server.md): running ComplianceLens in Docker on a server in AWS with a read-only IAM role (V7, Docker plan stage 5).
 - Final presentation slides and a link to the 5-minute demo video.
 - The short reflection: limitations, lessons learned, future work.
 
