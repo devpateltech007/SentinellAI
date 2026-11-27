@@ -1,5 +1,7 @@
 # ComplianceLens on a server in AWS (Docker plan, stage 5)
 
+The same setup, automatic from one form: [`deploy/aws/`](../deploy/aws/README.md) (a CloudFormation template). This page is the manual version.
+
 One small EC2 server in the audited account runs ComplianceLens in Docker. It reads AWS
 with its own **read-only IAM role**: no IAM user, no password, no `aws login`. Nobody
 can reach it from the internet: you open the dashboard through **AWS Session Manager**.
