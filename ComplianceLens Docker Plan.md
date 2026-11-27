@@ -30,13 +30,26 @@ account ID in this file: the repository is public.
   the git commit, and there is no git in the image). Chromium starts and a PDF is made.
   Found for stage 2: audits in the container save the code's commit as unknown
   (`run-context.json`); pass it in at build time if the report should show it.
+- **Stage 2 ✅ (Nov 26):** `compliance-lens/docker-compose.yml` (service `audit`),
+  `make docker` (builds with the git commit) and `make dockertest`. The image saves its
+  commit in `COMPLIANCELENS_GIT_COMMIT`; `_git_state` uses it when there is no git.
+  Mounted from the project folder: `config/`, `data/`, `policies/` (read-only),
+  `sessions/`, `evidence/`, `reports/`, `logs/`, the database's folder; `~/.aws` for the
+  `aws login` session. Results: GitHub + documents `run-0048` 9 PASS / 1 NEEDS REVIEW and
+  AWS + HR `run-0049` 8 PASS / 1 FAIL, the same as the Mac's `run-0044` and `run-0047`;
+  live AI call works; both runs listed by `make history` and verified on the Mac; database
+  integrity OK; files owned by the Mac user; commit saved. 1,574 tests pass on the Mac
+  (100%) and in Linux (99.95%).
+  Found: the "one audit at a time" file lock does **not** reach between the Mac and the
+  container (`run-0050` ran while the Mac held it). Inside one container it still works.
+  Don't audit from both at once; on a server only the container runs.
 
 **Risks to watch**
 
-- SQLite and its file lock on a Docker Desktop folder mount (stage 2): if they misbehave,
-  keep the database on a Docker volume instead.
-- `aws login` sessions inside the container (stage 2): boto3 needs the login cache from
-  `~/.aws`; if it can't refresh read-only, mount it writable.
+- SQLite on a Docker Desktop folder mount: works one audit at a time (stage 2); the lock
+  doesn't cross between Mac and container, so never audit from both at once.
+- `~/.aws` is mounted writable so the `aws login` session can refresh; on a server
+  (stage 5) the IAM role replaces it.
 - Linux fonts change how screenshots and the PDF look (stages 1, 4).
 - Saved AWS console logins last ~12 hours (stage 4): log in just before the test.
 - AWS cost (stage 5): a small instance for a few hours costs cents; terminate it after.

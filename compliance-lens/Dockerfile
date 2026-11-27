@@ -47,6 +47,11 @@ RUN useradd --create-home --uid 1000 app \
     && chown -R app:app /app
 USER app
 
+# The commit the image was built from, saved with each audit (there is no git inside).
+# `make docker` passes it; a plain `docker build` leaves it empty ("not known").
+ARG GIT_COMMIT=""
+ENV COMPLIANCELENS_GIT_COMMIT=$GIT_COMMIT
+
 CMD ["python", "audit.py", "--help"]
 
 

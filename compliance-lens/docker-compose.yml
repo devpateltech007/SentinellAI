@@ -1,0 +1,41 @@
+# ComplianceLens in Docker on this computer (Docker plan, stage 2).
+#
+#   make docker                                   build the image (with the git commit)
+#   docker compose run --rm audit history         any audit.py command
+#   docker compose run --rm audit run --no-screenshots
+#
+# The image holds only the program. Everything private stays in this folder on the
+# computer and is mounted in: settings, the employee list, policies, logins, evidence,
+# reports, logs and the database. A run made in the container shows up in
+# `make history` on the computer, and the other way round.
+#
+# Don't run an audit here and on the computer at the same time: the "one audit at a
+# time" lock is a file lock, and it doesn't reach across Docker's folder sharing.
+
+services:
+  audit:
+    image: compliancelens:dev
+    build:
+      context: .
+      target: runtime
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
+    entrypoint: ["python", "audit.py"]
+    command: ["--help"]
+    env_file: .env                # tokens, AI key, AWS_PROFILE, dashboard password
+    environment:
+      # The database stays in this folder; its whole folder is mounted so SQLite's
+      # side files (-wal, -shm, .lock) sit next to it, as on the computer.
+      COMPLIANCELENS_DB: /app/db/compliance.db
+    volumes:
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./policies:/app/policies:ro
+      - ./sessions:/app/sessions
+      - ./evidence:/app/evidence
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      - .:/app/db
+      # AWS CLI profiles and the `aws login` session. Writable: boto3 saves the
+      # refreshed sign-in there, the same as on the computer.
+      - ${HOME}/.aws:/home/app/.aws
