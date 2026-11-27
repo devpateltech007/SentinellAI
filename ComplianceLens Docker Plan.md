@@ -53,6 +53,19 @@ account ID in this file: the repository is public.
   `reports/run-0051/`, PDF renders with real fonts and shows the commit; verify and
   database integrity OK on the Mac. The audit lock **does** work between two containers
   (both refused with "already running"); only Mac ↔ container is unprotected.
+- **Stage 4 ✅ (Nov 26), no file changes needed:** logins saved on the Mac
+  (`make login SITE=github|aws`) are used by the container through `sessions/`.
+  AWS: `run-0054` from Docker, **8 of 8 screenshots** in 38 s, same verdicts; same size
+  (1440×932), stamp, fonts and masking as the Mac's (`run-0055`). GitHub: `run-0052`,
+  1 of 7, but the Mac gets the same 404s: the GitHub account that signed in is not a
+  member of `compliancelens-lab-sjsu`, so its settings pages are hidden (not a Docker
+  problem; an organization owner must invite it). Evidence of both runs verifies.
+  Found, not Docker-specific (to fix separately):
+  1. **Masking leak:** in the Mac's `run-0055/AWS-01.png` the AWS account menu was open;
+     the mask covers only its button, and the ID pattern `[0-9]{12}` misses the menu's
+     dashed form (`1234-5678-9012`), so the account ID, account name and IAM user show.
+  2. GH-05's screenshot taken by a non-member shows "We couldn't find any matching
+     members", which looks like a PASS picture (the verdict comes from the API).
 
 **Risks to watch**
 
