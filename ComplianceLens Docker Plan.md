@@ -17,8 +17,9 @@ account ID in this file: the repository is public.
 | 2. CLI in a container | `docker-compose.yml`: mounts `config/`, `data/`, `policies/`, `evidence/`, `sessions/`, the database, `~/.aws` (read-only); reads `.env` | `docker compose run` an audit with `--no-screenshots` | Same verdicts as the laptop runs (`run-0044`, `run-0047`); `verify` passes from the laptop; `history` shows the run |
 | 3. Dashboard in a container | Dashboard on `--host 0.0.0.0`, port published on `127.0.0.1:8000` only | In the browser: sign in, Run audit, review a result, export HTML and PDF | All five work; the PDF has its pictures; the database lock still allows one audit at a time |
 | 4. Screenshots in a container | Logins saved on the laptop (`make login`), used by the container through `sessions/` | Full audit with screenshots | All screenshots taken; masking and stamp look the same as on the laptop |
-| 5. Run in AWS (**USER**: friend creates it) | One small EC2 server with an IAM role (SecurityAudit + Session Manager), no `AWS_PROFILE`; dashboard reached only by Session Manager port forwarding | `aws sts get-caller-identity` shows the role; full audit from the server's dashboard | Audit runs with no IAM user and no `aws login`; server stopped after the test |
-| 6. Install guide and a new customer | `docs/install.md`; a second free GitHub org with its own policies | Someone follows only the guide, start to finish | Every step that was needed is in the guide; Progress file updated |
+| 5. Run in AWS by hand (**live test needs an account admin**) | `docker-compose.server.yml`, `docs/aws-server.md`: one small EC2 server with an IAM role (SecurityAudit + Session Manager), no `AWS_PROFILE`; dashboard reached only by Session Manager port forwarding | Offline: the container with no profile and no `~/.aws`. Live: `sts get-caller-identity` shows the role; full audit from the server's dashboard | Audit runs with no IAM user and no `aws login`; server stopped after the test |
+| 6. One-click install (**live test needs an account admin**) | `deploy/aws/`: a CloudFormation template (role, secret, server with no inbound port, optional Session Manager access for one user) and the first-boot script it runs | Offline: `cfn-lint`, `shellcheck`, tests of the template's safety and of the script on awkward values. Live: create the stack, open the dashboard from its Outputs, delete the stack | The stack installs a working dashboard and a daily audit with no manual step except the employee list |
+| 7. Install guide and a new customer (live) | `docs/install.md`; a second free GitHub org with its own policies | Someone follows only the guide, start to finish | Every step that was needed is in the guide; Progress file updated |
 
 **Progress**
 
@@ -79,6 +80,19 @@ account ID in this file: the repository is public.
   no profile, given credentials only through the environment, gives the same AWS
   verdicts (`run-0057`). Found: an **empty** `AWS_PROFILE` breaks boto3, so the server's
   `.env` must leave it out. 1,580 tests, 100%.
+
+- **Stage 6 🟡 built (Nov 26); the live run needs an account admin:** `deploy/aws/`
+  (`compliancelens-server.yaml`, `server-setup.sh`, `README.md`). Everything typed into the
+  stack's form goes into one Secrets Manager secret; the server's start-up script holds
+  only checked values (repository, branch, the secret's ARN, region), so no value can be
+  run as a command. The server: Ubuntu 24.04 Arm `t4g.small`, encrypted disk, IMDSv2,
+  no inbound rule; its role is SecurityAudit + Session Manager + reading its own secret.
+  First boot: Docker, clone, build, settings and `.env` from the secret, dashboard on
+  127.0.0.1, daily audit at 06:00 UTC. Tested offline: `cfn-lint` and `shellcheck` clean;
+  the script run in a fresh Ubuntu 24.04 container on awkward values (quotes, `$( )`,
+  backticks); the tool reads the settings it writes; `tests/test_deploy_aws.py` (9 tests).
+  Found and fixed: Compose expands `$NAME` inside `.env` values, which changed a test
+  password; `.env` values are now quoted with `$$`. 1,589 tests, 100%.
 
 **Risks to watch**
 

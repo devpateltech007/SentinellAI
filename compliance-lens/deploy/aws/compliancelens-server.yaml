@@ -1,0 +1,216 @@
+# ComplianceLens: one-click install on a server in your AWS account (Docker plan, stage 6).
+#
+# Creates: a read-only IAM role (SecurityAudit) for the server, one secret with your
+# form's values, a small Ubuntu server with NO inbound port, and (optional) a policy that
+# lets one IAM user open the dashboard through AWS Session Manager. The server then
+# installs Docker, builds ComplianceLens from GitHub, starts the dashboard and audits
+# every day at 06:00 UTC. Guide: deploy/aws/README.md.
+#
+# Plain YAML (long-form functions, no !Ref tags) so tests can read it.
+
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::LanguageExtensions # for Fn::ToJsonString (the secret's JSON)
+Description: ComplianceLens compliance audits on a private server with a read-only role.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: What to audit }
+        Parameters: [Company, GitHubOrg, GitHubRepo, GitHubBranch, ScreenshotBucket, AllowAwsUsers]
+      - Label: { default: Keys and passwords (stored in Secrets Manager) }
+        Parameters: [GitHubToken, AiModel, AiApiKey, DashboardPassword]
+      - Label: { default: Access and server }
+        Parameters: [SessionUser, InstanceType, SourceRepo, SourceRef, UbuntuAmi]
+
+Parameters:
+  Company:
+    Type: String
+    Description: Shown on the report's cover.
+    MinLength: 1
+    MaxLength: 100
+  GitHubOrg:
+    Type: String
+    Description: The GitHub organization to audit.
+    AllowedPattern: "^[A-Za-z0-9-]{1,39}$"
+  GitHubRepo:
+    Type: String
+    Description: The repository's name only (GH-01 to GH-04).
+    AllowedPattern: "^[A-Za-z0-9._-]{1,100}$"
+  GitHubBranch:
+    Type: String
+    Default: main
+    AllowedPattern: "^[A-Za-z0-9._/-]{1,100}$"
+  ScreenshotBucket:
+    Type: String
+    Default: ""
+    Description: Optional. Not used on the server yet (no screenshots there).
+  AllowAwsUsers:
+    Type: String
+    Default: ""
+    Description: Optional. Comma-separated IAM users that belong to no employee (HR-01).
+  GitHubToken:
+    Type: String
+    NoEcho: true
+    Description: Fine-grained token owned by the organization (read-only, see the README).
+    MinLength: 1
+  AiModel:
+    Type: String
+    Default: openai/gpt-6-luna
+    Description: provider/model for documents and screenshots. Empty = no AI (those rules NEEDS REVIEW).
+  AiApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+    Description: The AI provider's key. Empty = no AI.
+  DashboardPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 12
+    Description: The dashboard's admin password (12+ characters).
+  SessionUser:
+    Type: String
+    Default: ""
+    Description: Optional. An IAM user allowed to open the dashboard and a shell on this server (Session Manager).
+  InstanceType:
+    Type: String
+    Default: t4g.small
+    AllowedValues: [t4g.small, t4g.medium]
+  SourceRepo:
+    Type: String
+    Default: https://github.com/devpateltech007/SentinellAI.git
+    AllowedPattern: "^https://[A-Za-z0-9./_-]+\\.git$"
+  SourceRef:
+    Type: String
+    Default: main
+    Description: Branch or tag of ComplianceLens to install.
+    AllowedPattern: "^[A-Za-z0-9._/-]{1,100}$"
+  UbuntuAmi:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/arm64/hvm/ebs-gp3/ami-id
+
+Conditions:
+  HasSessionUser:
+    Fn::Not: [{ Fn::Equals: [{ Ref: SessionUser }, ""] }]
+
+Resources:
+  Settings:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: ComplianceLens settings, tokens and passwords (read by the server only).
+      SecretString:
+        Fn::ToJsonString:
+          company: { Ref: Company }
+          github_org: { Ref: GitHubOrg }
+          github_repo: { Ref: GitHubRepo }
+          github_branch: { Ref: GitHubBranch }
+          aws_region: { Ref: AWS::Region }
+          screenshot_bucket: { Ref: ScreenshotBucket }
+          allow_aws: { Ref: AllowAwsUsers }
+          github_token: { Ref: GitHubToken }
+          ai_model: { Ref: AiModel }
+          ai_api_key: { Ref: AiApiKey }
+          dashboard_password: { Ref: DashboardPassword }
+
+  ServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: ComplianceLens server - read-only audit access (SecurityAudit).
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ec2.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/SecurityAudit
+        - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Policies:
+        - PolicyName: read-own-settings
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: { Ref: Settings }
+
+  ServerProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [{ Ref: ServerRole }]
+
+  ServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ComplianceLens server - no inbound access (Session Manager only)
+      # No SecurityGroupIngress: nothing can connect in. Outbound stays open (GitHub,
+      # AWS APIs, the AI provider, package updates).
+
+  Server:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: { Ref: UbuntuAmi }
+      InstanceType: { Ref: InstanceType }
+      IamInstanceProfile: { Ref: ServerProfile }
+      SecurityGroupIds: [{ "Fn::GetAtt": [ServerSecurityGroup, GroupId] }]
+      MetadataOptions:
+        HttpTokens: required # IMDSv2 only
+        HttpPutResponseHopLimit: 2
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs: { VolumeSize: 20, VolumeType: gp3, Encrypted: true, DeleteOnTermination: true }
+      Tags:
+        - { Key: Name, Value: compliancelens-server }
+      UserData:
+        Fn::Base64:
+          # Only the template's own checked values go into this script (repository,
+          # branch or tag, the secret's ARN, the region); the form's free text is read
+          # from the secret by server-setup.sh.
+          Fn::Sub: |
+            #!/bin/bash
+            set -euo pipefail
+            exec >>/var/log/compliancelens-setup.log 2>&1
+            echo "ComplianceLens setup started $(date -u)"
+            git clone --depth 1 --branch '${SourceRef}' '${SourceRepo}' /opt/compliancelens
+            export APP_DIR=/opt/compliancelens/compliance-lens
+            export SECRET_ID='${Settings}'
+            export AWS_DEFAULT_REGION='${AWS::Region}'
+            bash "$APP_DIR/deploy/aws/server-setup.sh"
+            echo "ComplianceLens setup finished $(date -u)"
+
+  SessionAccess:
+    Type: AWS::IAM::Policy
+    Condition: HasSessionUser
+    Properties:
+      PolicyName: compliancelens-server-session
+      Users: [{ Ref: SessionUser }]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: ssm:StartSession
+            Resource:
+              - Fn::Sub: arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Server}
+              - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-StartPortForwardingSession
+              - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/SSM-SessionManagerRunShell
+          - Effect: Allow
+            Action: [ssm:TerminateSession, ssm:ResumeSession]
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ssm:*:*:session/${!aws:username}-*
+
+Outputs:
+  ServerId:
+    Value: { Ref: Server }
+  OpenDashboard:
+    Description: Run on your computer, then open http://127.0.0.1:8001 and sign in.
+    Value:
+      Fn::Sub: >-
+        aws ssm start-session --region ${AWS::Region} --target ${Server}
+        --document-name AWS-StartPortForwardingSession
+        --parameters '{"portNumber":["8000"],"localPortNumber":["8001"]}'
+  OpenShell:
+    Description: A shell on the server (setup log - sudo tail -f /var/log/compliancelens-setup.log).
+    Value:
+      Fn::Sub: aws ssm start-session --region ${AWS::Region} --target ${Server}
+  SettingsSecret:
+    Description: Change values here, then run server-setup.sh's config and secrets steps again.
+    Value: { Ref: Settings }
