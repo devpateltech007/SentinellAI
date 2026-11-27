@@ -43,6 +43,16 @@ account ID in this file: the repository is public.
   Found: the "one audit at a time" file lock does **not** reach between the Mac and the
   container (`run-0050` ran while the Mac held it). Inside one container it still works.
   Don't audit from both at once; on a server only the container runs.
+- **Stage 3 ✅ (Nov 26):** service `dashboard` in `docker-compose.yml`
+  (`docker compose up -d dashboard`), listening on `0.0.0.0` in the container and
+  published on the computer's `127.0.0.1:8000` only; both services share one block of
+  settings and mounts. Tested on a copy on port 8001 with a throwaway password: pages
+  need sign-in (303 to `/login`); sign in; the Run page's checks read `.env`, settings
+  and logins correctly; `run-0051` started from the browser (10 rules, 5 s, same verdicts);
+  AWS-02 approved as FAIL with a note; HTML (0.1 s) and PDF (0.6 s) exported, saved in
+  `reports/run-0051/`, PDF renders with real fonts and shows the commit; verify and
+  database integrity OK on the Mac. The audit lock **does** work between two containers
+  (both refused with "already running"); only Mac ↔ container is unprotected.
 
 **Risks to watch**
 
