@@ -157,6 +157,7 @@ def test_readiness_names_optional_targets_and_problems():
 
 def test_readiness_with_nothing_set_up(monkeypatch):
     monkeypatch.delenv("AWS_ACCESS_KEY_ID")  # conftest's fake keys
+    monkeypatch.setattr(checks, "server_role", lambda: None)  # a laptop, not a server
     found = by_what(checks.readiness())
     assert list(found)[0] == "Settings"  # first: what the audit will check
     assert not found["Settings"].ok and found["Settings"].fix == checks.SETTINGS_FIX
@@ -197,6 +198,38 @@ def test_readiness_when_everything_is_set_up(monkeypatch):
     aws = by_what(checks.readiness(now))["AWS screenshots"]
     assert not aws.ok and "13 hours ago: probably expired" in aws.detail
     assert by_what(checks.readiness())  # the real clock works too
+
+
+def test_readiness_on_a_server_with_an_iam_role(monkeypatch):
+    # Docker on EC2: no AWS_PROFILE and no keys; boto3 uses the instance's role.
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID")
+    monkeypatch.setattr(checks, "server_role", lambda: "EC2")
+    aws = by_what(checks.readiness())["AWS"]
+    assert aws.ok and aws.detail == "this server's EC2 IAM role (no sign-in needed)"
+    assert aws.fix is None
+
+
+@pytest.mark.parametrize(
+    ("method", "role"),
+    [("iam-role", "EC2"), ("container-role", "container"), ("env", None), (None, None)],
+)
+def test_server_role_from_boto3(monkeypatch, method, role):
+    found = types.SimpleNamespace(method=method) if method else None
+
+    class Session:
+        def get_credentials(self):
+            return found
+
+    monkeypatch.setattr(checks.boto3, "Session", Session)
+    assert checks.server_role() == role
+
+
+def test_server_role_with_broken_aws_config(monkeypatch):
+    def broken():
+        raise ValueError("bad ~/.aws/config")
+
+    monkeypatch.setattr(checks.boto3, "Session", broken)
+    assert checks.server_role() is None
 
 
 def test_readiness_with_broken_ai_settings(monkeypatch):
