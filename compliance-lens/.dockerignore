@@ -1,0 +1,39 @@
+# What `docker build` may read. Secrets and private data never go into an image:
+# they are mounted at run time instead (see ComplianceLens Docker Plan.md, stage 2).
+
+# --- Secrets and private data (same list as .gitignore) -------------------
+.env
+.env.*
+!.env.example
+sessions/*
+!sessions/README.md
+evidence/*
+!evidence/README.md
+reports/*
+!reports/README.md
+config/settings.yaml
+config/disabled_rules.yaml
+data/employees.csv
+policies/private/
+experiment/data/
+*.db
+*.db-*
+*.db.lock
+logs/
+
+# --- Local tooling and caches ----------------------------------------------
+.venv/
+**/__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.DS_Store
+Dockerfile
+.dockerignore
